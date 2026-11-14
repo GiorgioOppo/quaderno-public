@@ -1,0 +1,46 @@
+name: Quaderno CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  desktop:
+    name: Desktop build and checks
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    env:
+      QT_VERSION: 6.8.3
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            build-essential libgl1-mesa-dev libssl-dev libxkbcommon-dev ninja-build python3-venv shellcheck zlib1g-dev
+
+      - name: Check shell scripts
+        run: sh scripts/check-shell.sh
+
+      - name: Install Qt
+        run: |
+          python3 -m venv "$RUNNER_TEMP/qt-installer"
+          "$RUNNER_TEMP/qt-installer/bin/pip" install aqtinstall==3.3.0
+          "$RUNNER_TEMP/qt-installer/bin/aqt" install-qt linux_arm64 desktop "$QT_VERSION" linux_gcc_arm64 \
+            --outputdir "$RUNNER_TEMP/qt"
+
+      - name: Build Quaderno
+        run: |
+          cmake -S . -B build-ci -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/qt/$QT_VERSION/gcc_arm64"
+          cmake --build build-ci --parallel 2
+
+      - name: Check desktop and tablet layout startup
+        run: python3 scripts/check-startup.py build-ci/quaderno
