@@ -13,6 +13,7 @@ Rectangle {
     property string pageId: ""
     property var pageItems: []
     property Notebook notebook: null
+    property bool internalSheetsAvailable: false
     property string linkedItemId: ""
     property bool active: true
     property bool actionsEnabled: true
@@ -31,7 +32,22 @@ Rectangle {
     property bool allowMixedPageImport: false
     property string syncStatus: ""
     readonly property bool dialogOpen: picker.visible || moreMenu.visible || linkedItems.visible
-    readonly property var pageLinks: itemsOfType("link")
+    readonly property Item remoteSurface: {
+        const popup = picker.visible ? picker : moreMenu.visible ? moreMenu : linkedItems.visible ? linkedItems : null
+        if (!popup || !popup.opened || (popup === picker && !remoteActions.includes(picker.action)))
+            return null
+        return popup.contentItem ? popup.contentItem.parent : null
+    }
+    readonly property var remoteActions: [
+        "markdown", "text", "bookNote", "linkedEdit", "sheetTable", "sheetChart", "sheetDiagram",
+        "newChart", "chartEdit", "newTable", "tableEdit", "diagramNew", "diagramEdit"
+    ]
+    readonly property var pageLinks: {
+        const links = itemsOfType("link")
+        if (!internalSheetsAvailable || !notebook || !links.length || !notebook.libraryItems.length)
+            return links
+        return links.filter(link => link.targetBookId !== bookId || !notebook.linkedPageItem(link.id).internalObjectSheet)
+    }
     readonly property string heading: ({books: qsTr("Libri"), writing: qsTr("Scrittura"),
         charts: qsTr("Grafici"), tables: qsTr("Tabelle"), diagrams: qsTr("Diagrammi")})[workspace] || qsTr("Scrittura")
     readonly property string moreLabel: qsTr("Altro")
@@ -83,7 +99,9 @@ Rectangle {
         {key: "bookLink", text: qsTr("Collega elemento"), icon: "link"},
         {key: "image", text: qsTr("Inserisci immagine"), icon: "image"},
         {key: "library", text: qsTr("Dalla libreria"), icon: "layers"},
-        {key: "diagramNew", text: qsTr("Inserisci diagramma"), icon: "diagram"},
+        {key: "sheetTable", text: qsTr("Aggiungi foglio tabella"), icon: "table"},
+        {key: "sheetChart", text: qsTr("Aggiungi foglio grafico"), icon: "chart"},
+        {key: "sheetDiagram", text: qsTr("Aggiungi foglio diagramma"), icon: "diagram"},
         {key: "mixedPage", text: qsTr("Riconosci pagina mista"), icon: "paper"}
     ]
     readonly property var actions: (hasLinkedItem
@@ -172,6 +190,10 @@ Rectangle {
         picker.open()
     }
 
+    function openToolsMenu(fullPage: bool) {
+        moreMenu.begin(fullPage)
+    }
+
     function closeDialogs() {
         moreMenu.pendingAction = null
         moreMenu.close()
@@ -215,6 +237,7 @@ Rectangle {
             Item { Layout.fillWidth: true; visible: tools.workspace !== "books" || tools.syncStatus.length === 0 }
             PaperButton {
                 objectName: "workspaceLinkedItemsButton"
+                property bool remoteClickable: true
                 uiScale: tools.uiScale
                 text: qsTr("Elementi collegati")
                 iconName: "link"
@@ -257,6 +280,7 @@ Rectangle {
                 PaperButton {
                     required property var modelData
                     required property int index
+                    property bool remoteClickable: tools.remoteActions.includes(modelData.key)
                     readonly property bool primary: index < tools.primaryCount
                     objectName: !primary ? "" : modelData.key === "diagramRecognize" ? "recognizeDiagramButton" : "workspaceAction_" + modelData.key
                     visible: primary
@@ -276,6 +300,7 @@ Rectangle {
             PaperButton {
                 id: moreButton
                 objectName: "workspaceMoreButton"
+                property bool remoteClickable: true
                 uiScale: tools.uiScale
                 text: tools.moreLabel
                 iconName: "more"
@@ -284,7 +309,7 @@ Rectangle {
                 enabled: tools.active && tools.actionsEnabled
                 ToolTip.visible: hovered && iconOnly && !tools.tabletMode
                 ToolTip.text: text
-                onClicked: moreMenu.begin()
+                onClicked: tools.openToolsMenu(false)
             }
         }
     }
@@ -418,6 +443,7 @@ Rectangle {
                     Item { Layout.fillWidth: true }
                     PaperButton {
                         objectName: "workspaceLinkedOpen_" + modelData.id
+                        property bool remoteClickable: true
                         uiScale: tools.uiScale
                         text: qsTr("Apri")
                         quiet: true
@@ -425,6 +451,7 @@ Rectangle {
                     }
                     PaperButton {
                         objectName: "workspaceLinkedEdit_" + modelData.id
+                        property bool remoteClickable: true
                         uiScale: tools.uiScale
                         text: qsTr("Modifica")
                         onClicked: linkedItems.choose(modelData.id, true)
@@ -438,21 +465,26 @@ Rectangle {
         id: moreMenu
         objectName: "workspaceMoreMenu"
         parent: Overlay.overlay
-        anchors.centerIn: parent
-        width: Math.max(0, Math.min(290 * tools.uiScale, parent ? parent.width - 16 * tools.uiScale : 290 * tools.uiScale))
+        x: parent ? Math.round((parent.width - width) / 2) : 0
+        y: !parent ? 0 : Math.round(fullPage ? parent.height - height - 12 * tools.uiScale
+            : (parent.height - height) / 2)
+        width: Math.max(0, Math.min((fullPage ? 350 : 290) * tools.uiScale,
+            parent ? parent.width - 16 * tools.uiScale : 290 * tools.uiScale))
         padding: 8 * tools.uiScale
         modal: true
         dim: false
         focus: true
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        property bool fullPage: false
         property var pendingAction: null
         property string sourceBook: ""
         property string sourcePage: ""
         property string sourceWorkspace: ""
 
-        function begin() {
+        function begin(showAll: bool) {
             if (!parent || !tools.active || !tools.actionsEnabled) return
             pendingAction = null
+            fullPage = showAll
             sourceBook = tools.bookId
             sourcePage = tools.pageId
             sourceWorkspace = tools.workspace
@@ -482,7 +514,10 @@ Rectangle {
             }
         }
 
-        onOpened: moveFocus(1)
+        onOpened: {
+            menuScroller.contentY = 0
+            moveFocus(1)
+        }
 
         onClosed: {
             const action = pendingAction
@@ -492,7 +527,7 @@ Rectangle {
             pendingAction = null
             if (!action) return
             Qt.callLater(function() {
-                if (tools.visible && tools.active && tools.bookId === book && tools.pageId === page
+                if (tools.active && tools.bookId === book && tools.pageId === page
                     && tools.workspace === workspace) tools.runAction(action)
             })
         }
@@ -507,7 +542,8 @@ Rectangle {
         contentItem: Flickable {
             id: menuScroller
             implicitHeight: Math.min(menuColumn.implicitHeight,
-                Math.max(44 * tools.uiScale, (moreMenu.parent ? moreMenu.parent.height : 520) - 44 * tools.uiScale))
+                Math.max(44 * tools.uiScale, (moreMenu.parent ? moreMenu.parent.height : 520)
+                    * (moreMenu.fullPage ? .72 : 1) - 44 * tools.uiScale))
             clip: true
             contentHeight: menuColumn.implicitHeight
             boundsBehavior: Flickable.StopAtBounds
@@ -518,12 +554,25 @@ Rectangle {
                 spacing: 4 * tools.uiScale
                 Keys.onUpPressed: moreMenu.moveFocus(-1)
                 Keys.onDownPressed: moreMenu.moveFocus(1)
+                PaperButton {
+                    objectName: "workspaceToolsCloseButton"
+                    property bool remoteClickable: true
+                    visible: moreMenu.fullPage
+                    width: menuColumn.width
+                    uiScale: tools.uiScale
+                    iconName: "close"
+                    text: qsTr("Chiudi strumenti")
+                    alignLeft: true
+                    onClicked: moreMenu.close()
+                }
                 Repeater {
                     id: menuOptions
-                    model: tools.actions.slice(tools.primaryCount)
+                    model: moreMenu.fullPage ? tools.actions : tools.actions.slice(tools.primaryCount)
                     PaperButton {
                         required property var modelData
-                        objectName: modelData.key === "diagramAutomatic" ? "diagramAutoRecognition" : "workspaceAction_" + modelData.key
+                        property bool remoteClickable: tools.remoteActions.includes(modelData.key)
+                        objectName: moreMenu.fullPage ? "workspaceToolsMenuAction_" + modelData.key
+                            : modelData.key === "diagramAutomatic" ? "diagramAutoRecognition" : "workspaceAction_" + modelData.key
                         width: menuColumn.width
                         uiScale: tools.uiScale
                         text: modelData.text
@@ -607,6 +656,7 @@ Rectangle {
                 delegate: PaperButton {
                     required property var modelData
                     objectName: "workspaceItemChoice_" + modelData.id
+                    property bool remoteClickable: tools.remoteActions.includes(picker.action)
                     width: options.width
                     uiScale: tools.uiScale
                     text: modelData.title
@@ -616,6 +666,7 @@ Rectangle {
                 }
             }
             PaperButton {
+                property bool remoteClickable: true
                 Layout.alignment: Qt.AlignRight
                 uiScale: tools.uiScale
                 text: qsTr("Annulla")

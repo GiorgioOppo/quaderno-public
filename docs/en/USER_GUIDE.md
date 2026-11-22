@@ -57,7 +57,8 @@ You can add up to 20 tags to each page or notebook. Each tag can contain up to 4
 - To choose the QWERTY layout for the on-screen keyboard, tap **IT/EN** or open **Settings → Language and keyboard → On-screen keyboard**. Switch between **Italiano** and **English (US)** as you type. Quaderno remembers the layout separately from the menu language.
 - **Table** inserts a table of up to 12 rows and 8 columns. In the editor, tap a cell in the grid, edit the **Cell text** field, and choose **Save**. Press **Tab** to move to the next cell or **Enter** to move down a row.
 - **Items** lets you edit text blocks, tables, and charts. Tap an item to open its editor, where you can also delete it. Drag an item to move it on the page. Choose **Write** to return to pen input.
-- **Full page** hides the tools. Choose **Show tools** to restore the toolbar.
+- **Full page** gives the sheet more room. Tap **Tools** at the bottom or swipe up from the button to open the current workspace’s commands. The menu closes when you choose a command or tap outside it. Choose **Show tools** at the top to restore the toolbar.
+- In **Charts**, choose **More → Sketch by hand** to use the pen. Draw the axes and series, then enclose them with the **Lasso** and choose **Convert to chart** in the selection toolbar. Review the points and scale before saving.
 
 On Paper Pro with firmware **3.29.1.0**, Quaderno uses the panel’s fast mode for the interface and the standard mode for pages with documents, images, charts, or diagrams. **Automatic refresh** requests a redraw only when the new page is slow to appear. You can turn it off in **Settings → Display**. To clear residual images across the whole panel, tap **Refresh screen** in the bottom bar, including in **Full page** view. The 0.2.6 settings also expose manual refresh under **General** and **Display**. A full refresh can make the display flash.
 
@@ -68,7 +69,7 @@ In Quaderno 0.2.17, you can extract a flowchart, a table and text from one page 
 1. Open the handwritten page in **Writing** or the imported PDF page in **Books**. Choose **More → Recognize mixed page**.
 2. Choose **Diagram**, **Table** or **Text**, then use the Marker to draw around the corresponding content in the preview. Quaderno closes the outline when you lift the pen. Use several outlines for a part spread across the page. After marking all three parts, choose **Recognize**.
 3. Compare each draft with the source preview. Check the diagram’s shapes, arrows and labels, then correct them in the diagram editor. Check the table’s rows and cells. Use one line per row and a tab or `|` between columns. Correct or complete the text in the **Text** tab.
-4. Enter a title and choose **Create notebook**. Quaderno opens the result in **Writing**. The Markdown goes on the opening pages, followed by a page for the editable diagram and a page for the editable table. The first page links to both. The source page remains available with its original contents.
+4. Enter a title and choose **Create notebook**. Quaderno opens the result in **Writing**. The Markdown goes on the opening pages, followed by a page for the editable diagram and a page for the editable table.
 
 Quaderno can use the original pen strokes to recognize shapes on a handwritten notebook page. On an imported PDF it analyzes the rendered page, where handwriting and arrows can be harder to distinguish. A draft may miss shapes, links, words or column boundaries. You can fill in a draft during review, including when a local recognizer is unavailable.
 
@@ -78,9 +79,15 @@ Since 0.2.19, the same helper reads the **Table** area. For a ruled table, draw 
 
 Since 0.2.19, the helper also proposes labels for recognized diagram shapes in PDFs and images. Check the labels against the source page and edit them alongside the shapes and arrows before saving.
 
+### Browse a mixed notebook
+
+The page tabs show **Writing**, **Table**, **Chart** and **Diagram** in notebook order. Select a tab to open the page with its tools. The same labels appear with the thumbnails in **Pages**. To find the object from the library, open **Tables**, **Charts** or **Diagrams** and select the entry with your notebook title and page number. Edits apply to the page in that notebook.
+
+From a Writing page, open **More** and choose **Add table page**, **Add chart page** or **Add diagram page**. Saving the object inserts a page after the current page in the same notebook.
+
 ### Open linked items from Writing
 
-Select **Linked items** to preview the referenced diagram or table. **Open** shows the original page, and **Edit** opens the object in its editor. You can also tap a link marker to go straight to the original page. Use **Back to page** to return to the text. To link an existing object manually, choose **Link an item**.
+For references to objects in other notebooks or pages combining different content types, open **Linked items**. **Open** shows the original page, and **Edit** opens the object in its editor. You can also tap a link marker to go straight to the original page. Use **Back to page** to return to the text. To link an existing object, choose **Link an item**.
 
 Use Quaderno 0.2.17 or later on both devices for the same editing controls. Sync or export the converted notebook once to carry the Markdown, diagram, table and their links together. For a link to a different notebook, sync its destination separately. This also applies to conversions saved as three notebooks in 0.2.16. [Sync notebooks](#sync-notebooks)
 
@@ -251,6 +258,20 @@ Pairing links the two Quaderno apps. After restarting Paper Pro, use **Start Blu
 1. Join the same Wi-Fi network on both devices. On Paper Pro, open **Wireless sync** with the two-arrows icon, select **Local Wi-Fi**, and keep the connection available.
 2. On the Mac, open the same panel. Enter the code and IPv4 address shown on Paper Pro, then select **Local Wi-Fi**. Allow Local Network access if macOS asks.
 
+#### Show Quaderno on a video call
+
+1. Connect your paired Paper Pro and Mac using **Local Wi-Fi**. Run a version of Quaderno with screen sharing on both devices.
+2. On the Mac, open **Paper Pro Screen** in Quaderno. On the tablet, select **Share screen over Wi-Fi**.
+3. In your video call app, choose to share a single window and select **Paper Pro Screen**. You can resize the Mac window while using Quaderno on the tablet.
+
+The window shows the Paper Pro’s Quaderno session, including its menus and open notebook. Frames travel over the authenticated Wi-Fi connection and stay in memory for display. Select **Stop** on either device. Closing the Mac window, locking the Paper Pro, entering standby, or losing the connection ends the session and clears the preview. To share again, start a new session from the tablet.
+
+On the Mac, the preview takes the aspect ratio of the first frame and fits the available space on the display. When both apps support stream orientation, the window follows changes between portrait and landscape. You can resize the window manually during sharing.
+
+During sharing, the Paper Pro uses the content refresh waveform for interface changes. Pen strokes use the selected refresh profile while you draw. Use **Refresh screen** to clear any residual images on the panel.
+
+To use Quaderno from the Mac, select **Allow control from the Mac** in the tablet’s sharing panel and close the panel. Click directly in **Paper Pro Screen** to choose a section, turn book pages, browse settings or open a supported editor. Click the tablet field before typing on the Mac keyboard. You can also select **Stop sharing** in the projected interface. You can revoke control on the tablet during the session. Permission expires when sharing ends. [Test plan (Italian)](../COLLAUDO_CONTROLLO_REMOTO.md)
+
 #### Sync notebooks
 
 1. Open a notebook on the device you want to send from. Choose **Preview notebook transfer**, review the action, and select **Confirm transfer**. When both apps are updated, each exported notebook can be up to 64 MiB on either connection. Quaderno sends only missing pages and assets in 64 KiB chunks acknowledged after durable storage. With an older app, full transfers retain the 8 MiB Bluetooth and 64 MiB Wi-Fi limits; new document properties require both apps to be updated.
@@ -282,7 +303,12 @@ With a notebook open, select the **Share** icon to open **Share and export**. Ch
 
 On Mac, save the file or open the macOS share menu and choose a destination. When a Markdown file has attachments, sharing creates a ZIP that keeps their paths intact. To print, choose the PDF for the current page or the entire notebook, then select **Print…**. Press **⌘P** to print the entire notebook directly. The macOS print panel lets you choose the printer and print settings.
 
-On Paper Pro, save the annotated PDF or choose **Print from Mac** to open wireless sync. Use **Continue on Mac** to share the notebook and reopen the page, then open the print panel in Quaderno on Mac. To print from another app, transfer the saved PDF to the Mac and open it in Preview. [Wireless sync](#wireless-sync)
+### Send a PDF from Paper Pro
+
+Open **Share and export** and select **PDF · Current page** or **PDF · Entire notebook**. Choose a destination to send the annotated PDF directly from the panel.
+
+- **Send via Wi-Fi** or **Send via Bluetooth** transfers the PDF to the paired Mac. Run Quaderno 0.2.24 or later on both devices, keep the Mac app open and unlocked, and establish the selected connection. The PDF limit is 64 MiB over Wi-Fi and 8 MiB over Bluetooth. On the Mac, **PDF received** confirms receipt and the file appears in `~/Downloads/Quaderno`. Open it in Preview to read or print it. [Pair and connect your devices](#wireless-sync)
+- **Send via email** opens the recipient field. Check the address and confirm to send the PDF as an attachment. Quaderno indicates when your outgoing server accepts the message. [Set up the SMTP server](SETTINGS.md#outgoing-mail-server-smtp)
 
 ### Notes, Books, and iCloud on Mac
 

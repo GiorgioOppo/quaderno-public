@@ -90,6 +90,8 @@ To enable offline pen-stroke transcription on Paper Pro, build the separate Writ
 
 Use sample notebooks, images, and test credentials. Enable `BUILD_TESTING` in the desktop build to run the CTest suites, including diagram recognition, mixed-page review, internal page links, library persistence, and wireless synchronization.
 
+For the full test gate, native handwriting samples and hardware workflows, see the [functional QA guide](FUNCTIONAL_QA.md).
+
 GitHub Actions builds on Linux AArch64 and macOS, runs CTest, and checks both layouts. The manual Paper Pro job builds the base app with the firmware SDK. Build and test the optional OCR helper separately. For local checks, install ShellCheck and run the following commands.
 
 ```bash

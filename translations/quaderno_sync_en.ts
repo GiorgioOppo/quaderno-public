@@ -311,9 +311,133 @@
             <source>Reti non disponibili. Quaderno riproverà il collegamento automaticamente.</source>
             <translation>Connections unavailable. Quaderno will retry automatically.</translation>
         </message>
+        <message>
+            <source>Il Mac non ha confermato il collegamento. Apri Sincronizzazione wireless su entrambi i dispositivi.</source>
+            <translation>The Mac did not confirm the connection. Open Wireless sync on both devices.</translation>
+        </message>
+        <message>
+            <source>Trasferimento PDF senza conferma. Controlla il Mac prima di riprovare.</source>
+            <translation>The PDF transfer was not confirmed. Check the Mac before retrying.</translation>
+        </message>
+        <message>
+            <source>Invio wireless PDF non disponibile.</source>
+            <translation>Wireless PDF sharing is unavailable.</translation>
+        </message>
+        <message>
+            <source>Abbina prima Quaderno al Mac in Sincronizzazione wireless.</source>
+            <translation>Pair Quaderno with the Mac in Wireless sync first.</translation>
+        </message>
+        <message>
+            <source>È in corso una sincronizzazione. Riprova al termine.</source>
+            <translation>A sync is in progress. Try again when it finishes.</translation>
+        </message>
+        <message>
+            <source>Collega il Mac via Wi-Fi in Sincronizzazione wireless e riprova.</source>
+            <translation>Connect the Mac over Wi-Fi in Wireless sync and try again.</translation>
+        </message>
+        <message>
+            <source>Collega il Mac via Bluetooth in Sincronizzazione wireless e riprova.</source>
+            <translation>Connect the Mac over Bluetooth in Wireless sync and try again.</translation>
+        </message>
+        <message>
+            <source>Aggiorna Quaderno sul Mac per ricevere PDF via Wi-Fi o Bluetooth.</source>
+            <translation>Update Quaderno on the Mac to receive PDFs over Wi-Fi or Bluetooth.</translation>
+        </message>
+        <message>
+            <source>Seleziona una pagina PDF o un quaderno in formato PDF.</source>
+            <translation>Select Page as PDF or Notebook as PDF.</translation>
+        </message>
+        <message>
+            <source>Impossibile preparare il PDF per il trasferimento.</source>
+            <translation>Could not prepare the PDF for transfer.</translation>
+        </message>
+        <message>
+            <source>Impossibile leggere il PDF esportato.</source>
+            <translation>Could not read the exported PDF.</translation>
+        </message>
+        <message>
+            <source>PDF troppo grande per questo collegamento. Il limite è %1 MiB.</source>
+            <translation>The PDF is too large for this connection. The limit is %1 MiB.</translation>
+        </message>
+        <message>
+            <source>Impossibile verificare il PDF esportato.</source>
+            <translation>Could not verify the exported PDF.</translation>
+        </message>
+        <message>
+            <source>In attesa del Mac via Wi-Fi…</source>
+            <translation>Waiting for the Mac over Wi-Fi…</translation>
+        </message>
+        <message>
+            <source>In attesa del Mac via Bluetooth…</source>
+            <translation>Waiting for the Mac over Bluetooth…</translation>
+        </message>
+        <message>
+            <source>Impossibile avviare il collegamento. Apri Sincronizzazione wireless e riprova.</source>
+            <translation>Could not start the connection. Open Wireless sync and try again.</translation>
+        </message>
+        <message>
+            <source>Invio PDF annullato.</source>
+            <translation>PDF transfer canceled.</translation>
+        </message>
+        <message>
+            <source>Collegamento occupato o cambiato. Riprova il trasferimento PDF.</source>
+            <translation>The connection is busy or has changed. Retry the PDF transfer.</translation>
+        </message>
+        <message>
+            <source>Invio PDF al Mac…</source>
+            <translation>Sending PDF to the Mac…</translation>
+        </message>
+        <message>
+            <source>Impossibile leggere il PDF durante l’invio.</source>
+            <translation>Could not read the PDF during transfer.</translation>
+        </message>
+        <message>
+            <source>Ricezione PDF dal Paper Pro…</source>
+            <translation>Receiving PDF from Paper Pro…</translation>
+        </message>
+        <message>
+            <source>Il PDF in arrivo non può essere salvato. Controlla la cartella Download.</source>
+            <translation>Could not save the incoming PDF. Check the Downloads folder.</translation>
+        </message>
+        <message>
+            <source>Il Mac non ha accettato o salvato il PDF. Controlla Quaderno sul Mac.</source>
+            <translation>The Mac did not accept or save the PDF. Check Quaderno on the Mac.</translation>
+        </message>
+        <message>
+            <source>Trasferimento PDF interrotto dal Paper Pro.</source>
+            <translation>Paper Pro stopped the PDF transfer.</translation>
+        </message>
+        <message>
+            <source>Il PDF ricevuto è incompleto o non può essere salvato.</source>
+            <translation>The received PDF is incomplete or could not be saved.</translation>
+        </message>
+        <message>
+            <source>Impossibile verificare o salvare il PDF nella cartella Download.</source>
+            <translation>Could not verify or save the PDF in Downloads.</translation>
+        </message>
+        <message>
+            <source>PDF ricevuto nella cartella Download / Quaderno.</source>
+            <translation>PDF received in Downloads / Quaderno.</translation>
+        </message>
+        <message>
+            <source>PDF salvato sul Mac in Download / Quaderno.</source>
+            <translation>PDF saved on the Mac in Downloads / Quaderno.</translation>
+        </message>
+        <message>
+            <source>Collegamento interrotto prima della conferma del trasferimento PDF.</source>
+            <translation>The connection ended before the PDF transfer was confirmed.</translation>
+        </message>
     </context>
     <context>
         <name>WirelessSyncDialog</name>
+        <message>
+            <source>Consenti il controllo dal Mac</source>
+            <translation>Allow control from the Mac</translation>
+        </message>
+        <message>
+            <source>Il Mac può aprire documenti, crearli e salvare modifiche in Quaderno durante questa diretta. Chiudi il pannello per usare i comandi.</source>
+            <translation>The Mac can open and create documents and save changes in Quaderno during this session. Close this panel to use the controls.</translation>
+        </message>
         <message>
             <source>Sincronizzazione Bluetooth</source>
             <translation>Bluetooth sync</translation>
@@ -505,6 +629,22 @@
         <message>
             <source>Solo manualmente</source>
             <translation>Manual only</translation>
+        </message>
+        <message>
+            <source>Apri Schermo del Paper Pro</source>
+            <translation>Open Paper Pro Screen</translation>
+        </message>
+        <message>
+            <source>Interrompi condivisione</source>
+            <translation>Stop sharing</translation>
+        </message>
+        <message>
+            <source>Condividi schermo via Wi-Fi</source>
+            <translation>Share screen over Wi-Fi</translation>
+        </message>
+        <message>
+            <source>Per iniziare, collega il Mac via Wi-Fi e apri la finestra Schermo del Paper Pro.</source>
+            <translation>Connect the Mac over Wi-Fi and open the Paper Pro Screen window to start.</translation>
         </message>
     </context>
     <context>

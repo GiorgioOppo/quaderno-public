@@ -2,6 +2,21 @@
 
 **English** · [Italiano](CHANGELOG.it.md)
 
+## 3.0.0
+
+- Share the Paper Pro screen over local Wi-Fi. The Mac viewer follows the tablet's proportions and rotation. The tablet can grant or revoke control by clicking and typing in the shared view.
+- Open section-specific tools on a full-page view. Navigate books with swipes and zoom, and open notes and links directly where they were placed.
+- Draw across the full-page tools button with the Marker. A pen drag writes on the page, and a short pen tap still opens Tools.
+- Review handwritten text, cell values and chart sketches before converting them into editable content. A sketch can keep unrecognized marks on the page.
+
+See the [functional QA guide](docs/en/FUNCTIONAL_QA.md) and the [release and installation status](docs/en/RELEASE.md).
+
+## 0.2.24 development
+
+- Send the current page or entire notebook as an annotated PDF from Paper Pro over local Wi-Fi or Bluetooth. The paired Mac saves the PDF in Downloads and shows a receipt.
+- Send a PDF attachment by email from Paper Pro using an outgoing SMTP server configured in **Settings → Accounts and services**. The connection requires verified TLS.
+- Navigate Writing, Table, Chart and Diagram pages within a mixed notebook using page tabs. The library sections open the same editable objects on their original pages.
+
 ## 0.2.23 development
 
 - Add an editable UML palette with classes, interfaces, objects, actors, use cases, components, packages, deployment nodes and lifelines. The shapes can be exchanged as draw.io files. Quaderno notebooks containing UML shapes use portable format 14.

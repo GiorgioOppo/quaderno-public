@@ -95,6 +95,14 @@ Obsidian Sync retains its separate CLI setup and subscription requirement; Quade
 
 Apple workflows still use Quaderno on Mac for Notes, Books, Numbers, Keynote and Journal handoff. Books import accepts local DRM-free PDF/EPUB files. There is no direct Apple Account/iCloud sign-in on Paper Pro. See [Notes, Books and iCloud on Mac](USER_GUIDE.md#notes-books-and-icloud-on-mac) and [Wireless sync](USER_GUIDE.md#wireless-sync).
 
+## Outgoing mail server (SMTP)
+
+On Paper Pro, open **Settings → Accounts and services → Outgoing mail server (SMTP)**. Enter the server name, port, and **STARTTLS** or **TLS** mode given by your mail provider. Quaderno verifies the server certificate and uses the encrypted connection to send credentials and the message.
+
+Enter a sender address that your server authorizes. If the server requires authentication, enter the SMTP username and password. Use an app password when specified by the provider. Saved credentials are local to the installation.
+
+After saving, open a notebook and select the PDF you want to send. **Send via email** asks for the recipient address and attaches the PDF. Quaderno accepts PDFs up to 15 MiB. The server can impose a lower limit. [Send a PDF from Paper Pro](USER_GUIDE.md#send-a-pdf-from-paper-pro)
+
 ## Verification boundary
 
 For **0.2.15**, the SSH configuration on Paper Pro with firmware 3.29.1.0 was checked in read-only mode. Switching the services on the physical device remains to be tested.

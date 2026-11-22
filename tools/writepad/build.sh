@@ -27,6 +27,16 @@ tar -xzf "$archive" -C "$work" --strip-components=1 \
     "$source_prefix/UniversalRecognizer/V300/reco" "$source_prefix/Dictionaries/Italian.dct" \
     "$source_prefix/Dictionaries/English.dct" "$source_prefix/LICENSE" "$source_prefix/COPYRIGHT"
 
+# This helper processes one request per process. Use WritePad's existing synchronous
+# path instead of the worker queue, where a wakeup can be lost before recognition starts.
+wrapper="$work/UniversalRecognizer/V300/RecognizerWrapper/RecognizerWrapper.cpp"
+sed '/^#define INTERNAL_RECO_THREAD[[:space:]]/d' "$wrapper" > "$wrapper.sync"
+if cmp -s "$wrapper" "$wrapper.sync"; then
+    printf '%s\n' 'The pinned WritePad wrapper does not contain the expected threading option.' >&2
+    exit 1
+fi
+mv "$wrapper.sync" "$wrapper"
+
 # The reMarkable SDK supplies these environment variables. CXX and STRIP may contain flags.
 : "${CXX:=c++}" "${STRIP:=strip}"
 mkdir -p "$work/Linux/Lib" "$work/Linux/Release"

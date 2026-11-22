@@ -57,6 +57,14 @@ ColumnLayout {
 
     spacing: (sidebar ? 12 : 7) * uiScale
 
+    function selectSection(key: string) {
+        if (!sections.some(section => section.key === key))
+            return
+        section = key
+        if (viewMode === "trash")
+            viewMode = "files"
+    }
+
     function filteredBooks(query: string): var {
         const text = query.trim().toLocaleLowerCase()
         const tag = selectedTag.toLocaleLowerCase()
@@ -194,6 +202,7 @@ ColumnLayout {
 
             ModeButton {
                 required property var modelData
+                property bool remoteClickable: true
                 objectName: "librarySection_" + modelData.key
                 Layout.fillWidth: true
                 Layout.preferredWidth: 1
@@ -202,11 +211,7 @@ ColumnLayout {
                 alignLeft: organizer.sidebar
                 quiet: organizer.section !== modelData.key || organizer.viewMode === "trash"
                 filled: organizer.section === modelData.key && organizer.viewMode !== "trash"
-                onClicked: {
-                    organizer.section = modelData.key
-                    if (organizer.viewMode === "trash")
-                        organizer.viewMode = "files"
-                }
+                onClicked: organizer.selectSection(modelData.key)
             }
         }
     }

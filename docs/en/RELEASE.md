@@ -2,11 +2,11 @@
 
 **English** · [Italiano](../RILASCIO.md)
 
-## Source preview 0.2.23
+## Quaderno 3.0.0
 
-Build 0.2.23 from source. The public `v0.1.0` tag identifies the historical source snapshot. The source tree includes Quaderno, the installer and guides in English and Italian. Quaderno uses the MIT License, and its optional recognizers carry separate terms. [Original source tag](https://github.com/GiorgioOppo/quaderno-public/tree/v0.1.0) · [License](../../LICENSE) · [Third-party notices](../../THIRD_PARTY_NOTICES.md) · [Changelog](../../CHANGELOG.md)
+The `v3.0.0` release provides source code for Mac and Paper Pro, installation scripts, and guides in English and Italian. Build for your platform using the development guide. Quaderno uses the MIT License, and its optional recognizers carry separate terms. [GitHub release](https://github.com/GiorgioOppo/quaderno-public/releases/tag/v3.0.0) · [Build instructions](DEVELOPMENT.md) · [License](../../LICENSE) · [Third-party notices](../../THIRD_PARTY_NOTICES.md) · [Changelog](../../CHANGELOG.md)
 
-Before making a repository public, review the exact source tree and commit metadata, plus the visibility of issues, workflow logs, and release assets. Use sample data in screenshots and test logs. Verify the final source commit with the build and startup checks, then use that commit for the preview tag. [Development guide](DEVELOPMENT.md) · [GitHub repository visibility](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/managing-repository-settings/setting-repository-visibility)
+Before publishing, review the exact source tree, commit metadata, issues, workflow logs and release assets. Use sample data in screenshots and test logs. Complete the build, startup and functional checks before tagging that same commit. [Functional QA](FUNCTIONAL_QA.md) · [GitHub repository visibility](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/managing-repository-settings/setting-repository-visibility)
 
 ## Verification
 

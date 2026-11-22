@@ -57,7 +57,8 @@ Puoi assegnare fino a 20 tag per pagina o quaderno, con un massimo di 40 caratte
 - Per scegliere il layout QWERTY della tastiera a schermo, tocca **IT/EN** oppure apri **Impostazioni → Lingua e tastiera → Tastiera a schermo**. Puoi passare da **Italiano** a **English (US)** anche mentre scrivi. Quaderno ricorda il layout separatamente dalla lingua dei menu.
 - **Tabella** inserisce fino a 12 righe e 8 colonne. Nell’editor, tocca una cella nella griglia, modifica il campo **Testo della cella** e premi **Salva**. Con la tastiera, **Tab** passa alla cella successiva e **Invio** scende di una riga.
 - **Elementi** attiva la modifica di blocchi, tabelle e grafici. Tocca un elemento per aprirlo o eliminarlo dal suo editor. Trascinalo per spostarlo sulla pagina. Premi **Scrivi** per tornare alla penna.
-- **Pagina intera** nasconde gli strumenti. Usa **Mostra strumenti** per ripristinare la barra.
+- **Pagina intera** lascia spazio al foglio. Tocca **Strumenti** in basso, oppure scorri verso l’alto partendo da quel pulsante, per aprire i comandi della sezione. Il menu si chiude quando scegli un comando o tocchi fuori. Usa **Mostra strumenti** in alto per ripristinare la barra.
+- In **Grafici**, scegli **Altro → Schizzo a mano** per usare la penna. Disegna gli assi e la serie, poi circondali con il **Lazo** e scegli **Converti in grafico** nella barra di selezione. Controlla punti ed eventuale scala nell’anteprima prima di salvare.
 
 Sul Paper Pro con firmware **3.29.1.0**, Quaderno usa la modalità rapida del pannello per l’interfaccia e mantiene quella standard per le pagine con documenti, immagini, grafici o diagrammi. **Aggiornamento automatico** chiede un ridisegno solo se la nuova pagina tarda a comparire. Puoi disattivarlo in **Impostazioni → Schermo**. Per pulire eventuali immagini residue su tutto il pannello, tocca **Aggiorna schermo** nella barra in basso, anche in **Pagina intera**. Le impostazioni 0.2.6 espongono il comando manuale anche in **Generali** e **Schermo**. La pulizia completa può far lampeggiare lo schermo.
 
@@ -68,7 +69,7 @@ In Quaderno 0.2.17 puoi ricavare un diagramma di flusso, una tabella e del testo
 1. Apri il foglio scritto a mano in **Scrittura** o la pagina del PDF importato in **Libri**. Scegli **Altro → Riconosci pagina mista**.
 2. Seleziona **Diagramma**, **Tabella** o **Testo**, poi disegna con il Marker un contorno attorno al contenuto nell’anteprima. Quaderno chiude il contorno quando sollevi la penna. Usa più contorni per una parte distribuita sulla pagina. Dopo aver indicato tutte e tre le parti, scegli **Riconosci**.
 3. Confronta le bozze con l’anteprima della pagina di partenza. Controlla forme, frecce ed etichette e correggile nell’editor del diagramma. Verifica righe e celle della tabella. Inserisci ogni riga della tabella su una nuova riga di testo e separa le colonne con Tab o `|`. Correggi o completa la trascrizione nella scheda **Testo**.
-4. Inserisci un titolo e scegli **Crea quaderno**. Quaderno apre il risultato in **Scrittura**. Le prime pagine contengono il Markdown, seguito da una pagina per il diagramma e una per la tabella, entrambi modificabili. La prima pagina contiene i due collegamenti. La pagina di partenza resta disponibile con i suoi contenuti originali.
+4. Inserisci un titolo e scegli **Crea quaderno**. Quaderno apre il risultato in **Scrittura**. Le prime pagine contengono il Markdown, seguito da una pagina per il diagramma e una per la tabella, entrambi modificabili.
 
 Su un foglio scritto a mano Quaderno può usare i tratti della penna per riconoscere le forme. Su un PDF importato analizza l’immagine della pagina, dove scrittura e frecce possono essere più difficili da distinguere. La bozza può saltare forme, collegamenti, parole o separazioni tra colonne. Puoi completarla durante la revisione, anche quando un motore di riconoscimento locale è indisponibile.
 
@@ -78,9 +79,15 @@ Dalla 0.2.19 lo stesso motore legge l’area **Tabella**. Se la tabella ha una g
 
 Dalla 0.2.19 il motore propone anche le etichette delle forme riconosciute nei diagrammi in PDF e immagini. Confronta le etichette con la pagina di partenza e modificale insieme a forme e frecce prima di salvare.
 
+### Sfogliare un quaderno misto
+
+La barra delle pagine mostra **Scrittura**, **Tabella**, **Grafico** e **Diagramma** nell’ordine in cui compaiono nel quaderno. Tocca una scheda per aprire la pagina con i suoi strumenti. Le etichette sono visibili anche in **Pagine**, accanto alle miniature. Per ritrovare lo stesso oggetto dalla libreria, apri **Tabelle**, **Grafici** o **Diagrammi** e scegli la voce con il titolo del quaderno e il numero di pagina. Le modifiche si applicano alla pagina del quaderno.
+
+Da una pagina di Scrittura apri **Altro** e scegli **Aggiungi foglio tabella**, **Aggiungi foglio grafico** o **Aggiungi foglio diagramma**. Quando salvi l’oggetto, il foglio viene inserito dopo la pagina corrente, nello stesso quaderno.
+
 ### Aprire gli elementi collegati da Scrittura
 
-Scegli **Elementi collegati** per vedere l’anteprima del diagramma o della tabella. **Apri** mostra la pagina originale e **Modifica** avvia l’editor dell’oggetto. Puoi anche toccare un richiamo per andare direttamente alla pagina originale. Usa **Torna alla pagina** per rientrare nel testo. Per aggiungere manualmente un riferimento a un oggetto già presente, scegli **Collega elemento**.
+Per i riferimenti a oggetti in altri quaderni o in pagine con più tipi di contenuto, apri **Elementi collegati**. **Apri** mostra la pagina originale e **Modifica** avvia l’editor dell’oggetto. Puoi anche toccare un richiamo per andare direttamente alla pagina originale. Usa **Torna alla pagina** per rientrare nel testo. Per aggiungere un riferimento a un oggetto già presente, scegli **Collega elemento**.
 
 Usa Quaderno 0.2.17 o una versione successiva su entrambi i dispositivi per ritrovare gli stessi comandi di modifica. Una sola sincronizzazione o esportazione del quaderno convertito porta con sé Markdown, diagramma, tabella e collegamenti. Per un collegamento a un altro quaderno, sincronizza la destinazione separatamente. Vale anche per i risultati salvati in tre quaderni con la 0.2.16. [Sincronizzare i quaderni](#sincronizzare-i-quaderni)
 
@@ -251,6 +258,20 @@ L’abbinamento collega le due app Quaderno. Dopo un riavvio del Paper Pro, usa 
 1. Collega entrambi i dispositivi alla stessa rete Wi-Fi. Sul Paper Pro apri **Sincronizzazione wireless** con l’icona delle due frecce, scegli **Wi-Fi locale** e lascia attivo il collegamento.
 2. Sul Mac apri lo stesso pannello. Inserisci il codice e l’indirizzo IPv4 mostrati dal Paper Pro, poi scegli **Wi-Fi locale**. Consenti l’accesso alla rete locale se macOS lo richiede.
 
+#### Mostrare Quaderno in una videochiamata
+
+1. Collega il Paper Pro e il Mac già abbinati con **Wi-Fi locale**. Usa su entrambi una versione di Quaderno che supporti la condivisione dello schermo.
+2. Sul Mac apri **Schermo del Paper Pro** in Quaderno. Sul tablet scegli **Condividi schermo via Wi-Fi**.
+3. Nell’app della videochiamata scegli la condivisione di una singola finestra e seleziona **Schermo del Paper Pro**. Puoi ridimensionare la finestra sul Mac mentre usi Quaderno sul tablet.
+
+La finestra mostra la sessione di Quaderno sul Paper Pro, compresi menu e quaderno aperto. I fotogrammi viaggiano sul collegamento Wi-Fi autenticato e rimangono in memoria per la visualizzazione. Usa **Interrompi** su uno dei dispositivi. Chiudere la finestra sul Mac, bloccare il Paper Pro, metterlo in standby o perdere il collegamento termina la sessione e svuota l’anteprima. Per condividere di nuovo, avvia un’altra sessione dal tablet.
+
+Sul Mac l’anteprima prende le proporzioni del primo fotogramma e si adatta allo spazio disponibile sul monitor. Se entrambe le app supportano l’orientamento della diretta, la finestra segue il passaggio da verticale a orizzontale. Puoi ridimensionare la finestra a mano durante la condivisione.
+
+Durante la diretta, il Paper Pro usa il profilo di aggiornamento per contenuti per i cambiamenti dell’interfaccia. La penna usa il profilo selezionato durante il tratto. Il pulsante **Aggiorna schermo** è disponibile per pulire eventuali immagini residue del pannello.
+
+Per usare Quaderno dal Mac, spunta **Consenti il controllo dal Mac** nel pannello di condivisione del tablet e chiudilo. Fai clic direttamente nell’immagine di **Schermo del Paper Pro** per aprire una sezione, sfogliare un libro, consultare le impostazioni o aprire un editor supportato. Fai clic nel campo del tablet prima di digitare con la tastiera del Mac. Puoi anche scegliere **Interrompi condivisione** nell’immagine. Puoi revocare il controllo dal tablet durante la diretta. Il consenso scade al termine della sessione. [Piano di collaudo](COLLAUDO_CONTROLLO_REMOTO.md)
+
 #### Sincronizzare i quaderni
 
 1. Apri un quaderno sul dispositivo da cui vuoi inviarlo. Scegli **Anteprima invio quaderno**, controlla l’azione e premi **Conferma invio**. Con entrambe le app aggiornate, il limite è 64 MiB per quaderno esportato su entrambi i collegamenti. Quaderno invia solo le pagine e le risorse mancanti, in parti da 64 KiB confermate dopo il salvataggio. Con un’app precedente, il trasferimento completo conserva il limite di 8 MiB via Bluetooth e 64 MiB via Wi-Fi; le nuove proprietà richiedono entrambe le app aggiornate.
@@ -282,7 +303,12 @@ Con il quaderno aperto, tocca l’icona **Condividi** per aprire **Condividi ed 
 
 Sul Mac puoi salvare il file o aprire il menu di condivisione di macOS e scegliere una destinazione. Quando il Markdown ha allegati, la condivisione prepara uno ZIP che mantiene i riferimenti ai file. Per stampare, scegli il PDF della pagina corrente o dell’intero quaderno e usa **Stampa…**. Puoi anche premere **⌘P** per stampare l’intero quaderno. Il pannello di macOS permette di scegliere la stampante e le impostazioni di stampa.
 
-Sul Paper Pro puoi salvare il PDF annotato o scegliere **Stampa dal Mac** per aprire la sincronizzazione wireless. Usa **Continua sul Mac** per inviare il quaderno e ritrovare la pagina, poi apri il pannello di stampa in Quaderno sul Mac. Per stampare da un’altra app, trasferisci il PDF salvato al Mac e aprilo in Anteprima. [Sincronizzazione wireless](#sincronizzazione-wireless)
+### Inviare un PDF dal Paper Pro
+
+Apri **Condividi ed esporta** e scegli **PDF · Pagina corrente** o **PDF · Intero quaderno**. Seleziona la destinazione per inviare il PDF direttamente dal pannello.
+
+- **Invia via Wi-Fi** o **Invia via Bluetooth** trasferisce il PDF al Mac abbinato. Usa Quaderno 0.2.24 o successivo su entrambi i dispositivi, tieni aperta e sbloccata l’app sul Mac e stabilisci il collegamento scelto. Il limite del PDF è 64 MiB via Wi-Fi e 8 MiB via Bluetooth. Sul Mac compare **PDF ricevuto** e trovi il file in `~/Downloads/Quaderno`. Puoi aprirlo in Anteprima per leggerlo o stamparlo. [Abbinamento e collegamenti](#sincronizzazione-wireless)
+- **Invia via email** apre il campo del destinatario. Controlla l’indirizzo e conferma l’invio del PDF come allegato. Quaderno indica quando il server di posta accetta il messaggio. [Configurare il server SMTP](IMPOSTAZIONI.md#server-di-posta-in-uscita-smtp)
 
 ### Note, Libri e iCloud sul Mac
 

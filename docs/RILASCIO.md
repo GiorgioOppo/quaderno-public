@@ -2,11 +2,11 @@
 
 [English](en/RELEASE.md) · **Italiano**
 
-## Anteprima dei sorgenti 0.2.23
+## Quaderno 3.0.0
 
-Compila la 0.2.23 dai sorgenti. Il tag pubblico `v0.1.0` identifica l’anteprima originale. Il repository include Quaderno, l’installer e le guide in inglese e italiano. Quaderno usa la licenza MIT e i motori di riconoscimento opzionali seguono le proprie licenze. [Tag originale](https://github.com/GiorgioOppo/quaderno-public/tree/v0.1.0) · [Licenza](../LICENSE) · [Componenti di terze parti](../THIRD_PARTY_NOTICES.md) · [Cronologia](../CHANGELOG.it.md)
+Il tag `v3.0.0` contiene i sorgenti per Mac e Paper Pro, gli script di installazione e le guide in inglese e italiano. Per compilare sulla tua piattaforma segui la guida di sviluppo. Quaderno usa la licenza MIT e i motori di riconoscimento opzionali seguono le proprie licenze. [Rilascio su GitHub](https://github.com/GiorgioOppo/quaderno-public/releases/tag/v3.0.0) · [Istruzioni di compilazione](SVILUPPO.md) · [Licenza](../LICENSE) · [Componenti di terze parti](../THIRD_PARTY_NOTICES.md) · [Cronologia](../CHANGELOG.it.md)
 
-Prima di rendere pubblico il repository, rivedi i file e i metadati dei commit, oltre alla visibilità delle issue, dei log delle verifiche automatiche e degli allegati. Usa dati di esempio nelle schermate e nei log. Esegui compilazione e prova di avvio sul commit definitivo e usa quel commit per il tag dell’anteprima. [Guida di sviluppo](SVILUPPO.md) · [Visibilità dei repository GitHub](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/managing-repository-settings/setting-repository-visibility)
+Prima della pubblicazione, rivedi i sorgenti, i metadati dei commit, le issue, i log e gli allegati. Usa dati di esempio nelle schermate e nei log. Completa le prove di compilazione, avvio e funzionamento prima di assegnare il tag allo stesso commit. [Collaudo funzionale](COLLAUDO_FUNZIONALE.md) · [Visibilità dei repository GitHub](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/managing-repository-settings/setting-repository-visibility)
 
 ## Verifiche
 

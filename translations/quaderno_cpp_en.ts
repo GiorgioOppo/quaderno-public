@@ -1964,4 +1964,229 @@
     <message><source>Impossibile leggere l’immagine della pagina.</source><translation>Could not read the page image.</translation></message>
     <message><source>Indica almeno un’area per ogni parte della pagina.</source><translation>Mark at least one area for each part of the page.</translation></message>
   </context>
+    <context>
+        <name>SmtpMail</name>
+        <message>
+            <source>Impossibile leggere le impostazioni SMTP salvate.</source>
+            <translation>Could not read the saved SMTP settings.</translation>
+        </message>
+        <message>
+            <source>Controlla server, porta, mittente e credenziali SMTP.</source>
+            <translation>Check the SMTP server, port, sender and credentials.</translation>
+        </message>
+        <message>
+            <source>Impossibile salvare la configurazione SMTP nello spazio privato del dispositivo.</source>
+            <translation>Could not save the SMTP settings in this device’s private storage.</translation>
+        </message>
+        <message>
+            <source>Configurazione SMTP salvata.</source>
+            <translation>SMTP settings saved.</translation>
+        </message>
+        <message>
+            <source>Impossibile rimuovere la configurazione SMTP salvata.</source>
+            <translation>Could not remove the saved SMTP settings.</translation>
+        </message>
+        <message>
+            <source>Configurazione SMTP rimossa.</source>
+            <translation>SMTP settings removed.</translation>
+        </message>
+        <message>
+            <source>Sblocca Quaderno per inviare email.</source>
+            <translation>Unlock Quaderno to send email.</translation>
+        </message>
+        <message>
+            <source>Configura prima il server SMTP nelle impostazioni.</source>
+            <translation>Configure the SMTP server in Settings first.</translation>
+        </message>
+        <message>
+            <source>Scegli il PDF della pagina o del quaderno da inviare.</source>
+            <translation>Choose a page or notebook PDF to send.</translation>
+        </message>
+        <message>
+            <source>Documento Quaderno</source>
+            <translation>Quaderno document</translation>
+        </message>
+        <message>
+            <source>Inserisci un solo indirizzo email valido.</source>
+            <translation>Enter one valid email address.</translation>
+        </message>
+        <message>
+            <source>Controlla l’oggetto, il messaggio e il nome del PDF.</source>
+            <translation>Check the subject, message and PDF name.</translation>
+        </message>
+        <message>
+            <source>Preparazione PDF per l’email…</source>
+            <translation>Preparing the PDF for email…</translation>
+        </message>
+        <message>
+            <source>Il quaderno selezionato non è disponibile.</source>
+            <translation>The selected notebook is unavailable.</translation>
+        </message>
+        <message>
+            <source>Impossibile preparare il PDF per l’email.</source>
+            <translation>Could not prepare the PDF for email.</translation>
+        </message>
+        <message>
+            <source>Invio email tramite SMTP…</source>
+            <translation>Sending email via SMTP…</translation>
+        </message>
+        <message>
+            <source>Invio email annullato.</source>
+            <translation>Email sending cancelled.</translation>
+        </message>
+    </context>
+    <context>
+        <name>SmtpClient</name>
+        <message>
+            <source>Controlla i dati SMTP e i campi dell’email.</source>
+            <translation>Check the SMTP settings and email fields.</translation>
+        </message>
+        <message>
+            <source>TLS non è disponibile su questo dispositivo.</source>
+            <translation>TLS is unavailable on this device.</translation>
+        </message>
+        <message>
+            <source>Il PDF non è disponibile o supera il limite di 15 MiB.</source>
+            <translation>The PDF is unavailable or exceeds the 15 MiB limit.</translation>
+        </message>
+        <message>
+            <source>Impossibile leggere il PDF da allegare.</source>
+            <translation>Could not read the PDF attachment.</translation>
+        </message>
+        <message>
+            <source>Il server SMTP ha chiuso la connessione.</source>
+            <translation>The SMTP server closed the connection.</translation>
+        </message>
+        <message>
+            <source>Il server SMTP non ha risposto in tempo.</source>
+            <translation>The SMTP server did not respond in time.</translation>
+        </message>
+        <message>
+            <source>L’invio SMTP ha superato il tempo massimo.</source>
+            <translation>The SMTP transfer timed out.</translation>
+        </message>
+        <message>
+            <source>Impossibile verificare il certificato del server SMTP.</source>
+            <translation>Could not verify the SMTP server certificate.</translation>
+        </message>
+        <message>
+            <source>Connessione al server SMTP interrotta.</source>
+            <translation>The connection to the SMTP server was interrupted.</translation>
+        </message>
+        <message>
+            <source>Invio email annullato.</source>
+            <translation>Email sending cancelled.</translation>
+        </message>
+        <message>
+            <source>Il server SMTP non ha confermato la consegna. Controlla prima di riprovare.</source>
+            <translation>The SMTP server did not confirm acceptance. Check before trying again.</translation>
+        </message>
+        <message>
+            <source>Risposta SMTP non valida.</source>
+            <translation>Invalid SMTP response.</translation>
+        </message>
+        <message>
+            <source>Il server SMTP ha rifiutato l’operazione (%1).</source>
+            <translation>The SMTP server rejected the operation (%1).</translation>
+        </message>
+        <message>
+            <source>Il server SMTP non offre STARTTLS. Controlla modalità e porta.</source>
+            <translation>The SMTP server does not offer STARTTLS. Check the security mode and port.</translation>
+        </message>
+        <message>
+            <source>L’email con allegato supera il limite del server SMTP.</source>
+            <translation>The email with its attachment exceeds the SMTP server’s size limit.</translation>
+        </message>
+        <message>
+            <source>Il server SMTP non offre l’autenticazione con password su TLS.</source>
+            <translation>The SMTP server does not offer password authentication over TLS.</translation>
+        </message>
+        <message>
+            <source>Autenticazione SMTP rifiutata. Controlla utente e password.</source>
+            <translation>SMTP authentication rejected. Check the username and password.</translation>
+        </message>
+        <message>
+            <source>Il server SMTP ha rifiutato il mittente (%1).</source>
+            <translation>The SMTP server rejected the sender (%1).</translation>
+        </message>
+        <message>
+            <source>Il server SMTP ha rifiutato il destinatario (%1).</source>
+            <translation>The SMTP server rejected the recipient (%1).</translation>
+        </message>
+        <message>
+            <source>Impossibile inviare l’allegato al server SMTP.</source>
+            <translation>Could not send the attachment to the SMTP server.</translation>
+        </message>
+        <message>
+            <source>Email accettata dal server SMTP.</source>
+            <translation>Email accepted by the SMTP server.</translation>
+        </message>
+        <message>
+            <source>Impossibile scrivere al server SMTP.</source>
+            <translation>Could not write to the SMTP server.</translation>
+        </message>
+        <message>
+            <source>Impossibile leggere il PDF durante l’invio.</source>
+            <translation>Could not read the PDF while sending.</translation>
+        </message>
+    </context>
+    <context>
+        <name>ScreenStream</name>
+        <message>
+            <source>Il Mac non ha confermato la ricezione dello schermo.</source>
+            <translation>The Mac did not confirm receipt of the screen image.</translation>
+        </message>
+        <message>
+            <source>Condivisione interrotta. Ricollega il Wi-Fi per riprovare.</source>
+            <translation>Screen sharing ended. Reconnect Wi-Fi to try again.</translation>
+        </message>
+        <message>
+            <source>Condivisione sospesa mentre Quaderno è bloccato o in standby.</source>
+            <translation>Screen sharing is unavailable while Quaderno is locked or asleep.</translation>
+        </message>
+        <message>
+            <source>Collega il Paper Pro e il Mac via Wi-Fi da Sincronizzazione wireless.</source>
+            <translation>Connect the Paper Pro and Mac over Wi-Fi in Wireless sync.</translation>
+        </message>
+        <message>
+            <source>Schermo condiviso con il Mac.</source>
+            <translation>Sharing the screen with the Mac.</translation>
+        </message>
+        <message>
+            <source>Schermo del Paper Pro in diretta.</source>
+            <translation>Live from the Paper Pro.</translation>
+        </message>
+        <message>
+            <source>Il Mac è pronto a ricevere lo schermo.</source>
+            <translation>The Mac is ready to show the screen.</translation>
+        </message>
+        <message>
+            <source>Apri la finestra Schermo del Paper Pro in Quaderno sul Mac.</source>
+            <translation>Open the Paper Pro Screen window in Quaderno on your Mac.</translation>
+        </message>
+        <message>
+            <source>In attesa che tu avvii la condivisione sul Paper Pro.</source>
+            <translation>Waiting for you to start sharing on the Paper Pro.</translation>
+        </message>
+        <message>
+            <source>Impossibile iniziare la condivisione via Wi-Fi.</source>
+            <translation>Could not start sharing over Wi-Fi.</translation>
+        </message>
+        <message>
+            <source>Il fotogramma ricevuto non è valido. Avvia di nuovo la condivisione.</source>
+            <translation>The received frame is invalid. Start sharing again.</translation>
+        </message>
+        <message>
+            <source>Quaderno non riesce a leggere il fotogramma del Paper Pro.</source>
+            <translation>Quaderno could not capture a frame from the Paper Pro.</translation>
+        </message>
+        <message>
+            <source>Impossibile preparare l’immagine dello schermo.</source>
+            <translation>Could not encode the screen image.</translation>
+        </message>
+        <message>
+            <source>Condivisione interrotta dal collegamento Wi-Fi.</source>
+            <translation>The Wi-Fi connection interrupted screen sharing.</translation>
+        </message>
+    </context>
 </TS>

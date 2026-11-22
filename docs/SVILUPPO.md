@@ -90,6 +90,8 @@ Per attivare la trascrizione offline dei tratti della penna, compila il motore W
 
 Usa quaderni, immagini e credenziali di prova. Abilita `BUILD_TESTING` nella build desktop per eseguire le suite CTest, tra cui riconoscimento dei diagrammi, revisione delle pagine miste, collegamenti interni, persistenza e sincronizzazione wireless.
 
+Per il collaudo di tutte le suite, la prova dei motori di scrittura e i percorsi da verificare sul dispositivo, usa la [matrice di collaudo funzionale](COLLAUDO_FUNZIONALE.md).
+
 GitHub Actions compila su Linux AArch64 e macOS, esegue CTest e verifica l’avvio nei due layout. Il job manuale per Paper Pro compila l’app base con l’SDK del firmware. Compila e verifica separatamente il motore OCR opzionale. Per i controlli locali, installa ShellCheck ed esegui i comandi seguenti.
 
 ```bash

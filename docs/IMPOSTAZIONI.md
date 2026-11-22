@@ -87,13 +87,21 @@ I controlli agiscono dal Paper Pro. Sul Mac, in **Impostazioni → USB-C**, puoi
 
 Il pannello offre finestre Google Drive, Dropbox e OneDrive con autorizzazione, elenco file, download/importazione, caricamento di nuove copie, annullamento e scollegamento. **Serve una registrazione OAuth ufficiale del client per l’installazione.** Se manca viene indicata come non disponibile; aprire un sito non equivale a collegare un account. Il codice implementato non dimostra un accesso reale riuscito: configurazione del client, approvazioni del fornitore quando richieste e prove con account reali restano attività separate.
 
-Le password si inseriscono soltanto nella pagina ufficiale del fornitore. Google usa browser, PKCE e callback locale; Dropbox la propria pagina e un codice di autorizzazione restituito; Microsoft la pagina per il codice dispositivo. Sul Paper Pro l’assistente Mac `scripts/cloud-auth-paper-pro.py` apre il browser e gestisce il passaggio di autorizzazione via SSH. Le callback Google vengono inoltrate al tablet; i token di accesso/rinnovo restano sul tablet. Sul Mac i token sono nel Portachiavi; sul Paper Pro in un file privato fuori da libreria e backup. Il blocco PIN annulla le operazioni attive di autorizzazione e trasferimento del pannello.
+Per collegare un account cloud, inserisci la password nella pagina ufficiale del fornitore. Google usa browser, PKCE e callback locale; Dropbox la propria pagina e un codice di autorizzazione restituito; Microsoft la pagina per il codice dispositivo. Sul Paper Pro l’assistente Mac `scripts/cloud-auth-paper-pro.py` apre il browser e gestisce il passaggio di autorizzazione via SSH. Le callback Google vengono inoltrate al tablet; i token di accesso/rinnovo restano sul tablet. Sul Mac i token sono nel Portachiavi; sul Paper Pro in un file privato fuori da libreria e backup. Il blocco PIN annulla le operazioni attive di autorizzazione e trasferimento del pannello.
 
 Importazione supportata: PDF, EPUB, Markdown, CSV, immagini e `.quaderno`, nei limiti di trasferimento e dei formati. I trasferimenti cloud sono manuali: fino a 100 MiB per file supportato e 64 MiB per quaderno; gli importatori possono imporre limiti inferiori. I caricamenti creano nuove copie senza sovrascrivere o eliminare gli originali cloud. Scaricare/importare non attiva una sincronizzazione cloud bidirezionale automatica. Scollegare rimuove l’accesso locale senza cancellare file; la revoca presso il fornitore è separata, e Microsoft la gestisce nella pagina dell’account. Vedi [Configurazione degli account cloud](CLOUD_ACCOUNTS.md).
 
 Obsidian Sync conserva configurazione CLI separata e requisito di abbonamento. Quaderno invia testo Markdown, mentre tratti, tabelle e grafici restano oggetti Quaderno. L’importazione Markdown pubblica richiede un URL HTTPS diretto a un file UTF-8 fino a 256 KiB: una pagina HTML di condivisione non è un file Markdown. Link Obsidian Publish e vault locale sul Mac restano percorsi distinti. Vedi [Collegare Obsidian Sync](INSTALLAZIONE.md#collegare-obsidian-sync).
 
 I flussi Apple usano ancora Quaderno sul Mac per il passaggio a Notes, Books, Numbers, Keynote e Journal. Books importa PDF/EPUB locali senza DRM. Non c’è accesso diretto Apple Account/iCloud sul Paper Pro. Vedi [Note, Books e iCloud su Mac](GUIDA.md#note-libri-e-icloud-sul-mac) e [Sincronizzazione senza cavo](GUIDA.md#sincronizzazione-wireless).
+
+## Server di posta in uscita (SMTP)
+
+Sul Paper Pro apri **Impostazioni → Account e servizi → Server di posta in uscita (SMTP)**. Inserisci il nome del server, la porta e la modalità **STARTTLS** o **TLS** indicati dal tuo fornitore di posta. Quaderno verifica il certificato del server e usa la connessione cifrata per inviare le credenziali e il messaggio.
+
+Indica l’indirizzo mittente autorizzato dal server. Se il server richiede autenticazione, inserisci anche il nome utente e la password SMTP. Usa la password per app se indicata dal fornitore. Le credenziali salvate sono locali all’installazione.
+
+Dopo aver salvato, apri un quaderno e scegli il PDF da inviare. **Invia via email** chiede l’indirizzo del destinatario e allega il PDF al messaggio. Quaderno accetta PDF fino a 15 MiB. Il server può imporre un limite inferiore. [Inviare un PDF dal Paper Pro](GUIDA.md#inviare-un-pdf-dal-paper-pro)
 
 ## Ambito delle verifiche
 

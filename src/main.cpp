@@ -13,6 +13,8 @@
 #include "pinlock.h"
 #include "paperprostandby.h"
 #include "screenorientation.h"
+#include "screenstream.h"
+#include "smtpmail.h"
 #include "usbssh.h"
 #include "wifisettings.h"
 #include "wirelesssync.h"
@@ -25,6 +27,7 @@
 #include <QGuiApplication>
 #include <QJsonDocument>
 #include <QQmlApplicationEngine>
+#include <QQuickImageProvider>
 #include <QQuickStyle>
 #include <QQuickWindow>
 #include <QScreen>
@@ -36,6 +39,11 @@
 
 int main(int argc, char *argv[])
 {
+    if (argc == 2 && QByteArray(argv[1]) == "--version") {
+        std::puts(QUADERNO_VERSION);
+        return 0;
+    }
+
     if (argc >= 2 && QByteArray(argv[1]).startsWith("--usb-transfer-")) {
         const QByteArray command(argv[1]);
         if (argc == 2 && command == "--usb-transfer-protocol") {
@@ -85,6 +93,7 @@ int main(int argc, char *argv[])
 
     QGuiApplication app(argc, argv);
     QCoreApplication::setApplicationName(QStringLiteral("Quaderno"));
+    QCoreApplication::setApplicationVersion(QStringLiteral(QUADERNO_VERSION));
     AppLanguage language(nullptr);
     QQuickStyle::setStyle(QStringLiteral("Basic"));
 
@@ -117,6 +126,11 @@ int main(int argc, char *argv[])
     DeviceInfo deviceInfo(onDevice);
     ScreenOrientation screenOrientation(onDevice);
     PaperProStandby standby(tablet, &pinLock, &deviceInfo);
+    SmtpMail smtpMail;
+    const auto updateMailLock = [&] { smtpMail.setLocked(pinLock.locked() || standby.sleeping()); };
+    QObject::connect(&pinLock, &PinLock::lockedChanged, &smtpMail, updateMailLock);
+    QObject::connect(&standby, &PaperProStandby::sleepingChanged, &smtpMail, updateMailLock);
+    updateMailLock();
     const auto updateCloudLock = [&] { cloudAccounts.setLocked(pinLock.locked() || standby.sleeping()); };
     QObject::connect(&pinLock, &PinLock::lockedChanged, &cloudAccounts, updateCloudLock);
     QObject::connect(&standby, &PaperProStandby::sleepingChanged, &cloudAccounts, updateCloudLock);
@@ -138,17 +152,28 @@ int main(int argc, char *argv[])
     QObject::connect(&pinLock, &PinLock::lockedChanged, &wireless, [&] {
         wireless.setLocked(pinLock.locked());
     });
+    QObject::connect(&standby, &PaperProStandby::sleepingChanged, &wireless, [&] {
+        if (standby.sleeping())
+            wireless.cancelPdf();
+    });
     wireless.setLocked(pinLock.locked());
+    ScreenStream screenStream(&wireless);
+    const auto updateScreenStreamLock = [&] { screenStream.setBlocked(pinLock.locked() || standby.sleeping()); };
+    QObject::connect(&pinLock, &PinLock::lockedChanged, &screenStream, updateScreenStreamLock);
+    QObject::connect(&standby, &PaperProStandby::sleepingChanged, &screenStream, updateScreenStreamLock);
+    updateScreenStreamLock();
 
     const QString preferredFont = QStringLiteral("Source Sans 3");
     const QString fontFamily = tablet && QFontDatabase::hasFamily(preferredFont)
         ? preferredFont : app.font().family();
 
     QQmlApplicationEngine engine;
+    engine.addImageProvider(QStringLiteral("screen-stream"), screenStream.createImageProvider());
     QVariantMap initialProperties{
         {QStringLiteral("notebook"), QVariant::fromValue(&notebook)},
         {QStringLiteral("cloudAccountsModel"), QVariant::fromValue(&cloudAccounts)},
         {QStringLiteral("appleShare"), QVariant::fromValue(&appleShare)},
+        {QStringLiteral("smtpMail"), QVariant::fromValue(&smtpMail)},
         {QStringLiteral("pinLock"), QVariant::fromValue(&pinLock)},
         {QStringLiteral("standby"), QVariant::fromValue(&standby)},
         {QStringLiteral("deviceInfo"), QVariant::fromValue(&deviceInfo)},
@@ -157,6 +182,7 @@ int main(int argc, char *argv[])
         {QStringLiteral("bluetooth"), QVariant::fromValue(&bluetooth)},
         {QStringLiteral("usbSsh"), QVariant::fromValue(&usbSsh)},
         {QStringLiteral("wireless"), QVariant::fromValue(&wireless)},
+        {QStringLiteral("screenStream"), QVariant::fromValue(&screenStream)},
         {QStringLiteral("documentExchange"), QVariant::fromValue(&documentExchange)},
         {QStringLiteral("markdownWeb"), QVariant::fromValue(&markdownWeb)},
         {QStringLiteral("obsidian"), QVariant::fromValue(&obsidian)},
@@ -175,6 +201,8 @@ int main(int argc, char *argv[])
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app,
                      [] { QCoreApplication::exit(1); }, Qt::QueuedConnection);
     engine.loadFromModule(QStringLiteral("Quaderno"), QStringLiteral("Main"));
+    if (!engine.rootObjects().isEmpty())
+        screenStream.attach(qobject_cast<QQuickWindow *>(engine.rootObjects().constFirst()));
     if (app.arguments().contains(QStringLiteral("--check-startup"))) {
         if (engine.rootObjects().isEmpty())
             return 1;

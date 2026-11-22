@@ -1,4 +1,5 @@
 #include "wirelesssync.h"
+#include "notebook.h"
 
 #ifdef Q_OS_LINUX
 #include "paperprobluetooth.h"
@@ -6,11 +7,20 @@
 
 #include <QCryptographicHash>
 #include <QDebug>
+#include <QDesktopServices>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonValue>
+#include <QRegularExpression>
 #include <QSaveFile>
 #include <QSettings>
+#include <QStandardPaths>
+#include <QTemporaryDir>
+#include <QTemporaryFile>
+#include <QUuid>
 #include <openssl/rand.h>
 
 namespace {
@@ -19,7 +29,63 @@ constexpr qsizetype wifiLimit = 64 * 1024 * 1024;
 constexpr qsizetype secretBytes = 16;
 constexpr int rendezvousDiscoveryMs = 4000;
 constexpr int rendezvousConnectionMs = 6000;
+constexpr qsizetype pdfChunkSize = 64 * 1024;
+constexpr int pdfConnectionTimeout = 90'000;
+constexpr int pdfChunkTimeout = 35'000;
+constexpr qsizetype screenStreamMetadataLimit = 4 * 1024;
 constexpr auto privatePermissions = QFileDevice::ReadOwner | QFileDevice::WriteOwner;
+const auto pdfOfferType = QStringLiteral("pdfShareOffer");
+const auto pdfChunkType = QStringLiteral("pdfShareChunk");
+const auto pdfAckType = QStringLiteral("pdfShareAck");
+const auto pdfSavedType = QStringLiteral("pdfShareSaved");
+const auto pdfAbortType = QStringLiteral("pdfShareAbort");
+const auto screenStreamCapabilityKey = QStringLiteral("screenStreamCapability");
+const auto screenStreamCapability = QStringLiteral("screen-stream-v1");
+
+bool isSyncGreeting(const QVariantMap &metadata)
+{
+    const QString type = metadata.value(QStringLiteral("type")).toString();
+    return type == QStringLiteral("syncHello") || type == QStringLiteral("syncHelloReply");
+}
+
+bool isScreenStreamEnvelope(const QVariantMap &metadata)
+{
+    return metadata.value(QStringLiteral("type")).toString().startsWith(QStringLiteral("screen-"));
+}
+
+bool fitsScreenStreamLimits(const QVariantMap &metadata, const QByteArray &payload)
+{
+    return payload.size() <= WirelessSync::screenStreamPayloadLimit
+        && QJsonDocument(QJsonObject::fromVariantMap(metadata)).toJson(QJsonDocument::Compact).size()
+            <= screenStreamMetadataLimit;
+}
+
+bool validHex(const QByteArray &text, qsizetype size)
+{
+    return text.size() == size && QByteArray::fromHex(text).toHex() == text;
+}
+
+int pdfField(const QVariantMap &metadata, const QString &name)
+{
+    return QJsonValue::fromVariant(metadata.value(name)).toInt(-1);
+}
+
+QString pdfFileName(const QString &suggested)
+{
+    // Discard path information and limit the destination's UTF-8 byte length.
+    if (suggested.size() > 300 || suggested.contains(u'/') || suggested.contains(u'\\')
+        || !suggested.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive))
+        return {};
+    QString stem = suggested.chopped(4);
+    static const QRegularExpression unsafe(QStringLiteral("[^\\p{L}\\p{M}\\p{N} ._()\\-]+"));
+    stem.replace(unsafe, QStringLiteral("_"));
+    stem = stem.left(48).trimmed();
+    while (stem.startsWith(u'.'))
+        stem = stem.sliced(1).trimmed();
+    if (!stem.isEmpty() && stem.back().isHighSurrogate())
+        stem.chop(1);
+    return (stem.trimmed().isEmpty() ? QStringLiteral("Quaderno") : stem.trimmed()) + QStringLiteral(".pdf");
+}
 
 QByteArray parseCode(const QString &value)
 {
@@ -42,12 +108,42 @@ QSettings wirelessSettings()
 }
 }
 
+struct WirelessSync::PdfTransfer {
+    enum class Phase { Connecting, Offered, Sending, Receiving };
+    explicit PdfTransfer(Link transport) : link(transport) {}
+
+    const Link link;
+    Phase phase = Phase::Connecting;
+    QString id;
+    QString fileName;
+    qsizetype size = 0;
+    qsizetype offset = 0;
+    qsizetype acknowledged = 0;
+    QByteArray expectedHash;
+    QCryptographicHash receivedHash{QCryptographicHash::Sha256};
+    std::unique_ptr<QTemporaryDir> exportDirectory;
+    std::unique_ptr<QFile> source;
+    std::unique_ptr<QTemporaryFile> destination;
+};
+
 WirelessSync::WirelessSync(Notebook *notebook, const QString &pairingPath, bool tablet, bool canActivateBluetooth,
                            QObject *parent)
     : QObject(parent), m_pairingPath(pairingPath), m_tablet(tablet), m_canActivateBluetooth(canActivateBluetooth),
       m_transfer(notebook), m_pipe(tablet)
 {
     loadPairing();
+    m_pdfDeadline.setSingleShot(true);
+    connect(&m_pdfDeadline, &QTimer::timeout, this, [this] {
+        if (!m_pdf)
+            return;
+        if (m_pdf->phase == PdfTransfer::Phase::Connecting) {
+            finishPdf(tr("Il Mac non ha confermato il collegamento. Apri Sincronizzazione wireless su entrambi i dispositivi."));
+        } else {
+            sendPdfMessage(pdfAbortType, m_pdf->id);
+            finishPdf(tr("Trasferimento PDF senza conferma. Controlla il Mac prima di riprovare."));
+        }
+    });
+    connect(this, &WirelessSync::linkChanged, this, &WirelessSync::pdfChanged);
     m_reconnect.setSingleShot(true);
     connect(&m_reconnect, &QTimer::timeout, this, [this] {
         m_reconnectDelayMs = 0;
@@ -101,14 +197,22 @@ WirelessSync::WirelessSync(Notebook *notebook, const QString &pairingPath, bool 
     connect(&m_transfer, &BleSync::transportSelectionBusyChanged, this, &WirelessSync::updateRendezvous, Qt::QueuedConnection);
     connect(&m_transfer, &BleSync::sendMessage, this, [this](const QVariantMap &metadata, const QByteArray &payload) {
         auto &channel = m_rendezvous == Rendezvous::Wifi ? m_handoffWifi : m_channel;
-        channel.sendMessage(metadata, payload);
+        auto message = metadata;
+        if (isSyncGreeting(message)) {
+            message.insert(QStringLiteral("pdfShareVersion"), 1);
+            if (screenStreamChannel() == &channel)
+                message.insert(screenStreamCapabilityKey, screenStreamCapability);
+        }
+        channel.sendMessage(message, payload);
     });
     connect(&m_channel, &SyncChannel::messageReceived, this, &WirelessSync::receivePrimaryMessage);
     connect(&m_channel, &SyncChannel::establishedChanged, this, [this] {
         if (m_channel.established())
             acceptPeer();
-        else if (m_rendezvous != Rendezvous::Wifi)
+        else if (m_rendezvous != Rendezvous::Wifi) {
+            resetScreenStreamTransport();
             m_transfer.setConnected(false);
+        }
     });
     connect(&m_channel, &SyncChannel::encryptedReady, this, [this](const QByteArray &bytes) {
         if (m_channelLink == Link::Bluetooth)
@@ -145,6 +249,8 @@ WirelessSync::WirelessSync(Notebook *notebook, const QString &pairingPath, bool 
     connect(&m_handoffWifi, &SyncChannel::encryptedReady, &m_wifi, &WifiSyncLink::send);
     connect(&m_handoffWifi, &SyncChannel::messageReceived, this, &WirelessSync::receiveHandoffMessage);
     connect(&m_handoffWifi, &SyncChannel::establishedChanged, this, [this] {
+        if (m_rendezvous == Rendezvous::Wifi && !m_handoffWifi.established())
+            resetScreenStreamTransport();
         if (!m_tablet && m_rendezvous == Rendezvous::Connecting && m_handoffWifi.established())
             sendRendezvous(SyncRendezvous::Kind::Ready);
     });
@@ -221,6 +327,419 @@ bool WirelessSync::available() const
 #else
     return false;
 #endif
+}
+
+QString WirelessSync::pdfTransport() const
+{
+    if (m_locked || !paired())
+        return {};
+    const bool handoff = m_rendezvous == Rendezvous::Wifi;
+    if (!(handoff ? m_handoffWifi : m_channel).established())
+        return {};
+    if (m_link == Link::Wifi)
+        return QStringLiteral("wifi");
+    if (m_link == Link::Bluetooth)
+        return QStringLiteral("bluetooth");
+    return {};
+}
+
+QString WirelessSync::pdfTransferSupported() const
+{
+    if (pdfTransport().isEmpty() || m_pdfSupport == PdfSupport::Unknown)
+        return QStringLiteral("unknown");
+    return m_pdfSupport == PdfSupport::Supported ? QStringLiteral("supported") : QStringLiteral("unsupported");
+}
+
+qsizetype WirelessSync::pdfMaximumSize(Link link)
+{
+    return link == Link::Wifi ? wifiLimit : bluetoothLimit;
+}
+
+bool WirelessSync::pdfSending() const
+{
+    return m_pdf && m_pdf->phase != PdfTransfer::Phase::Receiving;
+}
+
+qreal WirelessSync::pdfProgress() const
+{
+    if (!m_pdf)
+        return m_pdfCompleted ? 1. : 0.;
+    return qreal(m_pdf->acknowledged) / m_pdf->size;
+}
+
+void WirelessSync::setPdfStatus(const QString &status)
+{
+    m_pdfStatus = status;
+    emit pdfChanged();
+}
+
+bool WirelessSync::sendPdf(Notebook *notebook, const QVariantMap &option, const QString &transport)
+{
+    if (m_pdf)
+        return false;
+    m_pdfCompleted = false;
+    const auto unavailable = [this](const QString &status) {
+        setPdfStatus(status);
+        return false;
+    };
+    const auto link = transport == QStringLiteral("wifi") ? Link::Wifi
+        : transport == QStringLiteral("bluetooth") ? Link::Bluetooth : Link::None;
+    if (!m_tablet || !notebook || link == Link::None || m_locked)
+        return unavailable(tr("Invio wireless PDF non disponibile."));
+    if (!paired())
+        return unavailable(tr("Abbina prima Quaderno al Mac in Sincronizzazione wireless."));
+    if (m_transfer.transportSelectionBusy())
+        return unavailable(tr("È in corso una sincronizzazione. Riprova al termine."));
+    if (m_link != Link::None && m_link != Link::Waiting && m_link != link)
+        return unavailable(link == Link::Wifi
+            ? tr("Collega il Mac via Wi-Fi in Sincronizzazione wireless e riprova.")
+            : tr("Collega il Mac via Bluetooth in Sincronizzazione wireless e riprova."));
+    if (m_pdfSupport == PdfSupport::Unsupported && !pdfTransport().isEmpty())
+        return unavailable(tr("Aggiorna Quaderno sul Mac per ricevere PDF via Wi-Fi o Bluetooth."));
+
+    const auto format = option.value(QStringLiteral("format")).toString();
+    const auto name = pdfFileName(option.value(QStringLiteral("name")).toString());
+    if ((format != QStringLiteral("pdf") && format != QStringLiteral("pdf-page")) || name.isEmpty())
+        return unavailable(tr("Seleziona una pagina PDF o un quaderno in formato PDF."));
+
+    auto job = std::make_unique<PdfTransfer>(link);
+    job->fileName = name;
+    job->id = QUuid::createUuid().toString(QUuid::Id128);
+    job->exportDirectory = std::make_unique<QTemporaryDir>();
+    if (!job->exportDirectory->isValid())
+        return unavailable(tr("Impossibile preparare il PDF per il trasferimento."));
+    const auto path = job->exportDirectory->filePath(name);
+    if (!notebook->exportShareFile(option, QUrl::fromLocalFile(path)))
+        return unavailable(notebook->error());
+    job->source = std::make_unique<QFile>(path);
+    if (!job->source->open(QIODevice::ReadOnly) || job->source->peek(5) != QByteArrayLiteral("%PDF-"))
+        return unavailable(tr("Impossibile leggere il PDF esportato."));
+    job->size = job->source->size();
+    if (job->size > pdfMaximumSize(link))
+        return unavailable(tr("PDF troppo grande per questo collegamento. Il limite è %1 MiB.")
+            .arg(pdfMaximumSize(link) / (1024 * 1024)));
+    QCryptographicHash digest(QCryptographicHash::Sha256);
+    if (!digest.addData(job->source.get()) || !job->source->seek(0))
+        return unavailable(tr("Impossibile verificare il PDF esportato."));
+    job->expectedHash = digest.result();
+
+    if (m_link == Link::Waiting)
+        resetLink();
+    if (link == Link::Bluetooth && !pdfTransport().isEmpty())
+        fallbackRendezvous(true);
+    m_pdf = std::move(job);
+    m_pdfDeadline.start(pdfConnectionTimeout);
+    setPdfStatus(link == Link::Wifi ? tr("In attesa del Mac via Wi-Fi…") : tr("In attesa del Mac via Bluetooth…"));
+    if (m_link == Link::None) {
+        if (link == Link::Wifi)
+            startWifi({}, {});
+        else
+            startBluetooth({});
+        if (!m_pdf)
+            return false;
+        if (m_link == Link::None) {
+            finishPdf(tr("Impossibile avviare il collegamento. Apri Sincronizzazione wireless e riprova."));
+            return false;
+        }
+    }
+    beginPdfOffer();
+    return true;
+}
+
+void WirelessSync::cancelPdf()
+{
+    if (!pdfSending())
+        return;
+    if (m_pdf->phase != PdfTransfer::Phase::Connecting)
+        sendPdfMessage(pdfAbortType, m_pdf->id);
+    finishPdf(tr("Invio PDF annullato."));
+}
+
+void WirelessSync::dismissReceivedPdf()
+{
+    if (m_receivedPdf.isEmpty())
+        return;
+    m_receivedPdf.clear();
+    emit pdfChanged();
+}
+
+bool WirelessSync::openReceivedPdf()
+{
+    if (m_locked || !m_receivedPdf.isLocalFile())
+        return false;
+    const QFileInfo file(m_receivedPdf.toLocalFile());
+    return file.isFile() && !file.isSymLink() && QDesktopServices::openUrl(m_receivedPdf);
+}
+
+const SyncChannel *WirelessSync::screenStreamChannel() const
+{
+    if (m_locked || m_resettingLink || !paired() || m_link != Link::Wifi)
+        return nullptr;
+    if (m_rendezvous == Rendezvous::Wifi && m_handoffWifi.established())
+        return &m_handoffWifi;
+    if (m_rendezvous == Rendezvous::Inactive && m_channelLink == Link::Wifi && m_channel.established())
+        return &m_channel;
+    return nullptr;
+}
+
+bool WirelessSync::screenStreamAvailable() const
+{
+    return m_screenStreamPeerSupports && screenStreamChannel();
+}
+
+bool WirelessSync::sendScreenStreamMessage(const QVariantMap &metadata, const QByteArray &payload)
+{
+    if (!screenStreamAvailable() || !isScreenStreamEnvelope(metadata) || !fitsScreenStreamLimits(metadata, payload))
+        return false;
+    auto &channel = m_rendezvous == Rendezvous::Wifi ? m_handoffWifi : m_channel;
+    channel.sendMessage(metadata, payload);
+    return screenStreamAvailable() && screenStreamChannel() == &channel;
+}
+
+void WirelessSync::handleScreenStreamCapability(const SyncChannel &channel, const QVariantMap &metadata,
+                                                const QByteArray &payload)
+{
+    if (!payload.isEmpty() || !isSyncGreeting(metadata) || screenStreamChannel() != &channel)
+        return;
+    const bool supported = metadata.value(screenStreamCapabilityKey).toString() == screenStreamCapability;
+    if (supported == m_screenStreamPeerSupports)
+        return;
+    m_screenStreamPeerSupports = supported;
+    emit screenStreamLinkChanged();
+}
+
+bool WirelessSync::receiveScreenStreamMessage(const SyncChannel &channel, const QVariantMap &metadata,
+                                              const QByteArray &payload)
+{
+    if (!isScreenStreamEnvelope(metadata))
+        return false;
+    // Screen envelopes can never reach the book engine or affect rendezvous.
+    if (screenStreamAvailable() && screenStreamChannel() == &channel && fitsScreenStreamLimits(metadata, payload))
+        emit screenStreamMessageReceived(metadata, payload);
+    return true;
+}
+
+void WirelessSync::resetScreenStreamTransport()
+{
+    if (!m_screenStreamPeerSupports)
+        return;
+    m_screenStreamPeerSupports = false;
+    emit screenStreamLinkChanged();
+}
+
+void WirelessSync::handlePeerCapabilities(const QVariantMap &metadata)
+{
+    if (!isSyncGreeting(metadata))
+        return;
+    const auto support = pdfField(metadata, QStringLiteral("pdfShareVersion")) == 1
+        ? PdfSupport::Supported : PdfSupport::Unsupported;
+    if (support == m_pdfSupport)
+        return;
+    m_pdfSupport = support;
+    emit pdfChanged();
+    beginPdfOffer();
+}
+
+void WirelessSync::beginPdfOffer()
+{
+    if (!m_pdf || m_pdf->phase != PdfTransfer::Phase::Connecting || pdfTransport().isEmpty()
+        || m_pdfSupport == PdfSupport::Unknown)
+        return;
+    if (m_pdfSupport == PdfSupport::Unsupported) {
+        finishPdf(tr("Aggiorna Quaderno sul Mac per ricevere PDF via Wi-Fi o Bluetooth."));
+        return;
+    }
+    if (m_pdf->link != m_link || !m_transfer.setTransportSelectionPaused(true)) {
+        finishPdf(tr("Collegamento occupato o cambiato. Riprova il trasferimento PDF."));
+        return;
+    }
+    m_pdf->phase = PdfTransfer::Phase::Offered;
+    m_pdfDeadline.start(pdfChunkTimeout);
+    m_pdfStatus = tr("Invio PDF al Mac…");
+    sendPdfMessage(pdfOfferType, m_pdf->id,
+        {{QStringLiteral("name"), m_pdf->fileName}, {QStringLiteral("size"), int(m_pdf->size)},
+         {QStringLiteral("sha256"), QString::fromLatin1(m_pdf->expectedHash.toHex())}});
+    emit pdfChanged();
+}
+
+void WirelessSync::sendPdfMessage(const QString &type, const QString &request, QVariantMap metadata, const QByteArray &payload)
+{
+    metadata.insert(QStringLiteral("type"), type);
+    metadata.insert(QStringLiteral("request"), request);
+    auto &channel = m_rendezvous == Rendezvous::Wifi ? m_handoffWifi : m_channel;
+    channel.sendMessage(metadata, payload);
+}
+
+void WirelessSync::sendPdfChunk()
+{
+    if (!m_pdf)
+        return;
+    const auto offset = m_pdf->offset;
+    const auto maximum = m_pdf->link == Link::Bluetooth ? pdfChunkSize / 4 : pdfChunkSize;
+    const auto length = qMin(maximum, m_pdf->size - offset);
+    const auto bytes = m_pdf->source->read(length);
+    if (bytes.size() != length) {
+        sendPdfMessage(pdfAbortType, m_pdf->id);
+        finishPdf(tr("Impossibile leggere il PDF durante l’invio."));
+        return;
+    }
+    m_pdf->phase = PdfTransfer::Phase::Sending;
+    m_pdf->offset += bytes.size();
+    m_pdfDeadline.start(pdfChunkTimeout);
+    sendPdfMessage(pdfChunkType, m_pdf->id, {{QStringLiteral("offset"), int(offset)}}, bytes);
+}
+
+bool WirelessSync::startPdfReceive(const QVariantMap &metadata, const QString &request)
+{
+    if (m_tablet || m_pdf || m_locked || pdfTransport().isEmpty() || m_transfer.transportSelectionBusy())
+        return false;
+    const auto name = pdfFileName(metadata.value(QStringLiteral("name")).toString());
+    const auto size = pdfField(metadata, QStringLiteral("size"));
+    const auto hash = metadata.value(QStringLiteral("sha256")).toByteArray();
+    if (name.isEmpty() || size < 5 || size > pdfMaximumSize(m_link) || !validHex(hash, 64))
+        return false;
+
+    const QString downloads = m_pdfDownloadDirectory.isEmpty()
+        ? QStandardPaths::writableLocation(QStandardPaths::DownloadLocation) : m_pdfDownloadDirectory;
+    if (downloads.isEmpty())
+        return false;
+    const auto directory = QDir(downloads).filePath(QStringLiteral("Quaderno"));
+    if (QFileInfo(directory).isSymLink() || !QDir().mkpath(directory) || !QFileInfo(directory).isDir())
+        return false;
+    auto job = std::make_unique<PdfTransfer>(m_link);
+    job->destination = std::make_unique<QTemporaryFile>(QDir(directory).filePath(QStringLiteral(".pdf-share-XXXXXX")));
+    if (!job->destination->open() || !job->destination->setPermissions(privatePermissions)
+        || !m_transfer.setTransportSelectionPaused(true))
+        return false;
+    job->phase = PdfTransfer::Phase::Receiving;
+    job->id = request;
+    job->fileName = name;
+    job->size = size;
+    job->expectedHash = QByteArray::fromHex(hash);
+    m_pdf = std::move(job);
+    m_pdfCompleted = false;
+    m_pdfDeadline.start(pdfChunkTimeout);
+    setPdfStatus(tr("Ricezione PDF dal Paper Pro…"));
+    return true;
+}
+
+bool WirelessSync::writePdfChunk(const QVariantMap &metadata, const QByteArray &payload)
+{
+    if (pdfField(metadata, QStringLiteral("offset")) != m_pdf->offset
+        || payload.isEmpty() || payload.size() > pdfChunkSize || payload.size() > m_pdf->size - m_pdf->offset
+        || (m_pdf->offset == 0 && !payload.startsWith("%PDF-"))
+        || m_pdf->destination->write(payload) != payload.size())
+        return false;
+    m_pdf->receivedHash.addData(payload);
+    m_pdf->offset += payload.size();
+    m_pdf->acknowledged = m_pdf->offset;
+    return true;
+}
+
+QUrl WirelessSync::storeReceivedPdf()
+{
+    auto &file = *m_pdf->destination;
+    if (m_pdf->receivedHash.result() != m_pdf->expectedHash || !file.flush())
+        return {};
+    const QDir directory = QFileInfo(file.fileName()).dir();
+    file.close();
+    // A duplicate delivery keeps the original. Rename only the verified file
+    // from the temporary path in the same destination directory.
+    for (int copy = 1; copy <= 100; ++copy) {
+        const auto name = copy == 1 ? m_pdf->fileName
+            : QStringLiteral("%1 (%2).pdf").arg(m_pdf->fileName.chopped(4)).arg(copy);
+        const auto candidate = directory.filePath(name);
+        const QFileInfo info(candidate);
+        if (info.exists() || info.isSymLink())
+            continue;
+        if (!file.rename(candidate))
+            return {};
+        file.setAutoRemove(false);
+        return QUrl::fromLocalFile(candidate);
+    }
+    return {};
+}
+
+bool WirelessSync::receivePdfMessage(const QVariantMap &metadata, const QByteArray &payload)
+{
+    const auto type = metadata.value(QStringLiteral("type")).toString();
+    if (type != pdfOfferType && type != pdfChunkType && type != pdfAckType && type != pdfSavedType && type != pdfAbortType)
+        return false;
+    const auto request = metadata.value(QStringLiteral("request")).toString();
+    if (!validHex(request.toLatin1(), 32) || pdfTransport().isEmpty())
+        return true;
+    if (type == pdfOfferType) {
+        if (!payload.isEmpty() || !startPdfReceive(metadata, request)) {
+            sendPdfMessage(pdfAbortType, request);
+            if (!m_tablet && !m_pdf)
+                setPdfStatus(tr("Il PDF in arrivo non può essere salvato. Controlla la cartella Download."));
+        } else {
+            sendPdfMessage(pdfAckType, request, {{QStringLiteral("offset"), 0}});
+        }
+        return true;
+    }
+    if (!m_pdf || m_pdf->id != request || m_pdf->link != m_link)
+        return true;
+    if (type == pdfAbortType && payload.isEmpty()) {
+        finishPdf(m_tablet ? tr("Il Mac non ha accettato o salvato il PDF. Controlla Quaderno sul Mac.")
+                           : tr("Trasferimento PDF interrotto dal Paper Pro."));
+    } else if (m_pdf->phase == PdfTransfer::Phase::Receiving && type == pdfChunkType) {
+        if (!writePdfChunk(metadata, payload)) {
+            sendPdfMessage(pdfAbortType, request);
+            finishPdf(tr("Il PDF ricevuto è incompleto o non può essere salvato."));
+        } else if (m_pdf->offset == m_pdf->size) {
+            const auto file = storeReceivedPdf();
+            if (file.isEmpty()) {
+                sendPdfMessage(pdfAbortType, request);
+                finishPdf(tr("Impossibile verificare o salvare il PDF nella cartella Download."));
+            } else {
+                m_receivedPdf = file;
+                sendPdfMessage(pdfSavedType, request);
+                finishPdf(tr("PDF ricevuto nella cartella Download / Quaderno."), true);
+            }
+        } else {
+            m_pdfDeadline.start(pdfChunkTimeout);
+            const int offset = int(m_pdf->offset);
+            sendPdfMessage(pdfAckType, request, {{QStringLiteral("offset"), offset}});
+            emit pdfChanged();
+        }
+    } else if (m_pdf->phase == PdfTransfer::Phase::Offered || m_pdf->phase == PdfTransfer::Phase::Sending) {
+        if (type == pdfAckType && payload.isEmpty() && pdfField(metadata, QStringLiteral("offset")) == m_pdf->offset
+            && m_pdf->offset < m_pdf->size) {
+            m_pdf->acknowledged = m_pdf->offset;
+            emit pdfChanged();
+            sendPdfChunk();
+        } else if (type == pdfSavedType && payload.isEmpty() && m_pdf->offset == m_pdf->size) {
+            finishPdf(tr("PDF salvato sul Mac in Download / Quaderno."), true);
+        }
+    }
+    return true;
+}
+
+void WirelessSync::finishPdf(const QString &status, bool completed)
+{
+    m_pdfDeadline.stop();
+    const bool selected = m_pdf && m_pdf->phase != PdfTransfer::Phase::Connecting;
+    m_pdf.reset();
+    m_pdfCompleted = completed;
+    if (selected && !m_resettingLink)
+        m_transfer.setTransportSelectionPaused(false);
+    setPdfStatus(status);
+}
+
+void WirelessSync::resetPdfTransport()
+{
+    m_pdfSupport = PdfSupport::Unknown;
+    if (m_pdf) {
+        finishPdf(m_locked ? QString{} : tr("Collegamento interrotto prima della conferma del trasferimento PDF."));
+    } else {
+        emit pdfChanged();
+    }
+}
+
+bool WirelessSync::transportSelectionBusy() const
+{
+    return m_pdf || m_transfer.transportSelectionBusy();
 }
 
 QString WirelessSync::code() const
@@ -493,6 +1012,7 @@ void WirelessSync::acceptPeer()
     m_transfer.setConnected(true);
     report(m_link == Link::Bluetooth ? tr("Collegamento Bluetooth protetto attivo.")
                                      : tr("Collegamento Wi-Fi locale protetto attivo."));
+    emit pdfChanged();
 }
 
 bool WirelessSync::canRendezvous() const
@@ -508,7 +1028,7 @@ bool WirelessSync::canOfferWifi() const
 
 void WirelessSync::beginRendezvous()
 {
-    if (!canRendezvous() || !m_transfer.setTransportSelectionPaused(true))
+    if (!canRendezvous() || transportSelectionBusy() || !m_transfer.setTransportSelectionPaused(true))
         return;
     m_rendezvous = Rendezvous::Discovering;
     m_rendezvousDeadline.start(rendezvousDiscoveryMs);
@@ -522,7 +1042,7 @@ void WirelessSync::sendRendezvous(SyncRendezvous::Kind kind, const QString &addr
 {
     using Kind = SyncRendezvous::Kind;
     if (kind == Kind::Hello || kind == Kind::Work) {
-        m_localWork = m_transfer.hasSyncWork() || m_transfer.transportSelectionBusy();
+        m_localWork = m_transfer.hasSyncWork() || transportSelectionBusy();
         m_localWifi = canOfferWifi();
     }
     auto &channel = kind == Kind::Ready || kind == Kind::Commit ? m_handoffWifi : m_channel;
@@ -534,7 +1054,7 @@ void WirelessSync::updateRendezvous()
 {
     using Kind = SyncRendezvous::Kind;
     if (m_rendezvous == Rendezvous::Bluetooth) {
-        const bool work = m_transfer.hasSyncWork() || m_transfer.transportSelectionBusy();
+        const bool work = m_transfer.hasSyncWork() || transportSelectionBusy();
         if (m_localWork != work || m_localWifi != canOfferWifi())
             sendRendezvous(Kind::Work);
         // Let the entire current batch settle before another Wi-Fi attempt.
@@ -544,7 +1064,7 @@ void WirelessSync::updateRendezvous()
     }
     if (m_rendezvous != Rendezvous::Idle)
         return;
-    if (!canOfferWifi() || !m_peerWifi || m_transfer.transportSelectionBusy()) {
+    if (!canOfferWifi() || !m_peerWifi || transportSelectionBusy()) {
         fallbackRendezvous(true);
         return;
     }
@@ -563,17 +1083,22 @@ void WirelessSync::updateRendezvous()
 void WirelessSync::receivePrimaryMessage(const QVariantMap &metadata, const QByteArray &payload)
 {
     using Kind = SyncRendezvous::Kind;
+    if (receiveScreenStreamMessage(m_channel, metadata, payload))
+        return;
     if (!SyncRendezvous::isControlMessage(metadata)) {
         if (m_rendezvous == Rendezvous::Wifi)
             return;
-        const auto type = metadata.value(QStringLiteral("type")).toString();
         // Legacy peers can start a transfer while the capability probe is
         // pending. Finish on Bluetooth before delivering the first payload.
         if (m_rendezvous != Rendezvous::Inactive && m_rendezvous != Rendezvous::Bluetooth
-            && type != QStringLiteral("syncHello")
-            && type != QStringLiteral("syncHelloReply"))
+            && !isSyncGreeting(metadata))
             fallbackRendezvous(true);
-        m_transfer.receiveMessage(metadata, payload);
+        if (payload.isEmpty())
+            handlePeerCapabilities(metadata);
+        if (!receivePdfMessage(metadata, payload))
+            m_transfer.receiveMessage(metadata, payload);
+        // Send the ordinary greeting reply before observers queue screen data.
+        handleScreenStreamCapability(m_channel, metadata, payload);
         return;
     }
     if (m_rendezvous == Rendezvous::Inactive)
@@ -586,7 +1111,7 @@ void WirelessSync::receivePrimaryMessage(const QVariantMap &metadata, const QByt
     const bool rearming = m_rendezvous == Rendezvous::Bluetooth && m_tablet
         && message->session != m_rendezvousSession;
     if (message->kind == Kind::Hello && (discovering || rearming)) {
-        if (rearming && (!canOfferWifi() || !m_transfer.setTransportSelectionPaused(true))) {
+        if (rearming && (!canOfferWifi() || transportSelectionBusy() || !m_transfer.setTransportSelectionPaused(true))) {
             m_channel.sendMessage(SyncRendezvous::encode({Kind::Abort, message->session, false, false, {}}), {});
             m_rendezvous = Rendezvous::Inactive;
             return;
@@ -609,7 +1134,7 @@ void WirelessSync::receivePrimaryMessage(const QVariantMap &metadata, const QByt
             updateRendezvous();
         } else if (message->kind == Kind::Offer && !m_tablet && m_rendezvous == Rendezvous::Idle) {
             if (!canOfferWifi() || !m_peerWifi || (!m_transfer.hasSyncWork() && !m_peerWork)
-                || m_transfer.transportSelectionBusy()) {
+                || transportSelectionBusy()) {
                 fallbackRendezvous(true);
                 return;
             }
@@ -625,15 +1150,22 @@ void WirelessSync::receivePrimaryMessage(const QVariantMap &metadata, const QByt
 void WirelessSync::receiveHandoffMessage(const QVariantMap &metadata, const QByteArray &payload)
 {
     using Kind = SyncRendezvous::Kind;
+    if (receiveScreenStreamMessage(m_handoffWifi, metadata, payload))
+        return;
     if (m_rendezvous == Rendezvous::Wifi) {
-        if (!SyncRendezvous::isControlMessage(metadata))
-            m_transfer.receiveMessage(metadata, payload);
+        if (!SyncRendezvous::isControlMessage(metadata)) {
+            if (payload.isEmpty())
+                handlePeerCapabilities(metadata);
+            if (!receivePdfMessage(metadata, payload))
+                m_transfer.receiveMessage(metadata, payload);
+            handleScreenStreamCapability(m_handoffWifi, metadata, payload);
+        }
         return;
     }
     const auto message = SyncRendezvous::decode(metadata, payload);
     if (m_rendezvous != Rendezvous::Connecting || !message || message->session != m_rendezvousSession
         || message->kind != (m_tablet ? Kind::Ready : Kind::Commit)
-        || !canOfferWifi() || m_transfer.transportSelectionBusy()) {
+        || !canOfferWifi() || transportSelectionBusy()) {
         fallbackRendezvous(true);
         return;
     }
@@ -646,6 +1178,8 @@ void WirelessSync::receiveHandoffMessage(const QVariantMap &metadata, const QByt
 void WirelessSync::useHandoffWifi()
 {
     m_rendezvousDeadline.stop();
+    resetPdfTransport();
+    resetScreenStreamTransport();
     m_rendezvous = Rendezvous::Wifi;
     m_transfer.setConnected(false);
     m_link = Link::Wifi;
@@ -687,6 +1221,8 @@ void WirelessSync::fallbackRendezvous(bool notifyPeer)
         // is still handled by the engine as an uncertain result.
         m_transfer.setConnected(false);
         m_link = Link::Bluetooth;
+        resetPdfTransport();
+        resetScreenStreamTransport();
         m_transfer.setPayloadLimit(bluetoothLimit);
         updateAutomaticTransferGate();
         emit linkChanged();
@@ -730,6 +1266,8 @@ void WirelessSync::resetLink()
     m_peerWifi = false;
     m_transfer.setTransportSelectionPaused(false);
     m_link = Link::None;
+    resetPdfTransport();
+    resetScreenStreamTransport();
     m_automaticConnection = false;
     m_channelLink = Link::None;
     m_wifiCandidate = false;
@@ -847,6 +1385,7 @@ void WirelessSync::setLocked(bool locked)
     if (locked) {
         stopReconnectTimers();
         resetLink();
+        dismissReceivedPdf();
         m_transfer.cancelDeferredTransfer();
         m_bluetoothStatus.clear();
         report({});

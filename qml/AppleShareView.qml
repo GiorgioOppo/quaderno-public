@@ -11,6 +11,8 @@ Dialog {
     required property Notebook notebook
     required property AppleShare appleShare
     required property MacDocumentExchange documentExchange
+    required property WirelessSync wireless
+    property var smtpMail: null
     required property real uiScale
     required property bool tabletMode
     property bool locked: false
@@ -21,13 +23,18 @@ Dialog {
     property var formats: []
     property var pendingOption: null
     property string saveStatus: ""
+    property string requestedTransport: ""
+    property bool showLinkControls: false
     property int deliveryFilter: 0
     property string preferredDestination: "notes"
     readonly property var selection: formats[formatPicker.currentIndex] || null
     readonly property bool selectedPdf: selection !== null && (selection.format === "pdf" || selection.format === "pdf-page")
     readonly property bool validContext: !locked && sourceBook.length > 0 && sourcePage.length > 0
         && notebook.bookId === sourceBook && notebook.pageId === sourcePage
-    signal transferRequested()
+    readonly property bool tabletPdf: tabletMode && selectedPdf
+    readonly property bool busy: appleShare.busy || wireless.pdfSending || Boolean(smtpMail?.busy)
+    signal transferRequested(string transport)
+    signal mailRequested(var option)
     readonly property var visibleDeliveries: appleShare.deliveries.filter(entry => {
         const finished = entry.state === "completed" || entry.state === "cancelled"
         return deliveryFilter === 1 ? !finished : deliveryFilter === 2 ? finished : true
@@ -70,7 +77,8 @@ Dialog {
     }
 
     function saveFile(option: var) {
-        if (!validContext || appleShare.busy || !option) return
+        if (!validContext || busy || !option) return
+        if (tabletMode && (option.format === "pdf" || option.format === "pdf-page")) return
         pendingOption = option
         saveStatus = ""
         savePicker.selectedFile = notebook.suggestedShareFile(option)
@@ -94,10 +102,28 @@ Dialog {
         appleShare.printPdf(notebook, selection)
     }
 
+    function openConnection(transport: string) {
+        close()
+        transferRequested(transport)
+    }
+
+    function sendPdf(transport: string) {
+        if (!validContext || !tabletPdf || busy) return
+        if (!wireless.paired) {
+            openConnection(transport)
+            return
+        }
+        requestedTransport = transport
+        saveStatus = ""
+        showLinkControls = !wireless.sendPdf(notebook, selection, transport)
+    }
+
     onAboutToShow: {
         sourceBook = notebook.bookId
         sourcePage = notebook.pageId
         saveStatus = ""
+        requestedTransport = ""
+        showLinkControls = false
         formats = notebook.shareOptions().map(option => Object.assign({}, option, {label: formatLabel(option)}))
         formatPicker.currentIndex = formats.length ? 0 : -1
     }
@@ -107,6 +133,7 @@ Dialog {
     }
     onLockedChanged: if (locked) {
         appleShare.cancelPendingFileShare()
+        if (wireless.pdfSending) wireless.cancelPdf()
         close()
     }
     onShowAppleChanged: if (shareScroll.contentItem) shareScroll.contentItem.contentY = 0
@@ -303,7 +330,7 @@ Dialog {
                     model: share.formats
                     textRole: "label"
                     font.pixelSize: 15 * share.uiScale
-                    enabled: !share.appleShare.busy
+                    enabled: !share.busy
                     Accessible.name: qsTr("Formato della copia")
                 }
                 Detail {
@@ -321,7 +348,8 @@ Dialog {
                         text: qsTr("Salva file…")
                         filled: true
                         iconName: "download"
-                        enabled: share.selection !== null && !share.appleShare.busy
+                        visible: !share.tabletPdf
+                        enabled: share.selection !== null && !share.busy
                         onClicked: share.saveFile(share.selection)
                     }
                     PaperButton {
@@ -343,23 +371,81 @@ Dialog {
                         onClicked: share.printFile()
                     }
                     PaperButton {
-                        objectName: "printOnMac"
+                        objectName: "sendNotebookToMac"
                         uiScale: share.uiScale
-                        text: share.selectedPdf ? qsTr("Stampa dal Mac") : qsTr("Trasferisci quaderno")
-                        iconName: share.selectedPdf ? "printer" : "sync"
-                        visible: share.tabletMode && share.canTransfer
-                            && (share.selectedPdf || share.selection?.format === "quaderno")
-                        onClicked: {
-                            share.close()
-                            share.transferRequested()
-                        }
+                        text: qsTr("Trasferisci quaderno")
+                        iconName: "sync"
+                        visible: share.tabletMode && share.canTransfer && share.selection?.format === "quaderno"
+                        onClicked: share.openConnection("")
                     }
                 }
-                Detail {
-                    visible: share.tabletMode && share.selectedPdf
-                    text: share.canTransfer
-                          ? qsTr("Per stampare, sincronizza il quaderno e apri Condividi → Stampa sul Mac.")
-                          : qsTr("Salva il PDF e aprilo su un computer per stamparlo.")
+                ColumnLayout {
+                    visible: share.tabletPdf
+                    Layout.fillWidth: true
+                    spacing: 6 * share.uiScale
+                    Flow {
+                        Layout.fillWidth: true
+                        spacing: 6 * share.uiScale
+                        PaperButton {
+                            objectName: "pdfShareWifi"
+                            uiScale: share.uiScale
+                            text: qsTr("Invia via Wi-Fi")
+                            filled: true
+                            iconName: "wifi"
+                            visible: share.canTransfer
+                            enabled: !share.busy
+                            onClicked: share.sendPdf("wifi")
+                        }
+                        PaperButton {
+                            objectName: "pdfShareBluetooth"
+                            uiScale: share.uiScale
+                            text: qsTr("Invia via Bluetooth")
+                            iconName: "bluetooth"
+                            visible: share.canTransfer
+                            enabled: !share.busy
+                            onClicked: share.sendPdf("bluetooth")
+                        }
+                        PaperButton {
+                            objectName: "pdfShareEmail"
+                            uiScale: share.uiScale
+                            text: qsTr("Invia via email")
+                            iconName: "share"
+                            visible: share.smtpMail !== null
+                            enabled: !share.busy
+                            onClicked: share.mailRequested(share.selection)
+                        }
+                    }
+                    Detail {
+                        visible: share.canTransfer && !share.wireless.paired
+                        text: qsTr("Abbina Quaderno sul Mac per ricevere i PDF via Wi-Fi o Bluetooth.")
+                    }
+                    Detail {
+                        visible: share.canTransfer && share.wireless.pdfTransferSupported === "unsupported"
+                        text: qsTr("Aggiorna Quaderno sul Mac alla 0.2.24 o successiva per ricevere il PDF.")
+                    }
+                    Detail {
+                        visible: text.length > 0
+                        text: share.requestedTransport.length > 0 || share.wireless.pdfSending ? share.wireless.pdfStatus : ""
+                    }
+                    ProgressBar {
+                        Layout.fillWidth: true
+                        visible: share.wireless.pdfSending
+                        indeterminate: share.wireless.pdfProgress <= 0
+                        value: share.wireless.pdfProgress
+                    }
+                    PaperButton {
+                        uiScale: share.uiScale
+                        text: qsTr("Annulla invio")
+                        visible: share.wireless.pdfSending
+                        onClicked: share.wireless.cancelPdf()
+                    }
+                    PaperButton {
+                        uiScale: share.uiScale
+                        text: qsTr("Connessione al Mac…")
+                        iconName: "sync"
+                        visible: share.showLinkControls && !share.wireless.pdfSending
+                        onClicked: share.openConnection(share.requestedTransport)
+                    }
                 }
             }
 

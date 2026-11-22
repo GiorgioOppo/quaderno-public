@@ -13,6 +13,7 @@ Item {
     property bool acceptingInput: true
     property bool showTouchKeyboard: false
     property bool keepInk: false
+    property bool chartWorkspace: false
     property var selection: null
     property real dx: 0
     property real dy: 0
@@ -41,6 +42,7 @@ Item {
     signal editTranscriptRequested(string text)
     signal tableTranscriptionRequested()
     signal diagramRecognitionRequested()
+    signal chartRecognitionRequested(var strokes)
     signal restoreRequested(string id)
 
     onChangedChanged: if (changed) handwriting.cancel()
@@ -289,7 +291,18 @@ Item {
                 spacing: 3 * overlay.toolbarScale
                 PaperButton { uiScale: overlay.toolbarScale; text: qsTr("Aggiungi"); enabled: !overlay.changed; visible: !overlay.previewTranscript; onClicked: overlay.extendRequested("add") }
                 PaperButton { uiScale: overlay.toolbarScale; text: qsTr("Sottrai"); enabled: !overlay.changed; visible: !overlay.previewTranscript; onClicked: overlay.extendRequested("subtract") }
-                PaperButton { uiScale: overlay.toolbarScale; text: qsTr("Trascrivi"); visible: overlay.hasHandwriting && !overlay.previewTranscript; enabled: !overlay.handwriting.busy && !overlay.changed; onClicked: overlay.recognizeRequested() }
+                PaperButton { uiScale: overlay.toolbarScale; text: qsTr("Trascrivi"); visible: !overlay.chartWorkspace && overlay.hasHandwriting && !overlay.previewTranscript; enabled: !overlay.handwriting.busy && !overlay.changed; onClicked: overlay.recognizeRequested() }
+                PaperButton {
+                    objectName: "selectionRecognizeChart"
+                    uiScale: overlay.toolbarScale
+                    text: qsTr("Converti in grafico")
+                    iconName: "chart"
+                    visible: overlay.chartWorkspace && overlay.active && overlay.selection.strokes.length > 0
+                        && !overlay.previewTranscript
+                    enabled: !overlay.changed
+                    filled: true
+                    onClicked: if (overlay.active) overlay.chartRecognitionRequested(overlay.selection.strokes)
+                }
                 PaperButton {
                     objectName: "selectionInsertIntoCells"
                     uiScale: overlay.toolbarScale
@@ -302,7 +315,7 @@ Item {
                     objectName: "selectionRecognizeDiagram"
                     uiScale: overlay.toolbarScale
                     text: qsTr("Diagramma")
-                    visible: overlay.active && overlay.selection.strokes.length > 0
+                    visible: !overlay.chartWorkspace && overlay.active && overlay.selection.strokes.length > 0
                     enabled: !overlay.changed
                     onClicked: overlay.diagramRecognitionRequested()
                 }

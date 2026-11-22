@@ -10,12 +10,14 @@ ApplicationWindow {
 
     required property Notebook notebook
     required property AppleShare appleShare
+    property var smtpMail: null
     required property WifiSettings wifi
     required property PinLock pinLock
     required property PaperProStandby standby
     required property DeviceInfo deviceInfo
     required property UsbSsh usbSsh
     required property WirelessSync wireless
+    property var screenStream: null
     property var screenOrientationModel: null
     property var cloudAccountsModel: null
     property var pendingCloudDownloads: []
@@ -37,7 +39,7 @@ ApplicationWindow {
     readonly property real logicalHeight: sideways ? width : height
     readonly property Item popupOverlay: Overlay.overlay
     readonly property bool orientationBusy: editorPopupOpen || settingsView.dialogOpen || organizer.dialogOpen
-        || inkPage.drawing || readingGestures.active || paperViewport.moving || selectionOverlay.active
+        || inkPage.drawing || readingGestures.active || fullscreenToolsDrag.active || paperViewport.moving || selectionOverlay.active
         || (editingItems && !showingSettings)
     onOrientationBusyChanged: if (!orientationBusy) Qt.callLater(window.applyPreferredOrientation)
     onWidthChanged: Qt.callLater(window.syncOrientationOverlay)
@@ -59,26 +61,30 @@ ApplicationWindow {
     readonly property color accentLight: "#e6effb"
     readonly property var libraryBooks: organizer.filteredBooks("")
     readonly property var filteredBooks: organizer.filteredBooks(search.text)
-    readonly property bool existingEditorPopupOpen: nameDialog.visible || appleShareView.visible
-        || pageTemplateDialog.visible || pageItemDialog.visible || tableHandwritingDialog.visible || diagramHandwritingDialog.visible || pageOverview.visible
+    readonly property bool unsharedPopupOpen: appleShareView.visible || smtpDialog.visible
+        || pageTemplateDialog.visible || tableHandwritingDialog.visible || diagramHandwritingDialog.visible || pageOverview.visible
         || penTools.visible || documentPicker.visible || pageSearch.visible
-        || pageLayers.visible || pageTags.visible || chartDialog.visible || selectionDialog.visible || csvSavePicker.visible
+        || pageLayers.visible || pageTags.visible || selectionDialog.visible || csvSavePicker.visible
         || inkTransform.visible || usbTransferDialog.visible || usbImportDialog.visible || tableChartDialog.visible
         || bookmarksDialog.visible || wirelessDialog.visible || markdownDialog.visible || markdownSavePicker.visible
-        || obsidianSyncDialog.visible || diagramEditor.visible || diagramSavePicker.visible || diagramOpenPicker.visible
-        || csvOpenPicker.visible || appleBooksDialog.visible || markdownEditor.visible || imagePicker.visible
+        || obsidianSyncDialog.visible || diagramSavePicker.visible || diagramOpenPicker.visible
+        || csvOpenPicker.visible || appleBooksDialog.visible || imagePicker.visible
         || insertLibraryItemDialog.visible || tableCsvSavePicker.visible || imageProperties.visible || documentDropArea.dialogOpen
         || quickControls.visible || readingPreferencesDialog.visible || cloudImportDialog.visible || cloudUploadPicker.visible
         || mixedPageDialog.visible
         || Boolean(cloudDialogLoader.item?.visible)
+    readonly property bool existingEditorPopupOpen: unsharedPopupOpen || nameDialog.visible || pageItemDialog.visible
+        || chartDialog.visible || diagramEditor.visible || markdownEditor.visible
     readonly property bool editorPopupOpen: existingEditorPopupOpen || workspaceTools.dialogOpen || bookNoteDialog.visible || bookLinkDialog.visible
     readonly property bool wirelessEditorBusy: inkPage.drawing || selectionOverlay.active || editingItems
         || bookAnchorKind.length > 0 || bookNoteDialog.dirty || (editorPopupOpen && !wirelessDialog.visible)
     onWirelessEditorBusyChanged: wireless.transfer.setEditorBusy(wirelessEditorBusy)
-    readonly property bool fastPanelRefresh: tabletPreferences.refreshProfile === "fast" || (tabletPreferences.refreshProfile !== "clean"
+    // While sharing, use the content waveform for interface damage and keep the normal pen response during strokes.
+    readonly property bool fastPanelRefresh: (!screenSharing || inkPage.drawing || bookNoteDialog.drawing)
+        && (tabletPreferences.refreshProfile === "fast" || (tabletPreferences.refreshProfile !== "clean"
         && (pinLock.locked || !editing || showingSettings || editorPopupOpen
         || (!notebook.hasPageBackground && !notebook.pageItems.some(item =>
-            item.type === "image" || item.type === "chart" || item.type === "diagram"))))
+            item.type === "image" || item.type === "chart" || item.type === "diagram")))))
     onFastPanelRefreshChanged: epaperRefresh.setFastRefresh(fastPanelRefresh)
     Component.onCompleted: {
         epaperRefresh.setFastRefresh(fastPanelRefresh)
@@ -106,6 +112,44 @@ ApplicationWindow {
             ? qsTr("Sincronizzazione all’apertura") : qsTr("Sincronizzazione a intervalli"))
     }
     readonly property bool hasResumeOffer: Boolean(wireless.transfer.resumeOffer.pageId)
+    readonly property bool screenSharing: tabletMode && Boolean(screenStream?.active)
+    readonly property bool screenSharingStopInOverlay: fullPage || editorPopupOpen
+        || organizer.dialogOpen || settingsView.dialogOpen
+    readonly property bool remoteControlReady: screenSharing && screenStream.remoteNavigationAllowed
+        && visible && !pinLock.locked && !standby.sleeping && !unsharedPopupOpen && !importMenu.visible
+        && !organizer.dialogOpen && !settingsView.dialogOpen && !bookLinkDialog.visible && !notebook.importing
+        && !inkPage.drawing && !bookNoteDialog.drawing && !lassoActive && !selectionOverlay.active
+        && !editingItems && !readingGestures.active && !fullscreenToolsDrag.active && !paperViewport.moving
+        && !librarySearch.active && !search.inputMethodComposing
+    readonly property Item remoteControlTarget: {
+        if (!remoteControlReady) return null
+        if (bookNoteDialog.visible) return bookNoteDialog.remoteSurface
+        if (diagramEditor.visible) return diagramEditor.remoteSurface
+        if (chartDialog.visible) return chartDialog.remoteSurface
+        if (pageItemDialog.visible) return pageItemDialog.remoteSurface
+        if (markdownEditor.visible) return markdownEditor.remoteSurface
+        if (nameDialog.visible) return nameDialog.contentItem.parent
+        if (workspaceTools.dialogOpen) return workspaceTools.remoteSurface
+        return showingSettings || editing || organizer.viewMode !== "trash" ? window.contentItem : null
+    }
+    readonly property string sharedControlSurface: {
+        if (!remoteControlTarget) return ""
+        if (bookNoteDialog.visible) return "book-note"
+        if (diagramEditor.visible) return "diagram-editor"
+        if (chartDialog.visible) return "chart-editor"
+        if (pageItemDialog.visible) return "table-editor"
+        if (markdownEditor.visible) return "writing-editor"
+        if (nameDialog.visible || workspaceTools.dialogOpen) return "create"
+        if (showingSettings) return "settings"
+        if (editing) return editorWorkspace === "books" ? "book" : "editor"
+        return organizer.section
+    }
+    onRemoteControlTargetChanged: remoteInput.clearFocus()
+    onSharedControlSurfaceChanged: {
+        remoteInput.clearFocus()
+        if (screenSharing && screenStream.remoteNavigationAllowed)
+            screenStream.reportSection(sharedControlSurface)
+    }
 
     property bool editing: false
     property bool showingSettings: false
@@ -113,10 +157,13 @@ ApplicationWindow {
     property bool editingItems: false
     property bool lassoActive: false
     property string editorWorkspaceBookId: ""
+    property string editorWorkspacePageId: ""
     property string editorWorkspaceOverride: ""
-    readonly property var currentBookSummary: notebook.books.find(book => book.id === notebook.bookId) || ({})
-    readonly property string editorWorkspace: editorWorkspaceBookId === notebook.bookId && editorWorkspaceOverride.length
-        ? editorWorkspaceOverride : currentBookSummary.document ? "books" : notebook.diagramBook ? "diagrams" : "writing"
+    readonly property bool documentBook: Boolean(notebook.books.find(book => book.id === notebook.bookId)?.document)
+    readonly property string editorWorkspace: editorWorkspaceBookId === notebook.bookId
+        && editorWorkspacePageId === notebook.pageId && editorWorkspaceOverride.length
+        ? editorWorkspaceOverride : documentBook ? "books"
+        : pageStrip.available ? notebook.pageWorkspace : notebook.diagramBook ? "diagrams" : "writing"
     readonly property var handwritingEngine: handwriting
     readonly property var pageSheet: sheet
     property string lassoMode: "contained"
@@ -158,6 +205,7 @@ ApplicationWindow {
     property string linkedPageItem: ""
     property string editorToolContext: ""
     property var newLibraryItemBook: null
+    property var newObjectSheet: null
     property string importedBookId: ""
     property string penColor: "#222622"
     property string penTool: "pen"
@@ -186,7 +234,12 @@ ApplicationWindow {
         if (markdownEditor.visible && markdownEditor.dirty) {
             close.accepted = false
             markdownEditor.requestDiscard(true)
+            return
         }
+        if (window.screenSharing)
+            window.screenStream.stop()
+        if (screenStreamViewer.visible)
+            screenStreamViewer.close()
     }
 
     title: qsTr("Quaderno")
@@ -232,6 +285,24 @@ ApplicationWindow {
     Connections {
         target: window.screenOrientationModel
         function onChanged() { Qt.callLater(window.applyPreferredOrientation) }
+    }
+    RemoteInput { id: remoteInput }
+
+    Connections {
+        target: window.screenStream
+        function onRemoteTapRequested(x, y) {
+            if (window.sharedControlSurface.length === 0)
+                return
+            const sceneX = x * window.width
+            const sceneY = y * window.height
+            if (window.screenSharingStopInOverlay && remoteInput.tap(overlayStopSharing, sceneX, sceneY))
+                return
+            remoteInput.tap(window.remoteControlTarget, sceneX, sceneY)
+        }
+        function onRemoteKeyRequested(action, text) {
+            if (window.sharedControlSurface.length > 0)
+                remoteInput.key(action, text)
+        }
     }
 
     function syncOrientationOverlay() {
@@ -334,6 +405,7 @@ ApplicationWindow {
 
     function selectEditorWorkspace(workspace: string) {
         editorWorkspaceBookId = notebook.bookId
+        editorWorkspacePageId = notebook.pageId
         editorWorkspaceOverride = workspace
     }
 
@@ -383,6 +455,9 @@ ApplicationWindow {
             imagePicker.open()
             break
         case "library": insertLibraryItemDialog.begin(); break
+        case "sheetChart": beginObjectSheet("chart"); break
+        case "sheetTable": beginObjectSheet("table"); break
+        case "sheetDiagram": beginObjectSheet("diagram"); break
         case "chartEdit": if (item && item.type === "chart") editPageItem("chart", item); break
         case "newChart": chartDialog.openDraft(""); break
         case "chartSources": tableChartDialog.openSources("", false); break
@@ -526,14 +601,35 @@ ApplicationWindow {
     }
 
     function saveEditedItem(item: var): bool {
-        if (!newLibraryItemBook)
+        if (!newLibraryItemBook) {
+            if (newObjectSheet?.type === item.type && !item.id) {
+                if (!objectSheetCurrent())
+                    return false
+                if (!notebook.savePageItemOnNewPage(item))
+                    return false
+                newObjectSheet = null
+                return true
+            }
             return notebook.savePageItem(item)
+        }
         if (!notebook.createBookWithItem(newLibraryItemBook.title, newLibraryItemBook.folderId, item))
             return false
         selectEditorWorkspace(({chart: "charts", table: "tables", diagram: "diagrams"})[newLibraryItemBook.type] || "")
         newLibraryItemBook = null
         showCurrentBook()
         return true
+    }
+
+    function objectSheetCurrent(): bool {
+        return newObjectSheet?.bookId === notebook.bookId && newObjectSheet?.pageId === notebook.pageId
+    }
+
+    function beginObjectSheet(type: string) {
+        newObjectSheet = {type: type, bookId: notebook.bookId, pageId: notebook.pageId}
+        if (type === "chart")
+            chartDialog.openDraft("")
+        else
+            editPageItem(type, null)
     }
 
     function openDocumentPicker() {
@@ -777,7 +873,7 @@ ApplicationWindow {
             if ((editorWorkspace === "tables" || tabletPreferences.lassoInsertTarget === "cells")
                 && notebook.pageItems.some(item => item.type === "table"))
                 tableHandwritingDialog.openFor(selection)
-            else handwriting.recognize(selection.strokes, recognitionLanguage)
+            else handwriting.recognizeProse(selection.strokes, recognitionLanguage)
         }
     }
 
@@ -825,7 +921,11 @@ ApplicationWindow {
         sequences: [StandardKey.Find]
         enabled: !window.editing && !window.showingSettings && !window.pinLock.locked
                  && !window.editorPopupOpen && !organizer.dialogOpen && window.notebook.books.length > 0
-        onActivated: search.forceActiveFocus()
+        onActivated: {
+            if (window.screenSharing && window.screenStream.remoteNavigationAllowed)
+                librarySearch.active = true
+            search.forceActiveFocus()
+        }
     }
 
     Shortcut {
@@ -931,6 +1031,8 @@ ApplicationWindow {
             Qt.callLater(window.applyPreferredOrientation)
             if (!window.standby.sleeping) Qt.callLater(window.resumeBookNote)
             if (window.standby.sleeping) {
+                if (window.screenSharing) window.screenStream.stop()
+                if (screenStreamViewer.visible) screenStreamViewer.close()
                 window.bookAnchorKind = ""
                 bookNoteDialog.suspend()
                 bookLinkDialog.close()
@@ -955,6 +1057,8 @@ ApplicationWindow {
             Qt.callLater(window.applyPreferredOrientation)
             if (!window.pinLock.locked) Qt.callLater(window.resumeBookNote)
             if (window.pinLock.locked) {
+                if (window.screenSharing) window.screenStream.stop()
+                if (screenStreamViewer.visible) screenStreamViewer.close()
                 window.bookAnchorKind = ""
                 bookNoteDialog.suspend()
                 bookLinkDialog.close()
@@ -984,6 +1088,7 @@ ApplicationWindow {
                 insertLibraryItemDialog.close()
                 tableCsvSavePicker.close()
                 window.newLibraryItemBook = null
+                window.newObjectSheet = null
                 markdownDialog.clearPrivateState()
                 obsidianSyncDialog.close()
                 pageSearch.close()
@@ -1043,6 +1148,7 @@ ApplicationWindow {
 
                 TopButton {
                     objectName: "editorBackButton"
+                    property bool remoteClickable: true
                     text: !window.bookLinkReturn ? qsTr("Libreria")
                         : window.bookLinkReturn.workspace === "books" ? qsTr("Torna al libro") : qsTr("Torna alla pagina")
                     visible: window.editing || window.showingSettings
@@ -1071,6 +1177,7 @@ ApplicationWindow {
 
                 TopButton {
                     visible: window.editing
+                    property bool remoteClickable: true
                     Layout.fillWidth: true
                     Layout.minimumWidth: 0
                     text: window.notebook.title
@@ -1084,6 +1191,7 @@ ApplicationWindow {
 
                 TopButton {
                     visible: !window.editing && !window.showingSettings
+                    property bool remoteClickable: true
                     text: qsTr("Impostazioni")
                     iconName: "settings"
                     iconOnly: window.logicalWidth < 560 * window.uiScale
@@ -1123,6 +1231,47 @@ ApplicationWindow {
                 }
 
                 TopButton {
+                    objectName: "screenStreamViewerButton"
+                    visible: window.screenStream !== null && !window.tabletMode && !window.showingSettings
+                             && !window.standby.sleeping
+                    enabled: !window.editorPopupOpen
+                    text: qsTr("Schermo del Paper Pro")
+                    Accessible.name: text
+                    iconName: "expand"
+                    iconOnly: true
+                    quiet: true
+                    ToolTip.visible: hovered
+                    ToolTip.text: text
+                    onClicked: screenStreamViewer.open()
+                }
+
+                TopButton {
+                    objectName: "screenStreamShareButton"
+                    visible: window.tabletMode && window.screenStream !== null && window.wireless.available
+                             && !window.screenSharing && !window.showingSettings && !window.standby.sleeping
+                    enabled: !window.editorPopupOpen
+                    text: qsTr("Condivisione schermo…")
+                    Accessible.name: text
+                    iconName: "expand"
+                    iconOnly: true
+                    quiet: true
+                    onClicked: wirelessDialog.begin(false)
+                }
+
+                TopButton {
+                    objectName: "screenStreamStopButton"
+                    property bool remoteClickable: true
+                    visible: window.screenSharing && !window.screenSharingStopInOverlay
+                        && !window.pinLock.locked && !window.standby.sleeping
+                    text: qsTr("Interrompi condivisione")
+                    Accessible.name: text
+                    iconName: "close"
+                    iconOnly: window.logicalWidth < 730 * window.uiScale
+                    filled: true
+                    onClicked: window.screenStream.stop()
+                }
+
+                TopButton {
                     visible: window.editing && window.wireless.transfer.connected && window.notebook.pageId.length > 0
                     text: window.tabletMode ? qsTr("Continua sul Mac") : qsTr("Continua sul Paper Pro")
                     iconName: "continue"
@@ -1159,7 +1308,7 @@ ApplicationWindow {
                 }
 
                 TopButton {
-                    visible: window.tabletMode
+                    visible: window.tabletMode && !window.editing
                     text: qsTr("Esci")
                     iconName: "exit"
                     iconOnly: window.logicalWidth < 530 * window.uiScale
@@ -1217,6 +1366,35 @@ ApplicationWindow {
         }
 
         RowLayout {
+            objectName: "receivedPdfBanner"
+            visible: !window.tabletMode && !window.pinLock.locked && !window.fullPage
+                && window.wireless.receivedPdf.toString().length > 0
+            Layout.fillWidth: true
+            Layout.leftMargin: window.gutter
+            Layout.rightMargin: window.gutter
+            spacing: 8 * window.uiScale
+
+            InkLabel {
+                Layout.fillWidth: true
+                elide: Text.ElideRight
+                text: qsTr("PDF ricevuto · Download/Quaderno")
+                font.pixelSize: 14 * window.uiScale
+            }
+            TopButton {
+                text: qsTr("Apri PDF")
+                quiet: true
+                onClicked: window.wireless.openReceivedPdf()
+            }
+            TopButton {
+                text: qsTr("Chiudi avviso")
+                iconName: "close"
+                iconOnly: true
+                quiet: true
+                onClicked: window.wireless.dismissReceivedPdf()
+            }
+        }
+
+        RowLayout {
             visible: window.hasResumeOffer && !window.fullPage && !window.showingSettings
             Layout.fillWidth: true
             Layout.leftMargin: window.gutter
@@ -1262,6 +1440,7 @@ ApplicationWindow {
             deviceInfo: window.deviceInfo
             usbSsh: window.usbSsh
             wireless: window.wireless
+            smtpMail: window.smtpMail
             bluetooth: window.bluetooth
             epaperRefresh: window.epaperRefresh
             showTouchKeyboard: window.showTouchKeyboard
@@ -1279,6 +1458,7 @@ ApplicationWindow {
             onOpenMarkdown: markdownDialog.begin(window.editing, organizer.destinationFolderId)
             onOpenApple: appleShareView.begin(true, "")
             onOpenAppleBooks: appleBooksDialog.open()
+            onOpenSmtp: smtpDialog.beginSettings()
             onImportFiles: window.openDocumentPicker()
             onRefreshScreen: window.epaperRefresh.request()
             onSleepNow: window.standby.suspend()
@@ -1385,6 +1565,7 @@ ApplicationWindow {
 
                     TopButton {
                         id: newBook
+                        property bool remoteClickable: true
                         visible: organizer.viewMode !== "trash" && organizer.section !== "books"
                         text: organizer.section === "tables" ? qsTr("Nuova tabella")
                             : organizer.section === "charts" ? qsTr("Nuovo grafico")
@@ -1548,6 +1729,7 @@ ApplicationWindow {
                         delegate: ItemDelegate {
                             id: bookRow
                             objectName: "libraryRow_" + (modelData.itemId || modelData.id || modelData.bookId)
+                            property bool remoteClickable: !modelData.trashed
 
                             required property var modelData
                             required property int index
@@ -1715,6 +1897,24 @@ ApplicationWindow {
             Layout.minimumWidth: 0
             spacing: 0
 
+            NotebookPageStrip {
+                id: pageStrip
+                Layout.fillWidth: true
+                Layout.leftMargin: 8 * window.uiScale
+                Layout.rightMargin: Layout.leftMargin
+                Layout.topMargin: visible ? 6 * window.uiScale : 0
+                visible: !window.fullPage && !window.documentBook && pageStrip.available
+                notebook: window.notebook
+                tabletMode: window.tabletMode
+                uiScale: window.uiScale
+                enabled: window.editing && !window.pinLock.locked && !window.standby.sleeping
+                    && !window.editorPopupOpen && !inkPage.drawing
+                onPageRequested: index => {
+                    if (window.notebook.goToPage(index))
+                        window.selectEditorWorkspace("")
+                }
+            }
+
             WorkspaceTools {
                 id: workspaceTools
                 Layout.fillWidth: true
@@ -1731,6 +1931,7 @@ ApplicationWindow {
                 pageId: window.notebook.pageId
                 pageItems: window.notebook.pageItems
                 notebook: window.notebook
+                internalSheetsAvailable: !window.documentBook && pageStrip.available
                 linkedItemId: window.linkedPageItem
                 active: window.editing && !window.showingSettings && !window.pinLock.locked && !window.standby.sleeping
                 actionsEnabled: !window.editorPopupOpen && !inkPage.drawing && !window.notebook.importing
@@ -1983,6 +2184,7 @@ ApplicationWindow {
                     zoom: window.pageZoom
                     fitWidth: window.notebook.hasPageBackground && window.readingFitWidth
                     singleFingerGestures: window.notebook.hasPageBackground
+                        && !fullscreenToolsButton.pressed && !fullscreenToolsDrag.active
                     doubleTapAction: tabletPreferences.doubleTapAction
                     swipeAction: window.readingPreference("swipeAction", tabletPreferences.swipeAction)
                     panSensitivity: tabletPreferences.readingPanSensitivity / 100
@@ -2000,7 +2202,11 @@ ApplicationWindow {
                         if (window.notebook.hasPageBackground) window.setReadingZoom(1, false)
                         else window.fitCanvasToView()
                     }
-                    onPageRequested: delta => window.notebook.goToPage(window.notebook.page + delta)
+                    onPageRequested: delta => {
+                        const target = window.notebook.page + delta
+                        if (target >= 0 && target < window.notebook.pageCount)
+                            window.notebook.goToPage(target)
+                    }
                     onInteractionStarted: { inkPage.cancelDrawing(); window.pinLock.recordActivity(); window.standby.recordActivity() }
                 }
 
@@ -2066,6 +2272,10 @@ ApplicationWindow {
                     InkItem {
                         id: inkPage
                         objectName: "inkPage"
+                        property bool remoteClickable: true
+                        function remoteActivateAt(x: real, y: real) {
+                            window.handlePageTap(Qt.point(x, y))
+                        }
                         inputOverlay: window.contentItem
                         pointPicking: Boolean(window.bookAnchorKind) || (window.pointTool && !window.lassoActive)
                         markerInkTarget: bookNoteDialog.markerTarget
@@ -2152,6 +2362,7 @@ ApplicationWindow {
                         notebook: window.notebook
                         handwriting: window.handwritingEngine
                         keepInk: tabletPreferences.lassoKeepInk
+                        chartWorkspace: window.editorWorkspace === "charts"
                         uiScale: window.uiScale / sheet.scale
                         toolbarScale: window.uiScale
                         toolbarParent: paperViewport
@@ -2166,9 +2377,10 @@ ApplicationWindow {
                             window.lassoActive = true
                             window.selectionMessage = operation === "add" ? qsTr("Circonda gli elementi da aggiungere.") : qsTr("Circonda gli elementi da sottrarre.")
                         }
-                        onRecognizeRequested: handwriting.recognize(selection.strokes, window.recognitionLanguage)
+                        onRecognizeRequested: handwriting.recognizeProse(selection.strokes, window.recognitionLanguage)
                         onMoreRequested: { selectionDialog.selection = selection; selectionDialog.open() }
                         onDiagramRecognitionRequested: window.reviewDiagramSelection(selection)
+                        onChartRecognitionRequested: strokes => chartDialog.openFor(strokes)
                         onEditTranscriptRequested: text => pageItemDialog.openFor("text", null, text, selection)
                         onTableTranscriptionRequested: {
                             handwriting.cancel()
@@ -2281,6 +2493,8 @@ ApplicationWindow {
                         id: collapsedTools
                         objectName: "collapsedTools"
                         parent: paperViewport
+                        property bool remoteClickable: true
+                        function remoteActivate() { window.setFullPage(false) }
                         property bool blocksInk: true
                         property bool refreshed: false
                         anchors.top: parent.top
@@ -2295,6 +2509,53 @@ ApplicationWindow {
                         onPressed: refreshed = false
                         onPressAndHold: { if (window.canRefreshPage) { window.refreshPage(); refreshed = true } }
                         onClicked: if (!refreshed) window.setFullPage(false)
+                    }
+
+                    TopButton {
+                        id: fullscreenToolsButton
+                        objectName: "fullscreenToolsButton"
+                        parent: paperViewport
+                        property bool blocksInk: true
+                        property bool allowPenDrag: true
+                        property bool remoteClickable: true
+                        function remoteActivate() { workspaceTools.openToolsMenu(true) }
+                        anchors.bottom: parent.bottom
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.bottomMargin: 8 * window.uiScale
+                        z: 6
+                        visible: window.fullPage && window.editing && !selectionOverlay.active
+                            && !window.editorPopupOpen && !window.bookAnchorKind.length
+                            && !window.diagramRecognitionOffer
+                        enabled: workspaceTools.active && workspaceTools.actionsEnabled
+                        text: qsTr("Strumenti")
+                        iconName: "up"
+                        onClicked: workspaceTools.openToolsMenu(true)
+
+                        DragHandler {
+                            id: fullscreenToolsDrag
+                            enabled: fullscreenToolsButton.visible && fullscreenToolsButton.enabled && readingGestures.enabled
+                            target: null
+                            acceptedDevices: PointerDevice.TouchScreen
+                            minimumPointCount: 1
+                            maximumPointCount: 1
+                            dragThreshold: 16 * window.uiScale
+                            property point lastMotion: Qt.point(0, 0)
+                            onActiveChanged: if (active) lastMotion = Qt.point(0, 0)
+                            onActiveTranslationChanged: if (active) {
+                                const origin = fullscreenToolsButton.mapFromItem(null, 0, 0)
+                                const point = fullscreenToolsButton.mapFromItem(null, activeTranslation.x, activeTranslation.y)
+                                lastMotion = Qt.point(point.x - origin.x, point.y - origin.y)
+                            }
+                            onGrabChanged: (transition, point) => {
+                                if (transition !== PointerDevice.UngrabExclusive || point.state !== Qt.TouchPointReleased
+                                    || !enabled || lastMotion.y >= -36 * window.uiScale
+                                    || -lastMotion.y <= Math.abs(lastMotion.x) * 1.5)
+                                    return
+                                window.pinLock.recordActivity()
+                                window.standby.recordActivity()
+                                workspaceTools.openToolsMenu(true)
+                            }
+                        }
                     }
                 }
             }
@@ -2326,6 +2587,7 @@ ApplicationWindow {
 
                     TopButton {
                         text: qsTr("Pagina precedente")
+                        property bool remoteClickable: true
                         iconName: "left"
                         iconOnly: true
                         quiet: true
@@ -2345,6 +2607,7 @@ ApplicationWindow {
 
                     TopButton {
                         text: qsTr("Pagina successiva")
+                        property bool remoteClickable: true
                         iconName: "right"
                         iconOnly: true
                         quiet: true
@@ -2377,6 +2640,7 @@ ApplicationWindow {
 
                     TopButton {
                         visible: !window.fullPage && window.editorWorkspace !== "books"
+                        property bool remoteClickable: true
                         text: qsTr("Nuova pagina")
                         iconName: "plus"
                         iconOnly: window.logicalWidth < 520 * window.uiScale
@@ -2459,6 +2723,25 @@ ApplicationWindow {
         onExitRequested: Qt.quit()
     }
 
+    TopButton {
+        id: overlayStopSharing
+        objectName: "screenStreamFullscreenStopButton"
+        parent: window.popupOverlay
+        property bool blocksInk: true
+        property bool remoteClickable: true
+        anchors.top: parent.top
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.topMargin: 8 * window.uiScale
+        z: 100
+        visible: window.screenSharing && window.screenSharingStopInOverlay
+                 && !window.pinLock.locked && !window.standby.sleeping
+        text: qsTr("Interrompi condivisione")
+        Accessible.name: text
+        iconName: "close"
+        filled: true
+        onClicked: window.screenStream.stop()
+    }
+
     AppleShareView {
         id: appleShareView
         preferredDestination: window.notebook.hasPageBackground ? tabletPreferences.appleBookDestination
@@ -2466,12 +2749,25 @@ ApplicationWindow {
             : organizer.section === "charts" ? tabletPreferences.appleChartDestination : tabletPreferences.appleWritingDestination
         notebook: window.notebook
         appleShare: window.appleShare
+        smtpMail: window.smtpMail
+        wireless: window.wireless
         documentExchange: window.documentExchange
         uiScale: window.uiScale
         tabletMode: window.tabletMode
         locked: window.pinLock.locked || window.standby.sleeping
         canTransfer: window.wireless.available
-        onTransferRequested: wirelessDialog.begin()
+        onTransferRequested: transport => wirelessDialog.begin(transport === "bluetooth")
+        onMailRequested: option => smtpDialog.beginPdf(option)
+    }
+
+    SmtpDialog {
+        id: smtpDialog
+        notebook: window.notebook
+        mail: window.smtpMail
+        tabletMode: window.tabletMode
+        showTouchKeyboard: window.showTouchKeyboard
+        uiScale: window.uiScale
+        locked: window.pinLock.locked || window.standby.sleeping
     }
 
     MarkdownDialog {
@@ -2606,8 +2902,10 @@ ApplicationWindow {
                 tableChartDialog.errorText = window.notebook.error
             }
         }
-        onClosed: if (window.newLibraryItemBook?.type === "chart" && !chartDialog.visible)
-            window.newLibraryItemBook = null
+        onClosed: if (!chartDialog.visible) {
+            if (window.newLibraryItemBook?.type === "chart") window.newLibraryItemBook = null
+            if (window.newObjectSheet?.type === "chart") window.newObjectSheet = null
+        }
         onDeleteRequested: id => {
             if (window.notebook.removePageItem(id)) {
                 window.selectedPageItem = ""
@@ -2770,7 +3068,7 @@ ApplicationWindow {
                 iconName: "text"
                 visible: handwriting.available && (!window.tabletMode || handwriting.error.length > 0)
                 enabled: !handwriting.busy && !!selectionDialog.selection
-                onClicked: handwriting.recognize(selectionDialog.selection.strokes, window.notebook.handwritingLanguage)
+                onClicked: handwriting.recognizeProse(selectionDialog.selection.strokes, window.notebook.handwritingLanguage)
             }
 
             InkLabel {
@@ -2835,7 +3133,8 @@ ApplicationWindow {
         showTouchKeyboard: window.showTouchKeyboard
         uiScale: window.uiScale
         tabletMode: window.tabletMode
-        onTableSourceRequested: title => tableChartDialog.openSources(title, !!window.newLibraryItemBook)
+        onTableSourceRequested: title => tableChartDialog.openSources(title,
+            !!window.newLibraryItemBook || window.newObjectSheet?.type === "chart")
         onExportCsvRequested: csv => {
             csvSavePicker.csvData = csv
             csvSavePicker.open()
@@ -2852,8 +3151,10 @@ ApplicationWindow {
             else
                 chartDialog.errorText = window.notebook.error
         }
-        onClosed: if (window.newLibraryItemBook && window.newLibraryItemBook.type === "chart")
-            window.newLibraryItemBook = null
+        onClosed: {
+            if (window.newLibraryItemBook?.type === "chart") window.newLibraryItemBook = null
+            if (window.newObjectSheet?.type === "chart" && !tableChartDialog.visible) window.newObjectSheet = null
+        }
         onDeleteRequested: id => {
             if (window.notebook.removePageItem(id)) {
                 window.selectedPageItem = ""
@@ -2876,17 +3177,20 @@ ApplicationWindow {
         uiScale: window.uiScale
         tabletMode: window.tabletMode
         onSaved: item => {
-            if (window.notebook.savePageItem(item))
+            if (window.saveEditedItem(item))
                 diagramEditor.close()
             else
                 diagramEditor.errorText = window.notebook.error
         }
         onSaveOnNewPageRequested: item => {
-            if (window.notebook.savePageItemOnNewPage(item))
+            const saved = window.newObjectSheet?.type === "diagram"
+                ? window.saveEditedItem(item) : window.notebook.savePageItemOnNewPage(item)
+            if (saved)
                 diagramEditor.close()
             else
                 diagramEditor.errorText = window.notebook.error
         }
+        onClosed: if (window.newObjectSheet?.type === "diagram") window.newObjectSheet = null
         onDeleteRequested: id => {
             if (window.notebook.removePageItem(id)) {
                 window.selectedPageItem = ""
@@ -2955,7 +3259,8 @@ ApplicationWindow {
         function onDocumentChanged() {
             if (window.bookAnchorKind && window.bookAnchorContext !== window.notebook.bookId + "/" + window.notebook.pageId)
                 window.bookAnchorKind = ""
-            if (window.editorWorkspaceBookId !== window.notebook.bookId) window.selectEditorWorkspace("")
+            if (window.editorWorkspaceBookId !== window.notebook.bookId || window.editorWorkspacePageId !== window.notebook.pageId)
+                window.selectEditorWorkspace("")
             window.updateDiagramRecognitionContext()
         }
         function onPageContentChanged() { window.scheduleDiagramRecognition() }
@@ -3598,6 +3903,7 @@ ApplicationWindow {
         id: wirelessDialog
         dim: !window.tabletMode
         wireless: window.wireless
+        screenStream: window.screenStream
         notebook: window.notebook
         uiScale: window.uiScale
         preferences: tabletPreferences
@@ -3605,6 +3911,17 @@ ApplicationWindow {
         onAutomaticSyncRequested: syncAutomation.syncNow()
         syncLabel: window.syncStateLabel(window.currentSync.state || "")
         onResumeOpened: window.showCurrentBook()
+        onScreenViewerRequested: screenStreamViewer.open()
+    }
+
+    ScreenStreamWindow {
+        id: screenStreamViewer
+        stream: window.screenStream
+        onConnectionRequested: {
+            window.raise()
+            window.requestActivate()
+            wirelessDialog.begin(false)
+        }
     }
 
     BookNoteDialog {
@@ -3684,8 +4001,10 @@ ApplicationWindow {
             tableCsvSavePicker.draft = item
             tableCsvSavePicker.open()
         }
-        onClosed: if (window.newLibraryItemBook && window.newLibraryItemBook.type === "table")
-            window.newLibraryItemBook = null
+        onClosed: {
+            if (window.newLibraryItemBook?.type === "table") window.newLibraryItemBook = null
+            if (window.newObjectSheet?.type === "table") window.newObjectSheet = null
+        }
         onSaveRequested: item => {
             if (window.saveEditedItem(item))
                 pageItemDialog.close()
@@ -3713,9 +4032,9 @@ ApplicationWindow {
                 pageItemDialog.errorText = window.notebook.error
         }
         onTableChartRequested: item => {
-            if (window.notebook.savePageItem(item)) {
+            if (window.saveEditedItem(item)) {
                 pageItemDialog.close()
-                tableChartDialog.openFor(item, null)
+                tableChartDialog.openFor(item.id ? item : window.notebook.pageItems.filter(value => value.type === "table").pop(), null)
             } else {
                 pageItemDialog.errorText = window.notebook.error
             }
@@ -3793,6 +4112,7 @@ ApplicationWindow {
 
             TextField {
                 id: nameField
+                property bool remoteEditable: true
                 Accessible.name: qsTr("Nome del quaderno")
                 Layout.fillWidth: true
                 Layout.preferredHeight: 46 * window.uiScale
@@ -3834,11 +4154,13 @@ ApplicationWindow {
 
                 TopButton {
                     text: qsTr("Annulla", "Cancel a dialog")
+                    property bool remoteClickable: true
                     onClicked: nameDialog.close()
                 }
 
                 TopButton {
                     text: nameDialog.renaming ? qsTr("Salva") : qsTr("Crea")
+                    property bool remoteClickable: true
                     enabled: nameField.text.trim().length > 0
                     filled: true
                     onClicked: nameDialog.submit()

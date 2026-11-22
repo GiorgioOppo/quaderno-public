@@ -36,6 +36,7 @@ public:
     Q_INVOKABLE QString applyTextPreferences(const QString &text) const;
 
     Q_INVOKABLE void recognize(const QVariantList &strokes, const QString &language = QStringLiteral("it"));
+    Q_INVOKABLE void recognizeProse(const QVariantList &strokes, const QString &language);
     Q_INVOKABLE void recognizeDiagramLabel(const QVariantList &strokes, const QString &language, const QString &orientation);
     Q_INVOKABLE void cancel();
 
@@ -46,7 +47,7 @@ signals:
 
 private:
     static QString helperPath();
-    void recognizeInk(const QVariantList &strokes, const QString &language, const QString &labelOrientation);
+    void recognizeInk(const QVariantList &strokes, const QString &language, const QString &labelOrientation, bool prose = false);
     void startProcess();
     void complete(const QString &text, const QString &error);
 
@@ -61,6 +62,7 @@ private:
     QStringList m_corrections;
     QString m_language = QStringLiteral("it");
     QStringList m_alternatives;
+    bool m_prose = false;
     bool m_busy = false;
     bool m_timedOut = false;
     bool m_waitingForExit = false;

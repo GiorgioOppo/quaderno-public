@@ -33,6 +33,8 @@ Dialog {
     readonly property bool hasDraft: sourceBookId.length > 0
     readonly property bool drawing: noteCanvas.drawing
     readonly property bool dirty: hasDraft && JSON.stringify({text: noteText, ink: noteInk, color: noteColor}) !== initialDraft
+    readonly property Item remoteSurface: opened && !suspended && editingAllowed
+        && !noteCanvas.drawing && !colorChoice.popup?.visible && contentItem ? contentItem.parent : null
     readonly property bool currentContext: sourceBookId === notebook.bookId && sourcePageId === notebook.pageId
     readonly property int pointCount: noteInk.reduce((total, stroke) => total + (stroke.points || []).length, 0)
     readonly property bool withinLimits: noteText.length <= 4000 && noteInk.length <= 2000 && pointCount <= 60000
@@ -146,9 +148,15 @@ Dialog {
         RowLayout {
             Layout.fillWidth: true
             Action { text: qsTr("Penna"); filled: editor.mode === "ink"; onClicked: { noteCanvas.cancelDrawing(); editor.mode = "ink"; editor.keyboardOpen = false } }
-            Action { text: qsTr("Testo"); filled: editor.mode === "text"; onClicked: { noteCanvas.cancelDrawing(); editor.mode = "text"; textInput.forceActiveFocus(); editor.keyboardOpen = true } }
+            Action {
+                property bool remoteClickable: !editor.confirmation.length
+                text: qsTr("Testo")
+                filled: editor.mode === "text"
+                onClicked: { noteCanvas.cancelDrawing(); editor.mode = "text"; textInput.forceActiveFocus(); editor.keyboardOpen = true }
+            }
             Item { Layout.fillWidth: true }
             ComboBox {
+                id: colorChoice
                 objectName: "bookNoteColor"
                 model: [{id: "yellow", title: qsTr("Giallo")}, {id: "blue", title: qsTr("Blu")}, {id: "green", title: qsTr("Verde")}, {id: "pink", title: qsTr("Rosa")}]
                 textRole: "title"; valueRole: "id"
@@ -197,6 +205,7 @@ Dialog {
             TextArea {
                 id: textInput
                 objectName: "bookNoteText"
+                property bool remoteEditable: !editor.confirmation.length
                 text: editor.noteText
                 placeholderText: qsTr("Scrivi la nota…")
                 wrapMode: TextEdit.Wrap; selectByMouse: true
@@ -218,7 +227,12 @@ Dialog {
             visible: editor.confirmation.length > 0
             text: editor.confirmation === "delete" ? qsTr("Eliminare questo post-it? Potrai ripristinarlo con Annulla sulla pagina.") : qsTr("Scartare le modifiche al post-it?")
         }
-        Action { visible: editor.showTouchKeyboard && editor.keyboardOpen && editor.mode === "text"; text: qsTr("Nascondi tastiera"); onClicked: editor.keyboardOpen = false }
+        Action {
+            property bool remoteClickable: true
+            visible: editor.showTouchKeyboard && editor.keyboardOpen && editor.mode === "text"
+            text: qsTr("Nascondi tastiera")
+            onClicked: editor.keyboardOpen = false
+        }
         TouchKeyboard {
             objectName: "bookNoteKeyboard"
             Layout.fillWidth: true
@@ -227,12 +241,30 @@ Dialog {
         }
         RowLayout {
             Layout.fillWidth: true
-            Action { visible: !editor.confirmation.length; text: qsTr("Annulla"); onClicked: editor.requestClose(false) }
+            Action {
+                property bool remoteClickable: true
+                visible: !editor.confirmation.length
+                text: qsTr("Annulla")
+                onClicked: editor.requestClose(false)
+            }
             Action { visible: Boolean(editor.originalItem) && !editor.confirmation.length; text: qsTr("Elimina"); onClicked: { noteCanvas.cancelDrawing(); editor.confirmation = "delete"; editor.keyboardOpen = false } }
-            Action { visible: editor.confirmation.length > 0; text: qsTr("Continua a modificare"); onClicked: { editor.confirmation = ""; editor.closeApplication = false } }
+            Action {
+                property bool remoteClickable: true
+                visible: editor.confirmation.length > 0
+                text: qsTr("Continua a modificare")
+                onClicked: { editor.confirmation = ""; editor.closeApplication = false }
+            }
             Item { Layout.fillWidth: true }
             Action { visible: editor.confirmation.length > 0; text: editor.confirmation === "delete" ? qsTr("Elimina post-it") : qsTr("Scarta modifiche"); onClicked: editor.confirmation === "delete" ? editor.deleteNote() : editor.finishClose() }
-            Action { objectName: "bookNoteSave"; visible: !editor.confirmation.length; text: qsTr("Salva post-it"); filled: true; enabled: editor.canSave; onClicked: editor.save() }
+            Action {
+                objectName: "bookNoteSave"
+                property bool remoteClickable: true
+                visible: !editor.confirmation.length
+                text: qsTr("Salva post-it")
+                filled: true
+                enabled: editor.canSave
+                onClicked: editor.save()
+            }
         }
     }
 }

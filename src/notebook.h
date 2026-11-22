@@ -30,6 +30,7 @@ class Notebook final : public QObject
     Q_PROPERTY(int page READ page NOTIFY documentChanged)
     Q_PROPERTY(QString pageId READ pageId NOTIFY documentChanged)
     Q_PROPERTY(int pageCount READ pageCount NOTIFY documentChanged)
+    Q_PROPERTY(QString pageWorkspace READ pageWorkspace NOTIFY pageContentChanged)
     Q_PROPERTY(QVariantList strokes READ strokes NOTIFY strokesChanged)
     Q_PROPERTY(bool canUndo READ canUndo NOTIFY strokesChanged)
     Q_PROPERTY(bool canRedo READ canRedo NOTIFY strokesChanged)
@@ -82,6 +83,7 @@ public:
     int page() const;
     QString pageId() const;
     int pageCount() const;
+    QString pageWorkspace() const;
     QVariantList strokes() const;
     bool canUndo() const;
     bool canRedo() const;
@@ -344,6 +346,7 @@ private:
     const Book *currentBook() const;
     const Page *currentPage() const;
     Page &currentPage(State &state) const;
+    static QString workspaceForPage(const Page &page, const Book &book);
     bool createBookWithFirstPage(const QString &title, const QString &folderId, Page page, const QString &workspace = {});
     static int findPageItem(const Page &page, const QString &id);
     static int findLayer(const Page &page, const QString &id);

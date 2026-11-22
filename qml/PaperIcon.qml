@@ -37,6 +37,9 @@ Canvas {
         case "right":
             c.moveTo(9.5, 6.5); c.lineTo(15, 12); c.lineTo(9.5, 17.5)
             break
+        case "up":
+            c.moveTo(6.5, 14.5); c.lineTo(12, 9); c.lineTo(17.5, 14.5)
+            break
         case "undo":
             c.moveTo(9, 5); c.lineTo(4.5, 9.5); c.lineTo(9, 14)
             c.moveTo(5, 9.5); c.lineTo(14, 9.5)

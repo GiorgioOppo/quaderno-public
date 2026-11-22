@@ -69,6 +69,15 @@ QQuickItem *visibleItem(QQuickItem *parent, const QString &name)
     return nullptr;
 }
 
+bool hasVisibleText(const QQuickItem *parent, const QString &text)
+{
+    if (!parent->isVisible()) return false;
+    if (parent->property("text").toString() == text) return true;
+    for (const QQuickItem *child : parent->childItems())
+        if (hasVisibleText(child, text)) return true;
+    return false;
+}
+
 void stylusEvent(QQuickWindow *window, const QPointingDevice &device, QEvent::Type type, QPointF point, qreal pressure)
 {
     const bool release = type == QEvent::TabletRelease;
@@ -449,6 +458,90 @@ private slots:
         QCOMPARE(preferences->orientation(), 0);
         QCOMPARE(h.notebook.localReadingPreferences().value("readingOrientation").toInt(), 180);
         QCOMPARE(h.notebook.exportBookForTransfer(book), document);
+    }
+
+    void allSettingsCategoriesOpenFromTheirVisibleButtons_data()
+    {
+        QTest::addColumn<bool>("tablet");
+        QTest::addColumn<int>("orientation");
+        QTest::newRow("tablet-portrait") << true << 0;
+        QTest::newRow("tablet-landscape") << true << 90;
+        QTest::newRow("compact-desktop") << false << 0;
+    }
+
+    void allSettingsCategoriesOpenFromTheirVisibleButtons()
+    {
+        QFETCH(bool, tablet);
+        QFETCH(int, orientation);
+        SettingsHarness h;
+        QVERIFY(h.window());
+        auto *settingsView = h.find<QQuickItem>("settingsView");
+        const auto *panel = h.find<QQuickItem>("tabletSettingsPanel");
+        auto *preferences = h.find<TabletPreferences>("tabletPreferences");
+        QVERIFY(settingsView && panel && panel->parentItem() && preferences);
+        const auto *pages = panel->parentItem();
+        QVERIFY(h.window()->setProperty("tabletMode", tablet));
+        if (!tablet) h.window()->resize(760, 560);
+        preferences->setOrientation(orientation);
+        QVERIFY(QMetaObject::invokeMethod(h.window(), "showSettings"));
+        QTRY_COMPARE(h.window()->property("appliedOrientation").toInt(), orientation);
+
+        const QByteArray library = h.notebook.exportLibraryForTransfer();
+        struct Category { int id; QString pageText; };
+        const Category categories[] = {
+            {0, QStringLiteral("Wi‑Fi")},
+            {4, QStringLiteral("Bluetooth")},
+            {5, QStringLiteral("Orientamento dello schermo")},
+            {10, QStringLiteral("Penna e tocco")},
+            {11, QStringLiteral("Backup locali")},
+            {7, QStringLiteral("Penna e ricarica")},
+            {6, QStringLiteral("Apple e iCloud")},
+            {2, QStringLiteral("PIN di Quaderno")},
+            {12, QStringLiteral("Accesso SSH")},
+            {8, QStringLiteral("Lingua dell’app")},
+            {1, QStringLiteral("SSH via USB‑C")},
+            {3, QStringLiteral("Informazioni")},
+            {9, QStringLiteral("A colpo d’occhio")},
+        };
+        const auto center = [](QQuickItem *item) {
+            return item->mapToScene(item->boundingRect().center()).toPoint();
+        };
+        const auto canClick = [&](QQuickItem *item) {
+            return item && item->isEnabled() && item->width() > 0 && item->height() > 0
+                && QRect(QPoint(0, 0), h.window()->size()).contains(center(item));
+        };
+        const auto click = [&](QQuickItem *item) {
+            QTest::mouseClick(h.window(), Qt::LeftButton, Qt::NoModifier, center(item));
+        };
+
+        for (const auto &category : categories) {
+            const QString buttonName = QStringLiteral("settingsCategory_%1").arg(category.id);
+            if (category.id == 12 && !tablet) {
+                QVERIFY(!visibleItem(settingsView, buttonName));
+                continue;
+            }
+            QQuickItem *button = nullptr;
+            QTRY_VERIFY(canClick(button = visibleItem(settingsView, buttonName)));
+            click(button);
+            QTRY_COMPARE(settingsView->property("category").toInt(), category.id);
+            QTRY_VERIFY2(hasVisibleText(pages, category.pageText), qPrintable(category.pageText));
+        }
+
+        QQuickItem *search = nullptr;
+        QTRY_VERIFY(canClick(search = visibleItem(settingsView, QStringLiteral("settingsSearch"))));
+        click(search);
+        QTRY_VERIFY(search->hasActiveFocus());
+        for (const auto key : {Qt::Key_P, Qt::Key_I, Qt::Key_N}) QTest::keyClick(h.window(), key);
+        QTRY_COMPARE(search->property("text").toString(), QStringLiteral("pin"));
+        QTRY_VERIFY(!visibleItem(settingsView, QStringLiteral("settingsCategory_3")));
+        QQuickItem *security = nullptr;
+        QTRY_VERIFY(canClick(security = visibleItem(settingsView, QStringLiteral("settingsCategory_2"))));
+        click(security);
+        QTRY_COMPARE(settingsView->property("category").toInt(), 2);
+        QTRY_VERIFY(search->property("text").toString().isEmpty());
+        QTRY_VERIFY(visibleItem(settingsView, QStringLiteral("settingsCategory_3")));
+        QCOMPARE(h.notebook.exportLibraryForTransfer(), library);
+        QVERIFY2(h.qmlWarnings.isEmpty(), qPrintable(h.qmlWarnings.join(QStringLiteral(" | "))));
     }
 
     void settingsSectionsExposeWritingAndStorageControls()

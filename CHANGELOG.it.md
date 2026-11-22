@@ -2,6 +2,21 @@
 
 [English](CHANGELOG.md) · **Italiano**
 
+## 3.0.0
+
+- Condividi lo schermo del Paper Pro via Wi-Fi locale. La finestra su Mac segue le proporzioni e la rotazione del tablet. Dal tablet puoi concedere o revocare il controllo tramite clic e tastiera sulla diretta.
+- Apri gli strumenti della sezione in modalità a pagina intera. Nei libri usa scorrimento e zoom e apri note e collegamenti nel punto in cui li hai inseriti.
+- Scrivi con il Marker anche partendo dal pulsante degli strumenti a pagina intera. Il trascinamento disegna sul foglio e un tocco breve continua ad aprire gli strumenti.
+- Rivedi testo manoscritto, valori delle celle e grafici a mano libera prima di convertirli in elementi modificabili. I segni non riconosciuti possono restare sul foglio.
+
+Vedi la [guida al collaudo funzionale](docs/COLLAUDO_FUNZIONALE.md) e lo [stato del rilascio e dell’installazione](docs/RILASCIO.md).
+
+## 0.2.24 in sviluppo
+
+- Invia dal Paper Pro la pagina corrente o l’intero quaderno come PDF annotato via Wi-Fi locale o Bluetooth. Il Mac abbinato salva il PDF nei Download e mostra la conferma di ricezione.
+- Invia il PDF come allegato dal Paper Pro tramite un server SMTP configurato in **Impostazioni → Account e servizi**. La connessione richiede TLS con verifica del certificato.
+- Passa tra le pagine Scrittura, Tabella, Grafico e Diagramma dallo stesso quaderno, usando le schede. Le sezioni della libreria aprono gli stessi elementi modificabili sulle pagine originali.
+
 ## 0.2.23 in sviluppo
 
 - Aggiunge una palette UML modificabile con classi, interfacce, oggetti, attori, casi d’uso, componenti, pacchetti, nodi di distribuzione e linee di vita. Le forme si possono scambiare tramite file draw.io. I quaderni con forme UML usano il formato portabile 14.

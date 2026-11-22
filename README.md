@@ -2,11 +2,11 @@
 
 **English** · [Italiano](README.it.md)
 
-Quaderno is an experimental native note-taking app for **reMarkable Paper Pro** and **Macs with Apple silicon**. It brings handwriting, text, tables, and document annotations together in a library stored on your device. **0.2.23 is a source preview.** Build this version from the repository. The `v0.1.0` tag identifies the original source preview. [Build instructions](docs/en/DEVELOPMENT.md) · [Release status](docs/en/RELEASE.md)
+Quaderno is an experimental native note-taking app for **reMarkable Paper Pro** and **Macs with Apple silicon**. It brings handwriting, text, tables, and document annotations together in a library stored on your device. **Version 3.0.0 is available as source code.** [GitHub release](https://github.com/GiorgioOppo/quaderno-public/releases/tag/v3.0.0) · [Build instructions](docs/en/DEVELOPMENT.md) · [Release status](docs/en/RELEASE.md)
 
 ## Screenshots from QA
 
-The Qt interface tests on macOS captured these screens from the 0.2.24 development build using synthetic notebooks. Select an image to view it at full size.
+The Qt interface tests on macOS captured these screens with synthetic notebooks. Select an image to view it at full size.
 
 | Full-page tools | Convert a sketch to a chart | Review handwritten cells |
 | --- | --- | --- |

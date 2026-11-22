@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -235,10 +236,67 @@ std::string asUtf8(const UCHR *result, size_t &resultLength)
     return text;
 }
 
-const char *transcribe(RECOGNIZER_PTR recognizer, const std::vector<Stroke> &strokes, std::string &text, std::vector<std::string> &alternatives)
+char asciiLower(char letter)
+{
+    return letter >= 'A' && letter <= 'Z' ? static_cast<char>(letter - 'A' + 'a') : letter;
+}
+
+std::string dictionaryAlternative(RECOGNIZER_PTR recognizer, int index, const std::string &word)
+{
+    if (word.size() < 4 || word.size() >= HW_MAXWORDLEN || word.back() != '0'
+        || !std::all_of(word.begin(), word.end() - 1, [](char c) { return asciiLower(c) >= 'a' && asciiLower(c) <= 'z'; }))
+        return {};
+
+    const int count = std::min(HWR_GetResultAlternativeCount(recognizer, index), 8);
+    for (int alternative = 1; alternative < count; ++alternative) {
+        size_t length = 0;
+        const auto candidate = asUtf8(HWR_GetResultWord(recognizer, index, alternative), length);
+        if (candidate.size() != word.size() || asciiLower(candidate.back()) != 'o')
+            continue;
+        if (!std::equal(candidate.begin(), candidate.end() - 1, word.begin(),
+                        [](char a, char b) { return asciiLower(a) == asciiLower(b); }))
+            continue;
+
+        // WritePad can skip uppercase strings during spelling checks. Check the lowercase word.
+        std::array<UCHR, HW_MAXWORDLEN> spelling{};
+        std::transform(candidate.begin(), candidate.end(), spelling.begin(), asciiLower);
+        if (HWR_IsWordInDict(recognizer, spelling.data()))
+            return candidate;
+    }
+    return {};
+}
+
+std::string rerankProseLine(RECOGNIZER_PTR recognizer, const std::string &line, int wordCount)
+{
+    std::string result = line;
+    size_t offset = 0;
+    for (int index = 0; index < wordCount; ++index) {
+        size_t length = 0;
+        const auto word = asUtf8(HWR_GetResultWord(recognizer, index, 0), length);
+        if (word.empty())
+            continue;
+        const size_t start = line.find(word, offset);
+        if (start == std::string::npos)
+            return line;
+        offset = start + word.size();
+        // Restrict changes to isolated words, away from hyphenated identifiers, URLs and tags.
+        const bool startsWord = start == 0 || line[start - 1] == ' ';
+        const bool endsWord = offset == line.size() || line[offset] == ' ';
+        if (!startsWord || !endsWord)
+            continue;
+        const std::string alternative = dictionaryAlternative(recognizer, index, word);
+        if (!alternative.empty())
+            result.replace(start, word.size(), alternative);
+    }
+    return result;
+}
+
+const char *transcribe(RECOGNIZER_PTR recognizer, const std::vector<Stroke> &strokes, bool prose,
+                       std::string &text, std::vector<std::string> &alternatives)
 {
     size_t resultLength = 0;
     const auto lines = readLines(strokes);
+    std::string rawText;
     std::vector<std::string> recognizedLines;
     std::vector<std::pair<size_t, std::string>> candidates;
     for (const auto &line : lines) {
@@ -266,14 +324,19 @@ const char *transcribe(RECOGNIZER_PTR recognizer, const std::vector<Stroke> &str
                 return emptyResult;
         }
         const auto *result = HWR_RecognizeInkData(recognizer, ink.get(), 0, -1, false, false, false, false);
-        const std::string lineText = asUtf8(result, resultLength);
-        if (!lineText.empty()) {
+        const std::string rawLine = asUtf8(result, resultLength);
+        if (!rawLine.empty()) {
             if (!text.empty()) {
                 text += '\n';
                 ++resultLength;
             }
-            text += lineText;
             const int wordCount = HWR_GetResultWordCount(recognizer);
+            const std::string lineText = prose ? rerankProseLine(recognizer, rawLine, wordCount) : rawLine;
+            text += lineText;
+            if (prose) {
+                if (!rawText.empty()) rawText += '\n';
+                rawText += rawLine;
+            }
             for (int word = 0; word < wordCount && candidates.size() < 2; ++word) {
                 const int count = HWR_GetResultAlternativeCount(recognizer, word);
                 for (int alternative = 1; alternative < count && candidates.size() < 2; ++alternative) {
@@ -294,13 +357,17 @@ const char *transcribe(RECOGNIZER_PTR recognizer, const std::vector<Stroke> &str
             return "La trascrizione supera 4.000 caratteri. Seleziona un passaggio più breve.";
     }
     alternatives.push_back(text);
+    if (prose && rawText != text)
+        alternatives.push_back(std::move(rawText));
     for (const auto &candidate : candidates) {
+        if (alternatives.size() >= 3)
+            break;
         std::string variant;
         for (size_t line = 0; line < recognizedLines.size(); ++line) {
             if (!variant.empty()) variant += '\n';
             variant += line == candidate.first ? candidate.second : recognizedLines[line];
         }
-        if (variant != text && variant.size() <= maxResultLength * 2)
+        if (variant.size() <= maxResultLength * 2 && std::find(alternatives.begin(), alternatives.end(), variant) == alternatives.end())
             alternatives.push_back(std::move(variant));
     }
     return text.empty() ? emptyResult : nullptr;
@@ -362,7 +429,9 @@ int main(int argc, char *argv[])
         return respond("error", message);
     std::string text;
     std::vector<std::string> alternatives;
-    if (const char *message = transcribe(recognizer.get(), strokes, text, alternatives))
+    const char *proseSetting = std::getenv("QUADERNO_HANDWRITING_PROSE");
+    const bool prose = proseSetting && std::strcmp(proseSetting, "1") == 0;
+    if (const char *message = transcribe(recognizer.get(), strokes, prose, text, alternatives))
         return respond("error", message);
     return respondText(text, alternatives);
 }

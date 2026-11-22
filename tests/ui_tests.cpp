@@ -123,7 +123,7 @@ struct TestHandwritingHelper {
     QStringList created;
     QString capturePath;
     bool ready = false;
-    explicit TestHandwritingHelper(bool captureInk = false)
+    explicit TestHandwritingHelper(bool captureInk = false, bool probeContext = false)
     {
         const QDir directory(QCoreApplication::applicationDirPath());
         for (const QString &name : {QStringLiteral("quaderno-handwriting"), QStringLiteral("quaderno-handwriting-it.dct"),
@@ -143,8 +143,12 @@ struct TestHandwritingHelper {
             if (!file.open(QIODevice::WriteOnly | QIODevice::NewOnly)) return;
             created.append(path);
             const QByteArray capture = captureInk ? QByteArray("cat > \"$0.ink\"\n") : QByteArray("cat >/dev/null\n");
+            const QByteArray proseResponse = probeContext ? QByteArray(
+                "if [ \"${QUADERNO_HANDWRITING_PROSE-}\" = 1 ]; then\n"
+                "    printf '%s\\n' '{\"text\":\"CIAO\",\"alternatives\":[\"CIAO\",\"CIA0\"]}'\n"
+                "    exit 0\nfi\n") : QByteArray{};
             const QByteArray contents = name.endsWith(".dct") ? QByteArray("test dictionary")
-                : "#!/bin/sh\n" + capture + "sleep 0.1\nprintf '%s\\n' '{\"text\":\"12\"}'\n";
+                : "#!/bin/sh\n" + capture + "sleep 0.1\n" + proseResponse + "printf '%s\\n' '{\"text\":\"12\"}'\n";
             if (file.write(contents) != contents.size()) return;
             file.close();
             if (!file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner)) return;
@@ -1730,6 +1734,42 @@ private slots:
         QCOMPARE(h.notebook.pageItems(), originalItems);
     }
 
+    void lassoOffersChartConversionInChartsWorkspace()
+    {
+        MainHarness h;
+        QVERIFY(h.window());
+        h.window()->resize(720, 760);
+        QVERIFY(QTest::qWaitForWindowExposed(h.window()));
+        const auto addInk = [&](std::initializer_list<QPointF> samples) {
+            QVariantList points;
+            for (const auto &point : samples)
+                points.append(QVariantMap{{"x", point.x()}, {"y", point.y()}, {"p", .6}});
+            return h.notebook.appendStroke({{"tool", "pen"}, {"color", "#222222"}, {"width", 2.5}, {"points", points}});
+        };
+        QVERIFY(addInk({{.2, .2}, {.2, .4}, {.2, .6}, {.2, .8}, {.4, .8}, {.6, .8}, {.8, .8}}));
+        QVERIFY(addInk({{.25, .72}, {.35, .66}, {.46, .57}, {.57, .6}, {.68, .48}, {.76, .38}}));
+        const auto originalInk = h.notebook.strokes();
+        QVERIFY(QMetaObject::invokeMethod(h.window(), "selectEditorWorkspace", Q_ARG(QString, QStringLiteral("charts"))));
+        QTRY_COMPARE(h.window()->property("penTool").toString(), QStringLiteral("select"));
+        QVERIFY(QMetaObject::invokeMethod(h.window(), "useLasso", Q_ARG(QVariant, QVariant(outline()))));
+        auto *convert = h.find<QQuickItem>("selectionRecognizeChart");
+        auto *editor = h.find<QObject>("chartEditor");
+        QVERIFY(convert && editor);
+        QTRY_VERIFY(convert->isVisible() && convert->isEnabled() && convert->width() > 40);
+        QTest::qWait(80);
+        h.screenshot("selection-chart-action");
+        QTest::mouseClick(h.window(), Qt::LeftButton, Qt::NoModifier,
+            convert->mapToScene(QPointF(convert->width() / 2, convert->height() / 2)).toPoint());
+        QTRY_VERIFY(editor->property("opened").toBool());
+        QVERIFY2(editor->property("recognitionError").toString().isEmpty(), qPrintable(editor->property("recognitionError").toString()));
+        auto chart = qmlMap(editor, "chart");
+        QCOMPARE(chart.value("chartKind").toString(), QStringLiteral("line"));
+        QVERIFY(chart.value("points").toList().size() >= 2);
+        QVERIFY(QMetaObject::invokeMethod(editor, "saveRequested", Q_ARG(QVariant, QVariant(chart))));
+        QTRY_COMPARE(h.notebook.pageItems().size(), 1);
+        QCOMPARE(h.notebook.strokes(), originalInk);
+    }
+
     void tableHandwritingReviewsCellsAndUndoRestoresInk()
     {
         MainHarness h(false);
@@ -1834,6 +1874,31 @@ private slots:
         QVERIFY(qmlList(dialog, "cellEntries").isEmpty());
         QCOMPARE(h.notebook.pageItems(), originalItems);
         QCOMPARE(h.notebook.strokes(), originalInk);
+    }
+
+    void handwritingProseContextStaysOutOfCellsAndLabels()
+    {
+        TestHandwritingHelper fixture(false, true);
+        QVERIFY(fixture.ready);
+        MainHarness h;
+        QVERIFY(h.window());
+        auto *recognizer = qvariant_cast<Handwriting *>(h.window()->property("handwritingEngine"));
+        QVERIFY(recognizer);
+        if (!recognizer->available()) QSKIP("Platform does not support the installed recognition helper.");
+        QVERIFY(h.addStroke());
+
+        QSignalSpy completed(recognizer, &Handwriting::finished);
+        QVERIFY(QMetaObject::invokeMethod(h.window(), "useLasso", Q_ARG(QVariant, QVariant(outline()))));
+        QTRY_COMPARE(completed.size(), 1);
+        QCOMPARE(recognizer->result(), QStringLiteral("CIAO"));
+        QCOMPARE(recognizer->alternatives(), (QStringList{QStringLiteral("CIAO"), QStringLiteral("CIA0")}));
+
+        recognizer->recognize(h.notebook.strokes(), QStringLiteral("it"));
+        QTRY_COMPARE(completed.size(), 2);
+        QCOMPARE(recognizer->result(), QStringLiteral("12"));
+        recognizer->recognizeDiagramLabel(h.notebook.strokes(), QStringLiteral("it"), QStringLiteral("auto"));
+        QTRY_COMPARE(completed.size(), 3);
+        QCOMPARE(recognizer->result(), QStringLiteral("12"));
     }
 
     void diagramLabelRecognitionEnlargesAndTurnsSmallVerticalInk_data()
@@ -2011,6 +2076,135 @@ private slots:
         QVERIFY(ink->isEnabled());
         QCOMPARE(h.notebook.strokes(), bothLayers);
         QCOMPARE(h.notebook.pageId(), pageId);
+    }
+
+    void fullscreenToolsOpenFromTouchHandle_data()
+    {
+        QTest::addColumn<int>("angle");
+        QTest::newRow("portrait") << 0;
+        QTest::newRow("landscape") << 90;
+    }
+
+    void fullscreenToolsOpenFromTouchHandle()
+    {
+        QFETCH(int, angle);
+        MainHarness h;
+        QVERIFY(h.window());
+        h.window()->resize(720, 760);
+        QVERIFY(QTest::qWaitForWindowExposed(h.window()));
+        QVERIFY(h.addBookBackground());
+        QVERIFY(h.addStroke());
+        const auto originalInk = h.notebook.strokes();
+        auto *preferences = h.find<TabletPreferences>("tabletPreferences");
+        QVERIFY(preferences && preferences->setProperty("orientation", angle));
+        QTRY_COMPARE(h.window()->property("appliedOrientation").toInt(), angle);
+        QVERIFY(QMetaObject::invokeMethod(h.window(), "setFullPage", Q_ARG(bool, true)));
+
+        auto *handle = h.find<QQuickItem>("fullscreenToolsButton");
+        auto *menu = h.find<QObject>("workspaceMoreMenu");
+        QVERIFY(handle && menu);
+        QTRY_VERIFY(handle->isVisible() && handle->isEnabled() && handle->width() > 40);
+        QTest::qWait(100);
+        auto *device = QTest::createTouchDevice();
+        const auto point = [&](int offset) {
+            return handle->mapToScene(QPointF(handle->width() / 2, handle->height() / 2 + offset)).toPoint();
+        };
+        const auto swipe = [&] {
+            auto touch = QTest::touchEvent(h.window(), device, false);
+            touch.press(0, point(0), h.window()).commit();
+            for (int y : {-24, -55, -92, -136}) {
+                touch.move(0, point(y), h.window()).commit();
+                QTest::qWait(16);
+            }
+            touch.release(0, point(-136), h.window()).commit();
+        };
+        swipe();
+        QTRY_VERIFY(menu->property("opened").toBool());
+        QVERIFY(menu->property("fullPage").toBool());
+        QVERIFY(h.window()->property("fullPage").toBool());
+        QCOMPARE(h.notebook.strokes(), originalInk);
+        QCOMPARE(h.notebook.page(), 0);
+
+        QQuickItem *note = nullptr;
+        QTRY_VERIFY((note = findVisualItem(h.window()->contentItem(), "workspaceToolsMenuAction_bookNote")));
+        QTRY_VERIFY(note->isVisible() && note->isEnabled());
+        QTest::qWait(100);
+        h.screenshot(QStringLiteral("fullscreen-tools-%1").arg(angle));
+        QTest::mouseClick(h.window(), Qt::LeftButton, Qt::NoModifier,
+            note->mapToScene(QPointF(note->width() / 2, note->height() / 2)).toPoint());
+        QTRY_VERIFY(!menu->property("visible").toBool());
+        QTRY_COMPARE(h.window()->property("bookAnchorKind").toString(), QStringLiteral("note"));
+        QVERIFY(h.window()->setProperty("bookAnchorKind", QString()));
+
+        QVERIFY(preferences->setProperty("gestureNavigationEnabled", false));
+        swipe();
+        QVERIFY(!menu->property("visible").toBool());
+        QTest::mouseClick(h.window(), Qt::LeftButton, Qt::NoModifier, point(0));
+        QTRY_VERIFY(menu->property("opened").toBool());
+        QCOMPARE(h.notebook.strokes(), originalInk);
+    }
+
+    void fullscreenToolsPreserveFreehandInk_data()
+    {
+        QTest::addColumn<int>("angle");
+        QTest::newRow("portrait") << 0;
+        QTest::newRow("landscape") << 90;
+    }
+
+    void fullscreenToolsPreserveFreehandInk()
+    {
+        QFETCH(int, angle);
+        MainHarness h;
+        QVERIFY(h.window());
+        h.window()->resize(720, 760);
+        QVERIFY(QTest::qWaitForWindowExposed(h.window()));
+        auto *preferences = h.find<TabletPreferences>("tabletPreferences");
+        auto *ink = h.find<InkItem>("inkPage");
+        auto *handle = h.find<QQuickItem>("fullscreenToolsButton");
+        auto *menu = h.find<QObject>("workspaceMoreMenu");
+        QVERIFY(preferences && ink && handle && menu);
+        QVERIFY(preferences->setProperty("orientation", angle));
+        QTRY_COMPARE(h.window()->property("appliedOrientation").toInt(), angle);
+        QVERIFY(QMetaObject::invokeMethod(h.window(), "setFullPage", Q_ARG(bool, true)));
+        QTRY_VERIFY(handle->isVisible() && handle->isEnabled() && handle->width() > 40);
+        QTest::qWait(80);
+
+        QPointingDevice pen("Full-page pen", 731033, QInputDevice::DeviceType::Stylus, QPointingDevice::PointerType::Pen,
+            QInputDevice::Capability::Position | QInputDevice::Capability::Pressure, 1, 1);
+        const QPointF start = handle->mapToScene(QPointF(handle->width() / 2, handle->height() / 2));
+        const QPointF local = ink->mapFromScene(start);
+        QVERIFY(ink->contains(local));
+        const auto point = [&](qreal x, qreal y) { return ink->mapToScene(local + QPointF(x, y)); };
+        tabletEvent(h.window(), pen, QEvent::TabletPress, start);
+        QVERIFY(ink->drawing() && ink->touchBlocked());
+        tabletEvent(h.window(), pen, QEvent::TabletMove, point(-9, -15));
+        tabletEvent(h.window(), pen, QEvent::TabletMove, point(8, -30));
+        tabletEvent(h.window(), pen, QEvent::TabletRelease, point(25, -43));
+        QTRY_COMPARE(h.notebook.strokes().size(), 1);
+        QCOMPARE(inkToolFromName(h.notebook.strokes().constFirst().toMap().value("tool").toString()), InkTool::Pen);
+        const auto points = h.notebook.strokes().constFirst().toMap().value("points").toList();
+        QCOMPARE(points.size(), 4);
+        QVERIFY(qAbs(points.constFirst().toMap().value("x").toDouble() - local.x() / ink->width()) < 0.00001);
+        QVERIFY(qAbs(points.constFirst().toMap().value("y").toDouble() - local.y() / ink->height()) < 0.00001);
+        QVERIFY(!ink->drawing() && !ink->touchBlocked());
+        QVERIFY(!menu->property("visible").toBool());
+        QVERIFY(h.notebook.undo());
+        QVERIFY(h.notebook.strokes().isEmpty());
+        QVERIFY(h.notebook.redo());
+        QCOMPARE(h.notebook.strokes().size(), 1);
+
+        tabletEvent(h.window(), pen, QEvent::TabletPress, start);
+        QEvent leave(QEvent::Leave);
+        QCoreApplication::sendEvent(h.window(), &leave);
+        tabletEvent(h.window(), pen, QEvent::TabletRelease, start);
+        QVERIFY(!ink->drawing() && !ink->touchBlocked());
+        QVERIFY(!menu->property("visible").toBool());
+        QCOMPARE(h.notebook.strokes().size(), 1);
+
+        tabletEvent(h.window(), pen, QEvent::TabletPress, start);
+        tabletEvent(h.window(), pen, QEvent::TabletRelease, start);
+        QTRY_VERIFY(menu->property("opened").toBool());
+        QCOMPARE(h.notebook.strokes().size(), 1);
     }
 
     void pinchZoomAndSwipeChangePage()

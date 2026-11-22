@@ -24,6 +24,7 @@ Dialog {
     property int previewRevision: 0
     property string pageFilter: "all"
     readonly property var summaries: previewRevision > 0 ? notebook.pageSummaries() : []
+    readonly property bool hasTypedPages: summaries.some(page => ["charts", "tables", "diagrams"].includes(page.workspace))
     readonly property var visiblePages: summaries.filter(page => pageFilter === "all"
         || (pageFilter === "bookmarks" ? page.bookmarked : page.annotated))
     readonly property int bookmarkCount: summaries.filter(page => page.bookmarked).length
@@ -69,6 +70,15 @@ Dialog {
         transferStatus = ""
         confirmingDelete = false
         positionSelected()
+    }
+
+    function pageTitle(page: var): string {
+        const labels = {
+            writing: qsTr("Scrittura"), charts: qsTr("Grafico"),
+            tables: qsTr("Tabella"), diagrams: qsTr("Diagramma")
+        }
+        const label = hasTypedPages ? labels[page.workspace] : ""
+        return label ? qsTr("%1 · %2").arg(label).arg(page.index + 1) : qsTr("Pagina %1").arg(page.index + 1)
     }
 
     function positionSelected() {
@@ -389,7 +399,7 @@ Dialog {
                     anchors.fill: parent
                     anchors.margins: 4 * overview.uiScale
                     padding: 8 * overview.uiScale
-                    text: qsTr("Pagina %1").arg(tile.pageIndex + 1)
+                    text: overview.pageTitle(tile.modelData)
                     focusPolicy: Qt.NoFocus
                     onClicked: overview.selectPage(tile.pageIndex)
                     onDoubleClicked: {

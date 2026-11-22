@@ -143,11 +143,13 @@ private:
         qreal width = 0;
         InkTool tool = InkTool::Pen;
         QList<InkPoint> points;
+        QPointer<QQuickItem> overlayTapItem;
         QString textTapId;
         QVariantMap tableTapCell;
         QString chartTapId;
         QString diagramTapId;
         QString noteTapId;
+        bool tapPending = false;
         bool pointPick = false;
         bool pointPickCancelled = false;
         QPointF textTapStart;
@@ -165,7 +167,7 @@ private:
     void dispatchMarker(Phase phase, QPointF windowPoint, qreal pressure, bool eraserTip);
     void cancelMarker();
     void releaseMarkerWindow();
-    bool inputOverlayContains(QPointF position) const;
+    QQuickItem *inputOverlayAt(QPointF position) const;
     bool handleInput(Source source, Phase phase, QPointF position, qreal pressure, bool eraserTip = false);
     void addPoint(QPointF position, qreal pressure);
     void addLassoPoint(const InkPoint &point);

@@ -9,12 +9,19 @@ Dialog {
     required property WirelessSync wireless
     required property Notebook notebook
     required property real uiScale
+    property var screenStream: null
     property string syncLabel: ""
     property var preferences: null
     property string automationStatus: ""
     property bool bluetoothOnly: false
+    property bool screenStartRequested: false
+    property bool allowRemoteNavigationOnStart: false
+    readonly property bool sharingScreen: Boolean(screenStream?.active)
+    readonly property bool remoteNavigationChecked: sharingScreen
+        ? Boolean(screenStream.remoteNavigationAllowed) : allowRemoteNavigationOnStart
     signal resumeOpened()
     signal automaticSyncRequested()
+    signal screenViewerRequested()
     readonly property BleSync transfer: wireless.transfer
     readonly property var summary: transfer.previewInfo
     readonly property string action: summary.action || ""
@@ -36,9 +43,20 @@ Dialog {
     onClosed: {
         codeInput.clear()
         forgetConfirmation.visible = false
+        const startScreen = screenStartRequested
+        const allowRemoteNavigation = allowRemoteNavigationOnStart
+        screenStartRequested = false
+        allowRemoteNavigationOnStart = false
+        if (startScreen && screenStream?.available) {
+            if (allowRemoteNavigation)
+                screenStream.startWithRemoteNavigation()
+            else
+                screenStream.start()
+        }
     }
 
     function begin(bluetooth = false) {
+        allowRemoteNavigationOnStart = false
         bluetoothOnly = bluetooth && (!wireless.active || wireless.bluetoothActive)
         if (!addressInput.text.length)
             addressInput.text = wireless.savedWifiAddress
@@ -102,6 +120,62 @@ Dialog {
             Note {
                 visible: dialog.wireless.paired && !dialog.wireless.active
                 text: qsTr("L’abbinamento è salvato. Per il Wi-Fi, avvia il collegamento anche sul Paper Pro e verifica che entrambi siano sulla stessa rete.")
+            }
+
+            CheckBox {
+                id: remoteNavigation
+                objectName: "wirelessRemoteNavigationCheckBox"
+                visible: !dialog.bluetoothOnly && dialog.wireless.tablet && dialog.screenStream !== null
+                Layout.fillWidth: true
+                Layout.minimumHeight: 44 * dialog.uiScale
+                font.pixelSize: 15 * dialog.uiScale
+                text: qsTr("Consenti il controllo dal Mac")
+                checkState: dialog.remoteNavigationChecked ? Qt.Checked : Qt.Unchecked
+                Accessible.description: remoteNavigationExplanation.text
+                nextCheckState: function() {
+                    const allowed = !dialog.remoteNavigationChecked
+                    if (dialog.sharingScreen)
+                        dialog.screenStream.setRemoteNavigationAllowed(allowed)
+                    else
+                        dialog.allowRemoteNavigationOnStart = allowed
+                    return dialog.remoteNavigationChecked ? Qt.Checked : Qt.Unchecked
+                }
+            }
+            Note {
+                id: remoteNavigationExplanation
+                visible: remoteNavigation.visible
+                text: qsTr("Il Mac può aprire documenti, crearli e salvare modifiche in Quaderno durante questa diretta. Chiudi il pannello per usare i comandi.")
+                color: "#555b67"
+            }
+            SyncButton {
+                objectName: "wirelessScreenStreamButton"
+                visible: !dialog.bluetoothOnly && dialog.screenStream !== null
+                enabled: !dialog.wireless.tablet || Boolean(dialog.screenStream?.available || dialog.screenStream?.active)
+                text: !dialog.wireless.tablet ? qsTr("Apri Schermo del Paper Pro")
+                    : dialog.screenStream?.active ? qsTr("Interrompi condivisione")
+                    : qsTr("Condividi schermo via Wi-Fi")
+                Accessible.name: text
+                onClicked: {
+                    if (!dialog.wireless.tablet) {
+                        dialog.close()
+                        dialog.screenViewerRequested()
+                    } else if (dialog.screenStream.active) {
+                        dialog.screenStream.stop()
+                    } else if (dialog.screenStream.available) {
+                        dialog.screenStartRequested = true
+                        dialog.close()
+                    }
+                }
+            }
+            Note {
+                visible: !dialog.bluetoothOnly && dialog.wireless.tablet && dialog.screenStream !== null
+                         && !dialog.screenStream.available && !dialog.screenStream.active
+                text: qsTr("Per iniziare, collega il Mac via Wi-Fi e apri la finestra Schermo del Paper Pro.")
+            }
+            Note {
+                visible: !dialog.bluetoothOnly && dialog.wireless.tablet && text.length > 0
+                text: dialog.screenStream?.status || ""
+                color: "#555b67"
             }
 
             Note {

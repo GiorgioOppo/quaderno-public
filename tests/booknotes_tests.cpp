@@ -332,6 +332,8 @@ private slots:
         const auto previousWriting = notebook.bookId();
         QVERIFY(notebook.savePageLink(previousDiagram, {.09, .966}, previousWriting, notebook.pageId()));
         QVERIFY(notebook.savePageLink(previousTable, {.17, .966}, previousWriting, notebook.pageId()));
+        for (const auto &entry : notebook.pageItems().sliced(1))
+            QVERIFY(!notebook.linkedPageItem(entry.toMap().value("id").toString()).value("internalObjectSheet").toBool());
 
         QVERIFY(notebook.createBookInFolder("Scanned notes", folderId));
         QVERIFY(notebook.appendStroke(stroke()));
@@ -361,12 +363,23 @@ private slots:
         QCOMPARE(notebook.books().last().toMap().value("folderId").toString(), folderId);
         QCOMPARE(notebook.pageCount(), 3);
         QCOMPARE(notebook.markdownText(), markdown);
+        QCOMPARE(notebook.pageWorkspace(), QStringLiteral("writing"));
         for (auto entry = originals.cbegin(); entry != originals.cend(); ++entry)
             QCOMPARE(notebook.exportBookForTransfer(entry.key()), entry.value());
         const auto writingBook = notebook.bookId();
         const auto writingPage = notebook.pageId();
 
         const auto pageItems = notebook.pageItems();
+        const auto summaries = notebook.pageSummaries();
+        QCOMPARE(summaries.size(), 3);
+        QCOMPARE(summaries.first().toMap().value("workspace").toString(), QStringLiteral("writing"));
+        QMap<QString, QVariantMap> indexedItems;
+        for (const auto &entry : notebook.libraryItems()) {
+            const auto item = entry.toMap();
+            if (item.value("bookId").toString() == writingBook)
+                indexedItems.insert(item.value("type").toString(), item);
+        }
+        QCOMPARE(indexedItems.size(), 2);
         QCOMPARE(pageItems.size(), 3);
         const auto text = pageItems.at(0).toMap();
         QCOMPARE(text.value("type").toString(), QStringLiteral("text"));
@@ -382,9 +395,19 @@ private slots:
             QCOMPARE(target.value("id"), link.value("targetItemId"));
             QCOMPARE(target.value("bookId"), link.value("targetBookId"));
             QCOMPARE(target.value("pageId"), link.value("targetPageId"));
+            QVERIFY(target.value("internalPage").toBool());
+            QVERIFY(target.value("internalObjectSheet").toBool());
             const int number = notebook.bookPageNumber(writingBook, target.value("pageId").toString());
             QCOMPARE(target.value("pageNumber").toInt(), number);
-            QCOMPARE(number, target.value("type").toString() == QStringLiteral("diagram") ? 2 : 3);
+            const QString kind = target.value("type").toString();
+            QCOMPARE(number, kind == QStringLiteral("diagram") ? 2 : 3);
+            const auto summary = summaries.at(number - 1).toMap();
+            QCOMPARE(summary.value("pageId"), target.value("pageId"));
+            QCOMPARE(summary.value("workspace").toString(), kind + u's');
+            QCOMPARE(target.value("pageWorkspace"), summary.value("workspace"));
+            QCOMPARE(summary.value("title"), target.value("displayTitle"));
+            QCOMPARE(indexedItems.value(kind).value("itemId"), target.value("id"));
+            QCOMPARE(indexedItems.value(kind).value("pageId"), target.value("pageId"));
             targetPages.insert(number);
             QVERIFY(!target.value("displayTitle").toString().isEmpty());
             links.insert(target.value("type").toString(), link);
@@ -404,6 +427,7 @@ private slots:
         auto diagram = reopened.openPageLink(diagramLinkId);
         QCOMPARE(reopened.bookId(), writingBook);
         QCOMPARE(reopened.pageId(), diagramLink.value("targetPageId").toString());
+        QCOMPARE(reopened.pageWorkspace(), QStringLiteral("diagrams"));
         QCOMPARE(diagram.value("nodes"), mixedDiagram().value("nodes"));
         auto nodes = diagram.value("nodes").toList();
         auto node = nodes.first().toMap();
@@ -416,6 +440,7 @@ private slots:
         auto table = reopened.openPageLink(tableLinkId);
         QCOMPARE(reopened.bookId(), writingBook);
         QCOMPARE(reopened.pageId(), tableLink.value("targetPageId").toString());
+        QCOMPARE(reopened.pageWorkspace(), QStringLiteral("tables"));
         auto cells = table.value("cells").toList();
         QCOMPARE(cells, mixedTable().value("cells").toList());
         cells[2] = QStringLiteral("12");
@@ -455,6 +480,52 @@ private slots:
         }
         for (auto entry = originals.cbegin(); entry != originals.cend(); ++entry)
             QCOMPARE(reopened.exportBookForTransfer(entry.key()), entry.value());
+    }
+
+    void writingAndChartPagesKeepTheirOwnWorkspaces()
+    {
+        QTemporaryDir directory;
+        Notebook notebook(directory.filePath("library.json"));
+        QVERIFY(notebook.createBook("Weekly review"));
+        const QString book = notebook.bookId();
+        const QString writingPage = notebook.pageId();
+        QVERIFY(notebook.savePageItem({{"type", "text"}, {"text", "Weekly notes"}}));
+        QVERIFY(notebook.savePageItem(mixedTable()));
+        QCOMPARE(notebook.pageWorkspace(), QStringLiteral("writing"));
+
+        const QVariantMap chart{{"type", "chart"}, {"chartKind", "line"}, {"title", "Trend"},
+            {"points", QVariantList{QVariantMap{{"x", .2}, {"y", .3}}, QVariantMap{{"x", .7}, {"y", .8}}}}};
+        QVERIFY(notebook.savePageItemOnNewPage(chart));
+        QVERIFY(notebook.appendStroke(stroke()));
+        const QString chartPage = notebook.pageId();
+        QCOMPARE(notebook.pageWorkspace(), QStringLiteral("charts"));
+        QCOMPARE(notebook.bookId(), book);
+        QCOMPARE(notebook.pageCount(), 2);
+        QCOMPARE(notebook.pageItems().size(), 1);
+        const auto chartId = notebook.pageItems().first().toMap().value("id").toString();
+        QVERIFY(notebook.openPage(writingPage));
+        QCOMPARE(notebook.pageWorkspace(), QStringLiteral("writing"));
+
+        const auto items = notebook.libraryItems();
+        QCOMPARE(items.size(), 2);
+        const auto entry = items.at(1).toMap();
+        QCOMPARE(entry.value("type").toString(), QStringLiteral("chart"));
+        QCOMPARE(entry.value("bookId").toString(), book);
+        QCOMPARE(entry.value("pageId").toString(), chartPage);
+        QCOMPARE(entry.value("itemId").toString(), chartId);
+        auto openedChart = notebook.openLibraryItem(book, chartPage, chartId);
+        QCOMPARE(openedChart.value("id").toString(), chartId);
+        QCOMPARE(notebook.pageWorkspace(), QStringLiteral("charts"));
+        openedChart.insert("title", QStringLiteral("Updated trend"));
+        QVERIFY(notebook.savePageItem(openedChart));
+        QVERIFY(notebook.goToPage(0));
+        QVERIFY(notebook.goToPage(1));
+        QCOMPARE(notebook.pageItems().first().toMap().value("title").toString(), QStringLiteral("Updated trend"));
+        QVERIFY(notebook.savePageLink(items.first().toMap(), {.09, .966}, book, chartPage));
+        const auto linkedTable = notebook.linkedPageItem(notebook.pageItems().last().toMap().value("id").toString());
+        QVERIFY(linkedTable.value("internalPage").toBool());
+        QVERIFY(!linkedTable.value("internalObjectSheet").toBool());
+        QCOMPARE(linkedTable.value("pageWorkspace").toString(), QStringLiteral("writing"));
     }
 
     void copiedMixedBookLinksResolveToTheirOwnPages_data()

@@ -26,7 +26,7 @@ elseif(UNIX)
     target_link_libraries(quaderno_test_core PUBLIC ${CMAKE_DL_LIBS})
 endif()
 
-foreach(suite regression lasso reader blesync tabletpreferences markerbattery librarymaintenance cloud diagramrecognition diagramcontext screenorientation booknotes)
+foreach(suite regression lasso reader blesync tabletpreferences markerbattery librarymaintenance cloud chartrecognition diagramrecognition diagramcontext screenorientation booknotes)
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${suite}_tests.cpp")
         qt_add_executable(${suite}_tests "${suite}_tests.cpp")
         target_link_libraries(${suite}_tests PRIVATE quaderno_test_core Qt6::Test)
@@ -47,6 +47,7 @@ set_tests_properties(sync PROPERTIES TIMEOUT 45)
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/wirelesssync_tests.cpp")
     qt_add_executable(wirelesssync_tests wirelesssync_tests.cpp
         ../src/wirelesssync.cpp ../src/wirelesssync.h ../src/blesync.cpp ../src/blesync.h
+        ../src/screenstream.cpp ../src/screenstream.h ../src/screencapture.cpp ../src/screencapture.h
         ../src/deltatransfer.cpp ../src/deltatransfer.h ../src/syncchannel.cpp ../src/syncchannel.h
         ../src/blepipe.cpp ../src/blepipe.h ../src/wifisynclink.cpp ../src/wifisynclink.h
         ../src/syncrendezvous.cpp ../src/syncrendezvous.h)
@@ -68,6 +69,15 @@ qt_add_executable(syncrendezvous_tests syncrendezvous_tests.cpp
 target_include_directories(syncrendezvous_tests PRIVATE ../src)
 target_link_libraries(syncrendezvous_tests PRIVATE Qt6::Network Qt6::Test)
 add_test(NAME syncrendezvous COMMAND syncrendezvous_tests)
+
+qt_add_executable(smtp_tests smtp_tests.cpp ../src/smtpclient.cpp ../src/smtpclient.h)
+target_include_directories(smtp_tests PRIVATE ../src)
+target_link_libraries(smtp_tests PRIVATE Qt6::Test Qt6::Network OpenSSL::SSL)
+add_test(NAME smtp COMMAND smtp_tests)
+set_tests_properties(smtp PROPERTIES TIMEOUT 45)
+if(APPLE)
+    set_tests_properties(smtp PROPERTIES ENVIRONMENT "DYLD_LIBRARY_PATH=$<TARGET_FILE_DIR:OpenSSL::SSL>")
+endif()
 
 qt_add_executable(paperprosshaccess_tests paperprosshaccess_tests.cpp
     ../src/paperprosshaccess.cpp ../src/paperprosshaccess.h)

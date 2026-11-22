@@ -72,15 +72,12 @@ jobs:
             -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/qt/$QT_VERSION/${{ matrix.qt-directory }}" "${openssl_options[@]}"
           cmake --build build-ci --parallel 2
 
-      - name: Regression tests
+      - name: Functional QA gate and rendered startup
         run: |
           if [ "$RUNNER_OS" = Linux ]; then
             export LD_LIBRARY_PATH="$RUNNER_TEMP/pdfium/pypdfium2_raw${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
           fi
-          ctest --test-dir build-ci --output-on-failure
-
-      - name: Check desktop and tablet layout startup
-        run: python3 scripts/check-startup.py '${{ matrix.binary }}'
+          python3 scripts/run-qa.py build-ci --binary '${{ matrix.binary }}'
 
   paper-pro:
     name: Paper Pro 3.29.1.0 SDK build

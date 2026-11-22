@@ -8,6 +8,7 @@
 #include <QJsonObject>
 #include <QOperatingSystemVersion>
 #include <QPointF>
+#include <QProcessEnvironment>
 #include <QRegularExpression>
 
 #include <algorithm>
@@ -296,12 +297,17 @@ void Handwriting::recognize(const QVariantList &strokes, const QString &language
     recognizeInk(strokes, language, {});
 }
 
+void Handwriting::recognizeProse(const QVariantList &strokes, const QString &language)
+{
+    recognizeInk(strokes, language, {}, true);
+}
+
 void Handwriting::recognizeDiagramLabel(const QVariantList &strokes, const QString &language, const QString &orientation)
 {
     recognizeInk(strokes, language, orientation.isEmpty() ? QStringLiteral("auto") : orientation);
 }
 
-void Handwriting::recognizeInk(const QVariantList &strokes, const QString &language, const QString &labelOrientation)
+void Handwriting::recognizeInk(const QVariantList &strokes, const QString &language, const QString &labelOrientation, bool prose)
 {
     if (m_busy)
         return;
@@ -320,6 +326,7 @@ void Handwriting::recognizeInk(const QVariantList &strokes, const QString &langu
         return;
     }
     m_language = language;
+    m_prose = prose;
     m_alternatives.clear();
     QString error;
     const QJsonArray ink = validatedInk(strokes, error);
@@ -351,6 +358,13 @@ void Handwriting::startProcess()
 {
     m_waitingForExit = false;
     m_process.setStandardErrorFile(QProcess::nullDevice());
+    auto environment = QProcessEnvironment::systemEnvironment();
+    const auto proseKey = QStringLiteral("QUADERNO_HANDWRITING_PROSE");
+    if (m_prose)
+        environment.insert(proseKey, QStringLiteral("1"));
+    else
+        environment.remove(proseKey);
+    m_process.setProcessEnvironment(environment);
     m_timeout.start(60'000);
     // No arguments retains compatibility with the previous Italian-only helper.
     const QStringList arguments = m_language == QStringLiteral("it") ? QStringList{}

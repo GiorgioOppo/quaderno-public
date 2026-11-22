@@ -26,17 +26,9 @@ struct QuadernoHandwriting {
             let data = try readInput()
             let paths = try JSONDecoder().decode([[[Double]]].self, from: data)
             let drawing = try makeDrawing(paths)
-            let languages = [Locale.Language(identifier: language)]
-            let recognizer = PKStrokeRecognizer(preferredLanguages: languages)
-            await recognizer.updateDrawing(drawing)
-            var text = await recognizer.recognizedText()?.trimmingCharacters(in: .whitespacesAndNewlines)
-            var alternatives: [String] = []
-            if text?.isEmpty != false {
-                alternatives = (try? recognizeImage(drawing, language: language)) ?? []
-                text = alternatives.first
-            }
-            if let text, !text.isEmpty {
-                response = Response(text: text, alternatives: alternatives.isEmpty ? [text] : alternatives)
+            let alternatives = await recognize(drawing, language: language)
+            if let text = alternatives.first {
+                response = Response(text: text, alternatives: alternatives)
             } else {
                 response = Response(error: "Non è stato riconosciuto alcun testo.")
             }
@@ -106,7 +98,63 @@ struct QuadernoHandwriting {
         return PKDrawing(strokes: strokes)
     }
 
-    private static func recognizeImage(_ drawing: PKDrawing, language: String) throws -> [String] {
+    private static func recognize(_ drawing: PKDrawing, language: String) async -> [String] {
+        let magnitude = magnitudeAfterLeadingMinus(drawing)
+        if let magnitude {
+            let candidates = numericCandidates(magnitude, language: language)
+            if !candidates.isEmpty { return candidates.map { "-" + $0 } }
+        }
+
+        let recognizer = PKStrokeRecognizer(preferredLanguages: [Locale.Language(identifier: language)])
+        await recognizer.updateDrawing(drawing)
+        let text = await recognizer.recognizedText()?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let fullCandidates = if let text, !text.isEmpty { [text] }
+            else { (try? recognizeImage(drawing, language: language)) ?? [] }
+        if let first = fullCandidates.first {
+            if isUnsignedNumber(first), magnitude != nil {
+                return fullCandidates.filter(isUnsignedNumber).map { "-" + $0 }
+            }
+            return fullCandidates
+        }
+
+        let numeric = numericCandidates(drawing, language: language)
+        return numeric.map { magnitude == nil ? $0 : "-" + $0 }
+    }
+
+    private static func numericCandidates(_ drawing: PKDrawing, language: String) -> [String] {
+        // The fast model reads isolated numerals even when the prose model discards them.
+        let candidates = (try? recognizeImage(drawing, language: language, numericFallback: true)) ?? []
+        return candidates.filter(isUnsignedNumber)
+    }
+
+    private static func isUnsignedNumber(_ text: String) -> Bool {
+        text.range(of: #"\A[0-9]+(?:[.,][0-9]+)?\z"#, options: .regularExpression) != nil
+    }
+
+    private static func magnitudeAfterLeadingMinus(_ drawing: PKDrawing) -> PKDrawing? {
+        var strokes = drawing.strokes
+        guard strokes.count > 1, let index = strokes.indices.min(by: {
+            strokes[$0].renderBounds.minX < strokes[$1].renderBounds.minX
+        }) else { return nil }
+        let path = strokes.remove(at: index).path
+        guard let first = path.first?.location, let last = path.last?.location else { return nil }
+        let xs = path.map { $0.location.x }
+        let ys = path.map { $0.location.y }
+        guard let left = xs.min(), let right = xs.max(), let top = ys.min(), let bottom = ys.max() else { return nil }
+        let width = right - left
+        guard width >= 4, bottom - top <= width * 0.2, abs(last.x - first.x) >= width * 0.8 else { return nil }
+
+        let magnitude = PKDrawing(strokes: strokes)
+        let body = magnitude.bounds
+        let gap = body.minX - right
+        let centerY = (top + bottom) / 2
+        guard width >= body.height * 0.14, width <= body.height * 1.1,
+            gap >= -1, gap <= body.height * 0.8,
+            centerY >= body.minY + body.height * 0.2, centerY <= body.maxY - body.height * 0.2 else { return nil }
+        return magnitude
+    }
+
+    private static func recognizeImage(_ drawing: PKDrawing, language: String, numericFallback: Bool = false) throws -> [String] {
         let bounds = drawing.bounds.insetBy(dx: -9, dy: -9)
         guard !bounds.isEmpty else { return [] }
 
@@ -139,7 +187,9 @@ struct QuadernoHandwriting {
 
         guard let image = context.makeImage() else { return [] }
         let request = VNRecognizeTextRequest()
-        request.recognitionLevel = .accurate
+        request.recognitionLevel = numericFallback ? .fast : .accurate
+        request.usesLanguageCorrection = !numericFallback
+        if numericFallback { request.minimumTextHeight = 0.01 }
         for (stage, devices) in try request.supportedComputeStageDevices {
             for device in devices {
                 if case .cpu = device {

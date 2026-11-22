@@ -997,8 +997,23 @@ public:
                 ? MixedPageRegions::mask(detail, diagramRegions) : QImage{};
             const auto labelJobs = nativeLabels.isEmpty() ? diagramLabelJobs(diagram, diagramLines, rasterCaptionImage) : nativeLabels;
             draft.insert(QStringLiteral("diagramInk"), labelJobs);
-            const auto tableLines = !cancel->load() && table.isEmpty()
+            QList<QList<QRectF>> nativeCells;
+            if (table.isEmpty() && tableRegions.size() == 1 && !nativeStrokes.isEmpty() && !cancel->load()) {
+                // An embedded image can also contain a grid. Use the native ink
+                // alone here so only a grid drawn with the pen takes this path.
+                const auto ink = items.isEmpty() ? image
+                    : renderPage({{QStringLiteral("strokes"), nativeStrokes}}, {}, analysisSize);
+                nativeCells = MixedPageTable::cells(MixedPageRegions::mask(ink, tableRegions),
+                    tableRegions.first().boundingRect());
+            }
+            const auto tableLines = !cancel->load() && table.isEmpty() && nativeCells.isEmpty()
                 ? textLines(image, tableRegions, nativeStrokes).mid(0, maxTableRows) : QVariantList{};
+            if (!nativeCells.isEmpty() && !cancel->load()) {
+                const QString emptyRow(nativeCells.first().size() - 1, u'\t');
+                draft.insert(QStringLiteral("tableText"), QStringList(nativeCells.size(), emptyRow).join(u'\n'));
+                draft.insert(QStringLiteral("tableCellInk"),
+                    MixedPageTable::cellInk(nativeCells, nativeStrokes, tableRegions.first()));
+            }
             const auto proseLines = !cancel->load() && text.isEmpty()
                 ? textLines(image, textRegions, nativeStrokes).mid(0, maxProseLines) : QVariantList{};
             draft.insert(QStringLiteral("tableInk"), tableLines);

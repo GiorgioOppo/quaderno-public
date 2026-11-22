@@ -699,30 +699,28 @@ void InkItem::geometryChange(const QRectF &geometry, const QRectF &previousGeome
     }
 }
 
-bool InkItem::inputOverlayContains(QPointF position) const
+QQuickItem *InkItem::inputOverlayAt(QPointF position) const
 {
-    if (!m_inputOverlay)
-        return false;
-    const auto hit = [this, position](auto &&self, QQuickItem *item) -> bool {
+    const auto find = [this, position](auto &&self, QQuickItem *item) -> QQuickItem * {
         if (!item || !item->isVisible() || !item->isEnabled())
-            return false;
+            return nullptr;
         const QPointF local = item->mapFromItem(this, position);
         if (item->clip() && !item->contains(local))
-            return false;
+            return nullptr;
         if (item->property("blocksInk").toBool() && item->contains(local))
-            return true;
+            return item;
         for (QQuickItem *child : item->childItems()) {
-            if (self(self, child))
-                return true;
+            if (auto *hit = self(self, child))
+                return hit;
         }
-        return false;
+        return nullptr;
     };
-    return hit(hit, m_inputOverlay);
+    return find(find, m_inputOverlay);
 }
 
 QString InkItem::textItemAt(QPointF position) const
 {
-    if (!isVisible() || inputOverlayContains(position) || !contains(position) || !insideAncestorClips(*this, position)
+    if (!isVisible() || inputOverlayAt(position) || !contains(position) || !insideAncestorClips(*this, position)
         || width() <= 0 || height() <= 0)
         return {};
 
@@ -738,7 +736,7 @@ QString InkItem::textItemAt(QPointF position) const
 
 QString InkItem::noteItemAt(QPointF position) const
 {
-    if (!isVisible() || inputOverlayContains(position) || !contains(position) || !insideAncestorClips(*this, position)
+    if (!isVisible() || inputOverlayAt(position) || !contains(position) || !insideAncestorClips(*this, position)
         || width() <= 0 || height() <= 0)
         return {};
     const QPointF point(position.x() / width(), position.y() / height());
@@ -755,7 +753,7 @@ QString InkItem::noteItemAt(QPointF position) const
 
 QVariantMap InkItem::tableCellAt(QPointF position) const
 {
-    if (!isVisible() || inputOverlayContains(position) || !contains(position) || !insideAncestorClips(*this, position)
+    if (!isVisible() || inputOverlayAt(position) || !contains(position) || !insideAncestorClips(*this, position)
         || width() <= 0 || height() <= 0)
         return {};
 
@@ -801,7 +799,7 @@ QVariantMap InkItem::tableCellAt(QPointF position) const
 
 QString InkItem::chartItemAt(QPointF position) const
 {
-    if (!isVisible() || inputOverlayContains(position) || !contains(position) || !insideAncestorClips(*this, position)
+    if (!isVisible() || inputOverlayAt(position) || !contains(position) || !insideAncestorClips(*this, position)
         || width() <= 0 || height() <= 0)
         return {};
 
@@ -817,7 +815,7 @@ QString InkItem::chartItemAt(QPointF position) const
 
 QString InkItem::diagramItemAt(QPointF position) const
 {
-    if (!isVisible() || inputOverlayContains(position) || !contains(position) || !insideAncestorClips(*this, position)
+    if (!isVisible() || inputOverlayAt(position) || !contains(position) || !insideAncestorClips(*this, position)
         || width() <= 0 || height() <= 0)
         return {};
 
@@ -843,8 +841,11 @@ bool InkItem::handleInput(Source source, Phase phase, QPointF position, qreal pr
     }
     if (phase == Phase::Press) {
         if (m_live.source != Source::None || !isVisible() || !isEnabled()
-            || inputOverlayContains(position) || m_image.isNull() || !contains(position) || (m_lassoMode && eraserTip)
+            || m_image.isNull() || !contains(position) || (m_lassoMode && eraserTip)
             || !insideAncestorClips(*this, position) || (m_pointPicking && eraserTip))
+            return false;
+        const QPointer<QQuickItem> overlay = inputOverlayAt(position);
+        if (overlay && (source == Source::Mouse || m_pointPicking || !overlay->property("allowPenDrag").toBool()))
             return false;
         emit inputActivity();
         m_inputActivity.start();
@@ -854,6 +855,8 @@ bool InkItem::handleInput(Source source, Phase phase, QPointF position, qreal pr
         m_live.color = m_inkColor;
         m_live.width = m_inkWidth;
         m_live.tool = eraserTip ? InkTool::Eraser : m_inkTool;
+        if (!eraserTip)
+            m_live.overlayTapItem = overlay;
         emit drawingChanged();
         if (m_pointPicking) {
             m_live.pointPick = true;
@@ -864,9 +867,10 @@ bool InkItem::handleInput(Source source, Phase phase, QPointF position, qreal pr
         }
         if (!m_lassoMode && m_live.tool == InkTool::Eraser)
             prepareEraser();
-        if (!m_lassoMode && m_live.tool != InkTool::Eraser)
+        if (!overlay && !m_lassoMode && m_live.tool != InkTool::Eraser)
             m_live.noteTapId = noteItemAt(position);
-        if (m_live.noteTapId.isEmpty() && !m_lassoMode && (m_live.tool == InkTool::Pen || m_live.tool == InkTool::Pencil || m_live.tool == InkTool::Marker)) {
+        if (!overlay && m_live.noteTapId.isEmpty() && !m_lassoMode
+            && (m_live.tool == InkTool::Pen || m_live.tool == InkTool::Pencil || m_live.tool == InkTool::Marker)) {
             m_live.textTapId = textItemAt(position);
             if (m_live.textTapId.isEmpty()) {
                 const QVariantMap cell = tableCellAt(position);
@@ -881,9 +885,11 @@ bool InkItem::handleInput(Source source, Phase phase, QPointF position, qreal pr
                 }
             }
         }
-        if (m_live.textTapId.isEmpty() && m_live.tableTapCell.isEmpty() && m_live.chartTapId.isEmpty() && m_live.diagramTapId.isEmpty() && m_live.noteTapId.isEmpty()) {
+        if (!m_live.overlayTapItem && m_live.textTapId.isEmpty() && m_live.tableTapCell.isEmpty()
+            && m_live.chartTapId.isEmpty() && m_live.diagramTapId.isEmpty() && m_live.noteTapId.isEmpty()) {
             addPoint(position, pressure);
         } else {
+            m_live.tapPending = true;
             m_live.textTapStart = position;
             m_live.textTapPressure = pressure;
             m_live.textTapTime.start();
@@ -908,33 +914,41 @@ bool InkItem::handleInput(Source source, Phase phase, QPointF position, qreal pr
         return true;
     }
 
-    if (!m_live.textTapId.isEmpty() || !m_live.tableTapCell.isEmpty() || !m_live.chartTapId.isEmpty() || !m_live.diagramTapId.isEmpty() || !m_live.noteTapId.isEmpty()) {
+    if (m_live.tapPending) {
         const auto *hints = QGuiApplication::styleHints();
-        const bool sameTarget = !m_live.noteTapId.isEmpty() ? noteItemAt(position) == m_live.noteTapId
+        const auto &overlay = m_live.overlayTapItem;
+        const bool sameTarget = overlay ? overlay->isVisible() && overlay->contains(overlay->mapFromItem(this, position))
+            : !m_live.noteTapId.isEmpty() ? noteItemAt(position) == m_live.noteTapId
             : !m_live.textTapId.isEmpty() ? textItemAt(position) == m_live.textTapId
             : !m_live.chartTapId.isEmpty() ? chartItemAt(position) == m_live.chartTapId
             : !m_live.diagramTapId.isEmpty() ? diagramItemAt(position) == m_live.diagramTapId
-            : tableCellAt(position) == m_live.tableTapCell;
-        const bool stillTap = QLineF(position, m_live.textTapStart).length() < hints->startDragDistance()
+            : !m_live.tableTapCell.isEmpty() && tableCellAt(position) == m_live.tableTapCell;
+        // Keep ordinary button taps, while preserving pen strokes shorter than the system drag threshold.
+        const int dragDistance = overlay ? std::min(5, hints->startDragDistance()) : hints->startDragDistance();
+        const bool stillTap = QLineF(position, m_live.textTapStart).length() < dragDistance
             && m_live.textTapTime.elapsed() < hints->mousePressAndHoldInterval()
             && sameTarget;
         if (stillTap) {
             if (phase == Phase::Release) {
+                const QPointer<QQuickItem> tapItem = overlay;
                 const QString id = m_live.textTapId;
                 const QVariantMap cell = m_live.tableTapCell;
                 const QString chartId = m_live.chartTapId;
                 const QString diagramId = m_live.diagramTapId;
                 const QString noteId = m_live.noteTapId;
                 resetDrawing();
-                if (!noteId.isEmpty()) emit noteItemTapped(noteId);
+                if (tapItem && tapItem->isEnabled()) QMetaObject::invokeMethod(tapItem.data(), "clicked");
+                else if (!noteId.isEmpty()) emit noteItemTapped(noteId);
                 else if (!id.isEmpty()) emit textItemTapped(id);
                 else if (!chartId.isEmpty()) emit chartItemTapped(chartId);
                 else if (!diagramId.isEmpty()) emit diagramItemTapped(diagramId);
-                else emit tableCellTapped(cell.value(QStringLiteral("id")).toString(),
+                else if (!cell.isEmpty()) emit tableCellTapped(cell.value(QStringLiteral("id")).toString(),
                     cell.value(QStringLiteral("row")).toInt(), cell.value(QStringLiteral("column")).toInt());
             }
             return true;
         }
+        m_live.tapPending = false;
+        m_live.overlayTapItem.clear();
         m_live.textTapId.clear();
         m_live.tableTapCell.clear();
         m_live.chartTapId.clear();

@@ -33,6 +33,7 @@ Dialog {
     property Item keyboardTarget: null
 
     readonly property bool existing: originalItem !== null && Boolean(originalItem.id)
+    readonly property Item remoteSurface: opened && !chartType.popup?.visible && contentItem ? contentItem.parent : null
     readonly property color ink: "#24262c"
     readonly property color muted: "#555b67"
     readonly property color border: "#d9dce2"
@@ -248,6 +249,7 @@ Dialog {
 
     component ChartField: TextField {
         id: field
+        property bool remoteEditable: !editor.confirmingDelete
 
         Layout.fillWidth: true
         Layout.minimumWidth: 0
@@ -371,6 +373,7 @@ Dialog {
                     spacing: 5 * editor.uiScale
 
                     ComboBox {
+                        id: chartType
                         visible: editor.fromLibrary || editor.existing
                         model: [qsTr("Linee"), qsTr("Barre")]
                         Accessible.name: qsTr("Tipo di grafico")
@@ -388,6 +391,7 @@ Dialog {
                     }
 
                     ChartButton {
+                        property bool remoteClickable: !editor.confirmingDelete
                         text: editor.editingPoints ? qsTr("Chiudi punti") : qsTr("Modifica punti")
                         onClicked: {
                             if (editor.editingPoints && !editor.applyPoint())
@@ -402,6 +406,12 @@ Dialog {
 
                     Switch {
                         id: calibrated
+                        property bool remoteClickable: !editor.confirmingDelete
+                        function remoteActivate() {
+                            checked = !checked
+                            if (!checked)
+                                editor.hideKeyboard()
+                        }
                         text: qsTr("Scala numerica")
                         font.pixelSize: 14 * editor.uiScale
                         onToggled: if (!checked) editor.hideKeyboard()
@@ -424,6 +434,7 @@ Dialog {
                         spacing: 5 * editor.uiScale
 
                         ChartButton {
+                            property bool remoteClickable: !editor.confirmingDelete
                             text: qsTr("Punto precedente")
                             iconName: "left"
                             iconOnly: true
@@ -446,6 +457,7 @@ Dialog {
                         }
 
                         ChartButton {
+                            property bool remoteClickable: !editor.confirmingDelete
                             text: qsTr("Punto successivo")
                             iconName: "right"
                             iconOnly: true
@@ -459,10 +471,12 @@ Dialog {
                         spacing: 5 * editor.uiScale
 
                         ChartButton {
+                            property bool remoteClickable: !editor.confirmingDelete
                             text: qsTr("Applica punto")
                             onClicked: editor.applyPoint()
                         }
                         ChartButton {
+                            property bool remoteClickable: !editor.confirmingDelete
                             text: qsTr("Aggiungi punto")
                             enabled: editor.points.length < 128
                             onClicked: editor.addPoint()
@@ -573,6 +587,8 @@ Dialog {
 
         CheckBox {
             id: newPage
+            property bool remoteClickable: !editor.confirmingDelete
+            function remoteActivate() { checked = !checked }
             Layout.leftMargin: editor.padding
             Layout.rightMargin: editor.padding
             visible: !editor.existing && !editor.fromLibrary && editor.points.length > 0 && !editor.keyboardOpen
@@ -600,6 +616,7 @@ Dialog {
                 }
 
                 ChartButton {
+                    property bool remoteClickable: true
                     text: qsTr("Fine")
                     quiet: true
                     focusPolicy: Qt.NoFocus
@@ -635,6 +652,7 @@ Dialog {
             Item { Layout.fillWidth: true }
 
             ChartButton {
+                property bool remoteClickable: true
                 text: editor.points.length > 0 ? qsTr("Annulla") : qsTr("Chiudi")
                 quiet: true
                 onClicked: {
@@ -646,6 +664,7 @@ Dialog {
             }
 
             ChartButton {
+                property bool remoteClickable: true
                 visible: editor.points.length > 0
                 text: qsTr("Salva")
                 filled: true

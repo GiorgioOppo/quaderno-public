@@ -296,9 +296,10 @@ private slots:
         QVERIFY(summaries.last().toMap().value("bookmarked").toBool());
         QVERIFY(summaries.last().toMap().value("annotated").toBool());
         for (const auto &entry : summaries) {
-            QCOMPARE(entry.toMap().size(), 4);
-            QVERIFY(!entry.toMap().contains("background"));
-            QVERIFY(!entry.toMap().contains("source"));
+            const auto summary = entry.toMap();
+            QCOMPARE(summary.keys(), QStringList({"annotated", "bookmarked", "index", "pageId", "title", "workspace"}));
+            QCOMPARE(summary.value("workspace").toString(), QStringLiteral("writing"));
+            QVERIFY(summary.value("title").toString().isEmpty());
         }
         QCOMPARE(model.books().last().toMap().value("format").toString(), QStringLiteral("notebook"));
         QVERIFY(model.importMarkdownText("# Writing", "Markdown fixture", {}));

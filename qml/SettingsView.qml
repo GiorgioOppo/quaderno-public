@@ -15,6 +15,7 @@ Control {
     required property DeviceInfo deviceInfo
     required property UsbSsh usbSsh
     required property WirelessSync wireless
+    property var smtpMail: null
     required property EpaperRefresh epaperRefresh
     property var bluetooth: null
     property var preferences: null
@@ -32,6 +33,7 @@ Control {
     signal openMarkdown()
     signal openApple()
     signal openAppleBooks()
+    signal openSmtp()
     signal importFiles()
     signal refreshScreen()
     signal sleepNow()
@@ -73,7 +75,7 @@ Control {
         {id: 10, title: qsTr("Penna e riconoscimento"), keywords: qsTr("pressione palmo lazo OCR forme correzioni diagrammi riconoscimento automatico")},
         {id: 11, title: qsTr("Archiviazione e backup"), keywords: qsTr("cache spazio copie sicurezza conservazione")},
         {id: 7, title: qsTr("Penna e batteria"), keywords: qsTr("ricarica carica luce sospensione riposo")},
-        {id: 6, title: qsTr("Account e servizi"), keywords: "Apple iCloud Obsidian Google Drive Dropbox OneDrive cloud sync"},
+        {id: 6, title: qsTr("Account e servizi"), keywords: qsTr("Apple iCloud Obsidian Google Drive Dropbox OneDrive cloud sync SMTP email posta")},
         {id: 2, title: qsTr("Sicurezza"), keywords: qsTr("PIN accesso blocco password")},
         {id: sshAccessCategory, title: qsTr("Accesso SSH"), keywords: qsTr("Wi-Fi Bluetooth USB-C cavo accesso remoto"), tabletOnly: true},
         {id: 8, title: qsTr("Lingua e tastiera"), keywords: "Italiano English QWERTY"},
@@ -331,6 +333,7 @@ Control {
                 Field {
                     id: settingsSearch
                     objectName: "settingsSearch"
+                    property bool remoteEditable: true
                     placeholderText: qsTr("Cerca impostazioni")
                     Accessible.name: placeholderText
                     selectByMouse: true
@@ -339,6 +342,7 @@ Control {
                 }
                 Action {
                     text: qsTr("Chiudi")
+                    property bool remoteClickable: true
                     visible: settingsSearch.text.length > 0 || settings.searchActive
                     onClicked: { settingsSearch.clear(); settings.searchActive = false; settings.forceActiveFocus() }
                 }
@@ -351,6 +355,7 @@ Control {
                     Action {
                         required property var modelData
                         objectName: "settingsCategory_" + modelData.id
+                        property bool remoteClickable: true
                         text: modelData.title
                         filled: settings.category === modelData.id
                         onClicked: settings.selectCategory(modelData.id)
@@ -406,6 +411,30 @@ Control {
                     onRefreshScreen: settings.refreshScreen()
                     onSleepNow: settings.sleepNow()
                 }
+                Card {
+                    visible: settings.tabletMode && settings.category === 6 && settings.smtpMail !== null
+                    Layout.leftMargin: settings.inset
+                    Layout.rightMargin: Layout.leftMargin
+                    Layout.bottomMargin: 16 * settings.uiScale
+
+                    Paragraph {
+                        text: qsTr("Invia PDF via email")
+                        color: settings.ink
+                        font.weight: Font.DemiBold
+                    }
+                    Paragraph {
+                        text: settings.smtpMail?.configured
+                            ? qsTr("Mittente: %1").arg(settings.smtpMail.settings.sender)
+                            : qsTr("Configura il server SMTP per spedire PDF da Quaderno.")
+                    }
+                    Action {
+                        objectName: "openSmtpSettings"
+                        text: qsTr("Server di posta in uscita (SMTP)")
+                        enabled: !settings.pinLock.locked && !Boolean(settings.smtpMail?.busy)
+                        onClicked: settings.openSmtp()
+                    }
+                }
+
                 AccountsPanel {
                     visible: settings.category === 6
                     Layout.fillWidth: true
@@ -931,6 +960,10 @@ Control {
 
                     Card {
                         Heading { text: qsTr("Informazioni") }
+                        Paragraph {
+                            visible: Qt.application.version.length > 0
+                            text: qsTr("Quaderno %1").arg(Qt.application.version)
+                        }
                         Paragraph {
                             text: settings.deviceInfo.model
                             color: settings.ink

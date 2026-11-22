@@ -29,6 +29,7 @@
 #include <QUuid>
 #include "applanguage.h"
 #include "appleshare.h"
+#include "smtpmail.h"
 #include "bluetoothsettings.h"
 #include "blesync.h"
 #include "chartitem.h"
@@ -79,6 +80,84 @@ QQuickItem *findVisualItem(QQuickItem *parent, const QString &name)
         if (auto *found = findVisualItem(child, name)) return found;
     return nullptr;
 }
+QQuickItem *findRemoteControl(QQuickItem *parent, const QStringList &labels, const char *permission, const char *label)
+{
+    if (!parent || !parent->isVisible()) return nullptr;
+    if (parent->property(permission).toBool() && labels.contains(parent->property(label).toString()))
+        return parent;
+    for (auto *child : parent->childItems())
+        if (auto *found = findRemoteControl(child, labels, permission, label)) return found;
+    return nullptr;
+}
+QQuickItem *findRemoteAction(QQuickItem *parent, const QStringList &labels)
+{
+    return findRemoteControl(parent, labels, "remoteClickable", "text");
+}
+
+class FakeScreenStream final : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(bool active READ active NOTIFY stateChanged)
+    Q_PROPERTY(bool available READ active NOTIFY stateChanged)
+    Q_PROPERTY(bool remoteNavigationAllowed READ remoteNavigationAllowed NOTIFY stateChanged)
+    Q_PROPERTY(QString remoteSection READ remoteSection NOTIFY sectionChanged)
+    Q_PROPERTY(QString status READ status CONSTANT)
+    Q_PROPERTY(QUrl frameSource READ frameSource NOTIFY frameChanged)
+    Q_PROPERTY(int frameOrientation READ frameOrientation NOTIFY frameChanged)
+
+public:
+    bool active() const { return m_active; }
+    bool remoteNavigationAllowed() const { return m_allowed; }
+    QString remoteSection() const { return m_section; }
+    QString status() const { return {}; }
+    QUrl frameSource() const { return m_frameSource; }
+    int frameOrientation() const { return m_frameOrientation; }
+    QRect workArea;
+
+    void showFrame(const QUrl &source, int orientation)
+    {
+        m_frameSource = source;
+        m_frameOrientation = orientation;
+        emit frameChanged();
+    }
+
+    Q_INVOKABLE QRect viewerAvailableArea(QWindow *) const { return workArea; }
+    Q_INVOKABLE void setViewerOpen(bool) {}
+    Q_INVOKABLE void requestTap(qreal x, qreal y) { emit viewerTapped(x, y); }
+
+    void allowRemoteNavigation(bool allowed)
+    {
+        m_allowed = allowed;
+        emit stateChanged();
+    }
+
+    Q_INVOKABLE void reportSection(const QString &section)
+    {
+        m_section = section;
+        emit sectionChanged();
+    }
+
+    Q_INVOKABLE void stop()
+    {
+        m_active = false;
+        emit stateChanged();
+    }
+
+signals:
+    void stateChanged();
+    void sectionChanged();
+    void frameChanged();
+    void viewerTapped(qreal x, qreal y);
+    void remoteTapRequested(qreal x, qreal y);
+    void remoteKeyRequested(const QString &action, const QString &text);
+
+private:
+    bool m_active = true;
+    bool m_allowed = true;
+    QString m_section;
+    QUrl m_frameSource;
+    int m_frameOrientation = 0;
+};
 
 QByteArray smallRasterDiagram()
 {
@@ -142,6 +221,7 @@ struct WorkspaceHarness {
     AppLanguage language{nullptr};
     Notebook notebook{directory.filePath("notebooks.json")};
     AppleShare share{true};
+    SmtpMail smtp{directory.filePath("smtp")};
     PinLock pin{directory.filePath("access.json")};
     DeviceInfo device{false};
     PaperProStandby standby{true, &pin, &device};
@@ -162,6 +242,7 @@ struct WorkspaceHarness {
         notebook.createBook("UI regression");
         engine.setInitialProperties({
             {"notebook", QVariant::fromValue(&notebook)}, {"appleShare", QVariant::fromValue(&share)},
+            {"smtpMail", QVariant::fromValue(&smtp)},
             {"pinLock", QVariant::fromValue(&pin)}, {"standby", QVariant::fromValue(&standby)},
             {"deviceInfo", QVariant::fromValue(&device)}, {"wifi", QVariant::fromValue(&wifi)},
             {"bluetooth", QVariant::fromValue(&bluetooth)}, {"usbSsh", QVariant::fromValue(&ssh)},
@@ -253,6 +334,20 @@ bool clickItem(WorkspaceHarness &h, QQuickItem *button)
     QSignalSpy clicked(button, SIGNAL(clicked()));
     QTest::mouseClick(h.window(), Qt::LeftButton, Qt::NoModifier, center.toPoint());
     return clicked.count() == 1;
+}
+bool remoteTap(WorkspaceHarness &h, FakeScreenStream &stream, QQuickItem *item)
+{
+    if (!item || !item->isEnabled() || item->width() <= 0 || item->height() <= 0) return false;
+    const QPointF center = item->mapToScene({item->width() / 2, item->height() / 2});
+    if (!QRectF(QPointF(), h.window()->size()).contains(center)) return false;
+    for (auto *parent = item->parentItem(); parent; parent = parent->parentItem())
+        if (parent->clip() && !parent->contains(parent->mapFromScene(center))) return false;
+    emit stream.remoteTapRequested(center.x() / h.window()->width(), center.y() / h.window()->height());
+    return true;
+}
+bool remoteTap(WorkspaceHarness &h, FakeScreenStream &stream, const QString &name)
+{
+    return remoteTap(h, stream, findVisualItem(h.window()->contentItem(), name));
 }
 bool waitForLayoutFrame(QQuickWindow *window)
 {
@@ -367,7 +462,7 @@ private slots:
         h.screenshot("workspace-" + category);
     }
 
-    void entryPointContextSurvivesPagesButNeverLeaksToAnotherBook()
+    void entryPointContextFollowsTheCurrentSheetAndNeverLeaksToAnotherBook()
     {
         WorkspaceHarness h;
         QVERIFY(h.window());
@@ -377,7 +472,7 @@ private slots:
         QVERIFY(openEntry(h, chart.value("id").toString()));
         QCOMPARE(h.window()->property("editorWorkspace").toString(), QStringLiteral("charts"));
         QVERIFY(h.notebook.addPage());
-        QCOMPARE(h.window()->property("editorWorkspace").toString(), QStringLiteral("charts"));
+        QCOMPARE(h.window()->property("editorWorkspace").toString(), QStringLiteral("writing"));
         QVERIFY(h.notebook.createBook("Writing after chart"));
         const QString second = h.notebook.bookId();
         QCOMPARE(h.window()->property("editorWorkspace").toString(), QStringLiteral("writing"));
@@ -385,10 +480,411 @@ private slots:
         QCOMPARE(h.window()->property("editorWorkspace").toString(), QStringLiteral("writing"));
         QVERIFY(openEntry(h, chart.value("id").toString()));
         QCOMPARE(h.window()->property("editorWorkspace").toString(), QStringLiteral("charts"));
+        QVERIFY(h.notebook.goToPage(1));
         QVERIFY(QMetaObject::invokeMethod(h.window(), "showBook", Q_ARG(QString, second)));
         QCOMPARE(h.window()->property("editorWorkspace").toString(), QStringLiteral("writing"));
         QVERIFY(QMetaObject::invokeMethod(h.window(), "showBook", Q_ARG(QString, first)));
         QCOMPARE(h.window()->property("editorWorkspace").toString(), QStringLiteral("writing"));
+    }
+
+    void viewerFitsTabletFrameAndKeepsRotatedClicksAligned()
+    {
+        FakeScreenStream stream;
+        stream.workArea = QRect(44, 56, 600, 520);
+        WorkspaceHarness h(false);
+        QVERIFY(h.window());
+        QVERIFY(h.window()->setProperty("screenStream", QVariant::fromValue(static_cast<QObject *>(&stream))));
+        stream.reportSection(QStringLiteral("books"));
+
+        const auto fixture = [&](const QString &name, QColor color) {
+            QImage image(300, 400, QImage::Format_RGB32);
+            image.fill(color);
+            const QString file = h.directory.filePath(name);
+            return image.save(file) ? QUrl::fromLocalFile(file) : QUrl{};
+        };
+        const QUrl first = fixture(QStringLiteral("portrait.png"), Qt::white);
+        const QUrl next = fixture(QStringLiteral("next.png"), Qt::lightGray);
+        QVERIFY(!first.isEmpty() && !next.isEmpty());
+        stream.showFrame(first, 0);
+
+        auto *viewer = h.find<QQuickWindow>("screenStreamWindow");
+        QVERIFY(viewer && QMetaObject::invokeMethod(viewer, "open"));
+        QVERIFY(waitForLayoutFrame(viewer));
+        auto *preview = findVisualItem(viewer->contentItem(), QStringLiteral("screenStreamViewport"));
+        auto *frame = findVisualItem(viewer->contentItem(), QStringLiteral("screenStreamImage"));
+        auto *tap = findVisualItem(viewer->contentItem(), QStringLiteral("screenStreamTapArea"));
+        QVERIFY(preview && frame && tap);
+        QTRY_COMPARE(viewer->size(), QSize(354, 520));
+        QTRY_COMPARE(preview->size(), QSizeF(354, 472));
+        QCOMPARE(frame->property("paintedWidth").toDouble(), 354.0);
+        QVERIFY(stream.workArea.contains(viewer->geometry()));
+
+        viewer->resize(320, 490);
+        stream.showFrame(next, 0);
+        QTRY_COMPARE(frame->property("source").toUrl(), next);
+        QVERIFY(waitForLayoutFrame(viewer));
+        QCOMPARE(viewer->size(), QSize(320, 490));
+
+        stream.showFrame(next, 90);
+        QTRY_COMPARE(viewer->size(), QSize(600, 498));
+        QTRY_COMPARE(preview->size(), QSizeF(600, 450));
+        QCOMPARE(frame->rotation(), -90.0);
+        QCOMPARE(frame->property("paintedWidth").toDouble(), 450.0);
+        QVERIFY(stream.workArea.contains(viewer->geometry()));
+        QVERIFY(waitForLayoutFrame(viewer));
+        QSignalSpy sent(&stream, &FakeScreenStream::viewerTapped);
+        const QPointF rawPoint(tap->width() * 0.2, tap->height() * 0.7);
+        QTest::mouseClick(viewer, Qt::LeftButton, Qt::NoModifier, tap->mapToScene(rawPoint).toPoint());
+        QTRY_COMPARE(sent.count(), 1);
+        QVERIFY(qAbs(sent.first().at(0).toDouble() - 0.2) < 0.01);
+        QVERIFY(qAbs(sent.first().at(1).toDouble() - 0.7) < 0.01);
+        viewer->close();
+    }
+
+    void screenSharingUsesContentWaveformAndRestoresRefreshProfile()
+    {
+        FakeScreenStream stream;
+        WorkspaceHarness h;
+        QVERIFY(h.window());
+        auto *preferences = h.find<TabletPreferences>("tabletPreferences");
+        QVERIFY(preferences && preferences->setProperty("refreshProfile", QStringLiteral("fast")));
+        QTRY_VERIFY(h.window()->property("fastPanelRefresh").toBool());
+        QVERIFY(h.window()->setProperty("screenStream", QVariant::fromValue(static_cast<QObject *>(&stream))));
+        QTRY_VERIFY(h.window()->property("screenSharing").toBool());
+        QVERIFY(!h.window()->property("fastPanelRefresh").toBool());
+        QVERIFY(QMetaObject::invokeMethod(h.window(), "showSettings"));
+        QVERIFY(!h.window()->property("fastPanelRefresh").toBool());
+        QCOMPARE(preferences->property("refreshProfile").toString(), QStringLiteral("fast"));
+        stream.stop();
+        QTRY_VERIFY(h.window()->property("fastPanelRefresh").toBool());
+    }
+
+    void remoteControlCanStopSharingFromVisibleButton_data()
+    {
+        QTest::addColumn<bool>("editorOpen");
+        QTest::newRow("toolbar") << false;
+        QTest::newRow("editor-overlay") << true;
+    }
+
+    void remoteControlCanStopSharingFromVisibleButton()
+    {
+        QFETCH(bool, editorOpen);
+        FakeScreenStream stream;
+        WorkspaceHarness h;
+        QVERIFY(h.window());
+        QVERIFY(h.window()->setProperty("screenStream", QVariant::fromValue(static_cast<QObject *>(&stream))));
+        if (editorOpen) {
+            auto *editor = h.find<QObject>("chartEditor");
+            QVERIFY(editor && QMetaObject::invokeMethod(editor, "openDraft", Q_ARG(QString, QStringLiteral("QA"))));
+            QTRY_COMPARE(stream.remoteSection(), QStringLiteral("chart-editor"));
+        } else {
+            QTRY_VERIFY(!stream.remoteSection().isEmpty());
+        }
+        QVERIFY(waitForLayoutFrame(h.window()));
+        const QString toolbar = QStringLiteral("screenStreamStopButton");
+        const QString overlay = QStringLiteral("screenStreamFullscreenStopButton");
+        auto *hidden = findVisualItem(h.window()->contentItem(), editorOpen ? toolbar : overlay);
+        QVERIFY(!hidden || !hidden->isVisible());
+        QVERIFY(remoteTap(h, stream, editorOpen ? overlay : toolbar));
+        QTRY_VERIFY(!stream.active());
+        QVERIFY(h.window()->property("sharedControlSurface").toString().isEmpty());
+    }
+
+    void remoteControlNavigatesSettingsButKeepsSmtpLocal()
+    {
+        FakeScreenStream stream;
+        WorkspaceHarness h;
+        QVERIFY(h.window());
+        QVERIFY(h.window()->setProperty("screenStream", QVariant::fromValue(static_cast<QObject *>(&stream))));
+        QVERIFY(QMetaObject::invokeMethod(h.window(), "showSettings"));
+        auto *settingsView = h.find<QObject>("settingsView");
+        auto *smtpDialog = h.find<QObject>("smtpDialog");
+        QVERIFY(settingsView);
+        QVERIFY(smtpDialog);
+        QTRY_COMPARE(stream.remoteSection(), QStringLiteral("settings"));
+        QVERIFY(waitForLayoutFrame(h.window()));
+        QCOMPARE(settingsView->property("category").toInt(), 9);
+        QVERIFY(remoteTap(h, stream, QStringLiteral("settingsCategory_6")));
+        QTRY_COMPARE(settingsView->property("category").toInt(), 6);
+        QVERIFY(waitForLayoutFrame(h.window()));
+
+        QVERIFY(remoteTap(h, stream, QStringLiteral("openSmtpSettings")));
+        QVERIFY(!smtpDialog->property("visible").toBool());
+        QCOMPARE(h.window()->property("sharedControlSurface").toString(), QStringLiteral("settings"));
+
+        auto *localSmtp = findVisualItem(h.window()->contentItem(), QStringLiteral("openSmtpSettings"));
+        QVERIFY(clickItem(h, localSmtp));
+        QTRY_VERIFY(smtpDialog->property("visible").toBool());
+        QTRY_VERIFY(h.window()->property("sharedControlSurface").toString().isEmpty());
+    }
+
+    void remoteControlCreatesATableWithProjectedTyping()
+    {
+        FakeScreenStream stream;
+        WorkspaceHarness h;
+        QVERIFY(h.window());
+        QVERIFY(h.notebook.savePageItem(tableFixture(QStringLiteral("Existing table"))));
+        const QString existingId = h.notebook.pageItems().first().toMap().value("id").toString();
+        QVERIFY(openEntry(h, existingId));
+        QTRY_COMPARE(h.window()->property("editorWorkspace").toString(), QStringLiteral("tables"));
+        QVERIFY(h.window()->setProperty("screenStream", QVariant::fromValue(static_cast<QObject *>(&stream))));
+        QTRY_COMPARE(stream.remoteSection(), QStringLiteral("editor"));
+        QVERIFY(waitForLayoutFrame(h.window()));
+        QVERIFY(remoteTap(h, stream, QStringLiteral("workspaceAction_newTable")));
+
+        auto *dialog = h.find<QObject>("pageItemDialog");
+        QVERIFY(dialog);
+        QTRY_VERIFY(dialog->property("opened").toBool());
+        QTRY_COMPARE(stream.remoteSection(), QStringLiteral("table-editor"));
+        QVERIFY(waitForLayoutFrame(h.window()));
+        auto *cell = findVisualItem(h.window()->contentItem(), QStringLiteral("tableCellInput"));
+        QVERIFY(cell);
+        const QString original = cell->property("text").toString();
+        emit stream.remoteKeyRequested(QStringLiteral("text"), QStringLiteral("No remote focus"));
+        QCOMPARE(cell->property("text").toString(), original);
+
+        QVERIFY(remoteTap(h, stream, QStringLiteral("tableCellInput")));
+        emit stream.remoteKeyRequested(QStringLiteral("select-all"), {});
+        const QString label = QStringLiteral("Tabella da Mac");
+        emit stream.remoteKeyRequested(QStringLiteral("text"), label);
+        QTRY_COMPARE(cell->property("text").toString(), label);
+
+        stream.allowRemoteNavigation(false);
+        QTRY_VERIFY(h.window()->property("sharedControlSurface").toString().isEmpty());
+        emit stream.remoteKeyRequested(QStringLiteral("backspace"), {});
+        QCOMPARE(cell->property("text").toString(), label);
+        QVERIFY(remoteTap(h, stream, QStringLiteral("savePageItemButton")));
+        QVERIFY(dialog->property("visible").toBool());
+
+        stream.allowRemoteNavigation(true);
+        QTRY_COMPARE(h.window()->property("sharedControlSurface").toString(), QStringLiteral("table-editor"));
+        QVERIFY(remoteTap(h, stream, QStringLiteral("savePageItemButton")));
+        QTRY_VERIFY(!dialog->property("visible").toBool());
+        const auto items = h.notebook.pageItems();
+        QCOMPARE(items.size(), 2);
+        const auto table = items.last().toMap();
+        QCOMPARE(table.value("type").toString(), QStringLiteral("table"));
+        QCOMPARE(table.value("cells").toList().first().toString(), label);
+
+        QVERIFY(waitForLayoutFrame(h.window()));
+        QVERIFY(remoteTap(h, stream, QStringLiteral("workspaceAction_tableEdit")));
+        QTRY_COMPARE(stream.remoteSection(), QStringLiteral("create"));
+        QVERIFY(waitForLayoutFrame(h.window()));
+        QVERIFY(remoteTap(h, stream, QStringLiteral("workspaceItemChoice_") + existingId));
+        QTRY_VERIFY(dialog->property("opened").toBool());
+        QTRY_COMPARE(stream.remoteSection(), QStringLiteral("table-editor"));
+        QCOMPARE(qmlMap(dialog, "originalItem").value("id").toString(), existingId);
+        QVERIFY(waitForLayoutFrame(h.window()));
+        auto *grid = findVisualItem(h.window()->contentItem(), QStringLiteral("tableGrid"));
+        QVERIFY(grid);
+        const auto findA2 = [](const auto &self, QQuickItem *item) -> QQuickItem * {
+            if (!item->isVisible()) return nullptr;
+            if (item->property("remoteClickable").toBool()
+                && item->property("row").toInt() == 1 && item->property("column").toInt() == 0)
+                return item;
+            for (auto *child : item->childItems())
+                if (auto *cell = self(self, child)) return cell;
+            return nullptr;
+        };
+        // Qt Repeaters parent delegates into the visual tree of the grid.
+        QQuickItem *a2 = nullptr;
+        QTRY_VERIFY((a2 = findA2(findA2, grid)));
+        QVERIFY(remoteTap(h, stream, a2));
+        QCOMPARE(dialog->property("selectedRow").toInt(), 1);
+        QVERIFY(remoteTap(h, stream, QStringLiteral("tableCellInput")));
+        emit stream.remoteKeyRequested(QStringLiteral("select-all"), {});
+        emit stream.remoteKeyRequested(QStringLiteral("text"), QStringLiteral("12"));
+        QVERIFY(remoteTap(h, stream, QStringLiteral("savePageItemButton")));
+        QTRY_VERIFY(!dialog->property("visible").toBool());
+        const auto edited = h.notebook.pageItems().first().toMap();
+        QCOMPARE(edited.value("id").toString(), existingId);
+        const auto cells = edited.value("cells").toList();
+        QCOMPARE(cells.value(2).toString(), QStringLiteral("12"));
+        QCOMPARE(cells.value(3).toString(), QStringLiteral("=SUM(A2:A2)"));
+        QCOMPARE(h.notebook.tableCellValues(edited).value(3).toString(), QStringLiteral("12"));
+    }
+
+    void remoteControlCreatesMarkdownWithProjectedTyping()
+    {
+        FakeScreenStream stream;
+        WorkspaceHarness h;
+        QVERIFY(h.window());
+        QVERIFY(h.window()->setProperty("screenStream", QVariant::fromValue(static_cast<QObject *>(&stream))));
+        QTRY_COMPARE(stream.remoteSection(), QStringLiteral("editor"));
+        QVERIFY(waitForLayoutFrame(h.window()));
+        QVERIFY(remoteTap(h, stream, QStringLiteral("workspaceAction_markdown")));
+        auto *editor = h.find<QObject>("markdownEditor");
+        QVERIFY(editor);
+        QTRY_VERIFY(editor->property("opened").toBool());
+        QTRY_COMPARE(stream.remoteSection(), QStringLiteral("writing-editor"));
+
+        QVERIFY(waitForLayoutFrame(h.window()));
+        QVERIFY(remoteTap(h, stream, QStringLiteral("markdownName")));
+        const QString title = QStringLiteral("Appunti dal Mac");
+        emit stream.remoteKeyRequested(QStringLiteral("text"), title);
+        QVERIFY(waitForLayoutFrame(h.window()));
+        QVERIFY(remoteTap(h, stream, QStringLiteral("markdownSource")));
+        emit stream.remoteKeyRequested(QStringLiteral("text"), QStringLiteral("# Prova"));
+        emit stream.remoteKeyRequested(QStringLiteral("new-line"), {});
+        emit stream.remoteKeyRequested(QStringLiteral("text"), QStringLiteral("Testo da Quaderno."));
+        QVERIFY(waitForLayoutFrame(h.window()));
+        auto *surface = editor->property("remoteSurface").value<QQuickItem *>();
+        QVERIFY(remoteTap(h, stream, findRemoteAction(surface, {QStringLiteral("Salva"), QStringLiteral("Save")})));
+        QTRY_VERIFY(!editor->property("visible").toBool());
+        QCOMPARE(h.notebook.title(), title);
+        QCOMPARE(h.notebook.markdownSource().trimmed(), QStringLiteral("# Prova\nTesto da Quaderno."));
+    }
+
+    void remoteControlCreatesAndEditsAChart()
+    {
+        FakeScreenStream stream;
+        WorkspaceHarness h;
+        QVERIFY(h.window());
+        QVERIFY(h.window()->setProperty("screenStream", QVariant::fromValue(static_cast<QObject *>(&stream))));
+        const auto surface = [&] { return h.window()->property("remoteControlTarget").value<QQuickItem *>(); };
+        const auto typeIn = [&](const QStringList &fieldLabels, const QString &text) {
+            auto *field = findRemoteControl(surface(), fieldLabels, "remoteEditable", "placeholderText");
+            if (!remoteTap(h, stream, field)) return false;
+            emit stream.remoteKeyRequested(QStringLiteral("select-all"), {});
+            emit stream.remoteKeyRequested(QStringLiteral("text"), text);
+            return field->property("text").toString() == text;
+        };
+        const QStringList saveLabels{QStringLiteral("Salva"), QStringLiteral("Save")};
+        const QStringList titleLabels{QStringLiteral("Titolo del grafico"), QStringLiteral("Chart title")};
+
+        QTRY_COMPARE(stream.remoteSection(), QStringLiteral("editor"));
+        QVERIFY(waitForLayoutFrame(h.window()));
+        QVERIFY(remoteTap(h, stream, QStringLiteral("editorBackButton")));
+        QVERIFY(waitForLayoutFrame(h.window()));
+        QVERIFY(remoteTap(h, stream, QStringLiteral("librarySection_charts")));
+        QTRY_COMPARE(stream.remoteSection(), QStringLiteral("charts"));
+        QVERIFY(waitForLayoutFrame(h.window()));
+        QVERIFY(remoteTap(h, stream, findRemoteAction(surface(),
+            {QStringLiteral("Nuovo grafico"), QStringLiteral("New chart")})));
+        QTRY_COMPARE(stream.remoteSection(), QStringLiteral("create"));
+        QVERIFY(waitForLayoutFrame(h.window()));
+        const QString notebookName = QStringLiteral("Grafici da Mac");
+        QVERIFY(typeIn({QStringLiteral("Nome del quaderno"), QStringLiteral("Notebook name")}, notebookName));
+        QVERIFY(remoteTap(h, stream, findRemoteAction(surface(), {QStringLiteral("Crea"), QStringLiteral("Create")})));
+
+        auto *editor = h.find<QObject>("chartEditor");
+        QVERIFY(editor);
+        QTRY_VERIFY(editor->property("opened").toBool());
+        QTRY_COMPARE(stream.remoteSection(), QStringLiteral("chart-editor"));
+        QVERIFY(waitForLayoutFrame(h.window()));
+        const QString firstTitle = QStringLiteral("Vendite di prova");
+        QVERIFY(typeIn(titleLabels, firstTitle));
+        QVERIFY(waitForLayoutFrame(h.window()));
+        QVERIFY(remoteTap(h, stream, findRemoteAction(surface(), saveLabels)));
+        QTRY_VERIFY(!editor->property("visible").toBool());
+        QCOMPARE(h.notebook.title(), notebookName);
+        QCOMPARE(h.notebook.pageItems().size(), 1);
+        const QString bookId = h.notebook.bookId();
+        const auto chart = h.notebook.pageItems().first().toMap();
+        QCOMPARE(chart.value("type").toString(), QStringLiteral("chart"));
+        QCOMPARE(chart.value("title").toString(), firstTitle);
+        QCOMPARE(chart.value("points").toList().size(), 2);
+        const QString chartId = chart.value("id").toString();
+        QVERIFY(!chartId.isEmpty());
+
+        QVERIFY(waitForLayoutFrame(h.window()));
+        QVERIFY(remoteTap(h, stream, QStringLiteral("editorBackButton")));
+        QTRY_COMPARE(stream.remoteSection(), QStringLiteral("charts"));
+        QVERIFY(waitForLayoutFrame(h.window()));
+        QVERIFY(remoteTap(h, stream, QStringLiteral("libraryRow_") + chartId));
+        QTRY_COMPARE(stream.remoteSection(), QStringLiteral("editor"));
+        QTRY_COMPARE(h.window()->property("editorWorkspace").toString(), QStringLiteral("charts"));
+        QVERIFY(waitForLayoutFrame(h.window()));
+        QVERIFY(remoteTap(h, stream, QStringLiteral("workspaceAction_chartEdit")));
+        QTRY_VERIFY(editor->property("opened").toBool());
+        QTRY_COMPARE(stream.remoteSection(), QStringLiteral("chart-editor"));
+        QVERIFY(waitForLayoutFrame(h.window()));
+        const QString revisedTitle = QStringLiteral("Vendite aggiornate");
+        QVERIFY(typeIn(titleLabels, revisedTitle));
+        QVERIFY(waitForLayoutFrame(h.window()));
+        QVERIFY(remoteTap(h, stream, findRemoteAction(surface(), saveLabels)));
+        QTRY_VERIFY(!editor->property("visible").toBool());
+        QCOMPARE(h.notebook.bookId(), bookId);
+        QCOMPARE(h.notebook.pageItems().size(), 1);
+        const auto revised = h.notebook.pageItems().first().toMap();
+        QCOMPARE(revised.value("id").toString(), chartId);
+        QCOMPARE(revised.value("title").toString(), revisedTitle);
+        QCOMPARE(revised.value("points"), chart.value("points"));
+    }
+
+    void remoteControlPlacesAndSavesABookAnnotation()
+    {
+        FakeScreenStream stream;
+        WorkspaceHarness h;
+        QVERIFY(h.window());
+        QVERIFY(h.addBookBackground());
+        QVERIFY(QMetaObject::invokeMethod(h.window(), "showCurrentBook"));
+        QVERIFY(h.window()->setProperty("screenStream", QVariant::fromValue(static_cast<QObject *>(&stream))));
+        QTRY_COMPARE(stream.remoteSection(), QStringLiteral("book"));
+        QVERIFY(waitForLayoutFrame(h.window()));
+        QVERIFY(remoteTap(h, stream, findRemoteAction(h.window()->contentItem(),
+            {QStringLiteral("Pagina successiva"), QStringLiteral("Next page")})));
+        QTRY_COMPARE(h.notebook.page(), 1);
+        const QString pageId = h.notebook.pageId();
+        QVERIFY(waitForLayoutFrame(h.window()));
+        QVERIFY(remoteTap(h, stream, QStringLiteral("workspaceAction_bookNote")));
+        QTRY_COMPARE(h.window()->property("bookAnchorKind").toString(), QStringLiteral("note"));
+        QVERIFY(waitForLayoutFrame(h.window()));
+        QVERIFY(remoteTap(h, stream, QStringLiteral("inkPage")));
+
+        auto *editor = h.find<QObject>("bookNoteDialog");
+        QVERIFY(editor);
+        QTRY_VERIFY(editor->property("opened").toBool());
+        QTRY_COMPARE(stream.remoteSection(), QStringLiteral("book-note"));
+        QVERIFY(waitForLayoutFrame(h.window()));
+        auto *surface = editor->property("remoteSurface").value<QQuickItem *>();
+        QVERIFY(remoteTap(h, stream, findRemoteAction(surface, {QStringLiteral("Testo"), QStringLiteral("Text")})));
+        QTRY_COMPARE(editor->property("mode").toString(), QStringLiteral("text"));
+        QVERIFY(waitForLayoutFrame(h.window()));
+        QVERIFY(remoteTap(h, stream, QStringLiteral("bookNoteText")));
+        const QString note = QStringLiteral("Rileggere questa pagina");
+        emit stream.remoteKeyRequested(QStringLiteral("text"), note);
+        QTRY_COMPARE(editor->property("noteText").toString(), note);
+        QVERIFY(remoteTap(h, stream, QStringLiteral("bookNoteSave")));
+        QTRY_VERIFY(!editor->property("visible").toBool());
+        QCOMPARE(h.notebook.pageId(), pageId);
+        const auto annotations = h.notebook.pageItems();
+        QCOMPARE(annotations.size(), 1);
+        QCOMPARE(annotations.first().toMap().value("type").toString(), QStringLiteral("note"));
+        QCOMPARE(annotations.first().toMap().value("text").toString(), note);
+        QVERIFY(h.notebook.goToPage(0));
+        QVERIFY(h.notebook.pageItems().isEmpty());
+    }
+
+    void writingAddsATableAsAnEditableSheet()
+    {
+        WorkspaceHarness h;
+        QVERIFY(h.window());
+        QVERIFY(h.notebook.importMarkdownText(QStringLiteral("# Appunti\n\nPagina di scrittura."),
+            QStringLiteral("Appunti"), {}));
+        QVERIFY(QMetaObject::invokeMethod(h.window(), "showCurrentBook"));
+        const auto book = h.notebook.bookId();
+        const auto writing = h.notebook.pageId();
+        QVERIFY(QMetaObject::invokeMethod(h.window(), "workspaceAction", Q_ARG(QString, QStringLiteral("sheetTable")),
+            Q_ARG(QString, QString{})));
+        auto *editor = h.find<QObject>("pageItemDialog");
+        QVERIFY(editor);
+        QTRY_VERIFY(editor->property("opened").toBool());
+        QQuickItem *cell = nullptr;
+        QTRY_VERIFY((cell = findVisualItem(h.window()->contentItem(), QStringLiteral("tableCellInput"))));
+        QVERIFY(cell->setProperty("text", QStringLiteral("Nuovo foglio")));
+        QVERIFY(QMetaObject::invokeMethod(editor, "submit", Q_ARG(bool, false)));
+        QTRY_VERIFY(!editor->property("visible").toBool());
+        QCOMPARE(h.notebook.bookId(), book);
+        QCOMPARE(h.notebook.pageCount(), 2);
+        QTRY_COMPARE(h.window()->property("editorWorkspace").toString(), QStringLiteral("tables"));
+        const auto table = h.notebook.pageItems().first().toMap();
+        const auto sheet = h.notebook.pageId();
+        QCOMPARE(table.value("cells").toList().first().toString(), QStringLiteral("Nuovo foglio"));
+        QVERIFY(h.notebook.openPage(writing));
+        QVERIFY(openEntry(h, table.value("id").toString()));
+        QCOMPARE(h.notebook.pageId(), sheet);
+        QCOMPARE(h.notebook.pageItems().first().toMap().value("id"), table.value("id"));
     }
 
     void multipleTablesRequireChoiceAndOpenTheChosenFormulaEditor()
@@ -760,6 +1256,116 @@ private slots:
         QVERIFY(crop.top() > 320. / 1200);
     }
 
+    void mixedPageNativeGridPreservesEmptyCellsAndStrokeOrder()
+    {
+        WorkspaceHarness h;
+        QVERIFY(h.window());
+        const QVariantMap node{{"id", "step"}, {"shape", "process"}, {"text", "QA"},
+            {"x", .15}, {"y", .20}, {"width", .35}, {"height", .30}};
+        QVERIFY(h.notebook.savePageItem({{"type", "diagram"}, {"x", .05}, {"y", .03},
+            {"width", .24}, {"height", .12}, {"nodes", QVariantList{node}}, {"edges", QVariantList{}}}));
+        QVERIFY(h.notebook.savePageItem({{"type", "text"}, {"x", .73}, {"y", .73},
+            {"width", .20}, {"height", .12}, {"text", "Testo per il controllo della griglia."}}));
+
+        const auto stroke = [](std::initializer_list<QPointF> samples) {
+            QVariantList points;
+            for (const auto &point : samples)
+                points.append(QVariantMap{{"x", point.x()}, {"y", point.y()}, {"p", .64}});
+            return QVariantMap{{"color", "#222222"}, {"width", 2.8}, {"points", points}};
+        };
+        QVariantList rules;
+        for (double y : {.20, .32, .44})
+            rules.append(stroke({{.205, y - .001}, {.38, y + .002}, {.57, y - .001}, {.755, y + .001}}));
+        for (double x : {.21, .39, .57, .75})
+            rules.append(stroke({{x - .001, .195}, {x + .001, .26}, {x - .002, .32}, {x + .001, .38}, {x, .447}}));
+        const auto a1First = stroke({{.245, .257}, {.254, .245}, {.254, .28}});
+        const auto a1Second = stroke({{.275, .249}, {.289, .244}, {.298, .252}, {.285, .267}, {.274, .28}, {.299, .28}});
+        const auto c1 = stroke({{.60, .249}, {.634, .249}, {.613, .282}});
+        const auto a2 = stroke({{.252, .354}, {.268, .377}, {.252, .392}});
+        const auto b2 = stroke({{.455, .350}, {.482, .353}, {.464, .371}, {.485, .380}, {.462, .394}});
+        const auto acrossDivider = stroke({{.36, .284}, {.38, .29}, {.419, .295}});
+        const QVariantList handwriting{a1First, c1, a1Second, acrossDivider, a2, b2};
+        for (const auto &entry : rules + handwriting)
+            QVERIFY(h.notebook.appendStroke(entry.toMap()));
+        const auto source = h.notebook.mixedPageSource();
+        const auto sourceExport = h.notebook.exportBookForTransfer(source.value("bookId").toString());
+        const auto outlineOf = [](const QVariantMap &item) {
+            const QRectF bounds(item.value("x").toReal(), item.value("y").toReal(),
+                item.value("width").toReal(), item.value("height").toReal());
+            return bounds.adjusted(-.02, -.02, .02, .02).intersected(QRectF(0, 0, 1, 1));
+        };
+        const QVariantMap regions{{"diagram", QVariantList{outlineOf(h.notebook.pageItems().at(0).toMap())}},
+            {"table", QVariantList{QRectF(.17, .17, .62, .30)}},
+            {"text", QVariantList{outlineOf(h.notebook.pageItems().at(1).toMap())}}};
+        MixedPageAnalyzer analyzer;
+        QSignalSpy completed(&analyzer, &MixedPageAnalyzer::finished);
+        analyzer.analyze(source.value("content").toMap(), regions);
+        QTRY_COMPARE(completed.size(), 1);
+        QVERIFY2(completed.first().at(1).toString().isEmpty(), qPrintable(completed.first().at(1).toString()));
+        const auto draft = completed.first().at(0).toMap();
+        QCOMPARE(draft.value("diagram").toMap().value("nodes").toList().size(), 1);
+        QCOMPARE(draft.value("text").toString(), QStringLiteral("Testo per il controllo della griglia."));
+        QCOMPARE(draft.value("tableText").toString(), QStringLiteral("\t\t\n\t\t"));
+        QVERIFY(draft.value("tableInk").toList().isEmpty());
+        const auto jobs = draft.value("tableCellInk").toList();
+        const QVariantList expected{
+            QVariantMap{{"row", 0}, {"column", 0}, {"strokes", QVariantList{a1First, a1Second}}},
+            QVariantMap{{"row", 0}, {"column", 2}, {"strokes", QVariantList{c1}}},
+            QVariantMap{{"row", 1}, {"column", 0}, {"strokes", QVariantList{a2}}},
+            QVariantMap{{"row", 1}, {"column", 1}, {"strokes", QVariantList{b2}}}};
+        QCOMPARE(jobs, expected);
+
+        auto *dialog = h.find<QObject>("mixedPageDialog");
+        auto *tableField = h.find<QQuickItem>("mixedPageTable");
+        QVERIFY(dialog && tableField);
+        QVERIFY(QMetaObject::invokeMethod(dialog, "openForPage"));
+        QTRY_VERIFY(dialog->property("opened").toBool());
+        QVERIFY(QMetaObject::invokeMethod(dialog, "beginReview", Q_ARG(QVariant, QVariant(draft))));
+        QVERIFY(QMetaObject::invokeMethod(dialog, "stopRecognition"));
+        QCOMPARE(tableField->property("text").toString(), QStringLiteral("\t\t\n\t\t"));
+
+        // Supply deterministic recognizer outcomes to the real QML dialog.
+        // A missed A2 and the unwritten B1/C2 must keep their positions.
+        QVariantList queue;
+        for (const auto &entry : jobs) {
+            auto job = entry.toMap();
+            job.insert("part", QStringLiteral("table-cell"));
+            queue.append(job);
+        }
+        QVERIFY(dialog->setProperty("recognitionQueue", queue));
+        QVERIFY(dialog->setProperty("queueIndex", 0));
+        for (const QString &value : {QStringLiteral("12"), QStringLiteral("7"), QString(), QStringLiteral("3,4")})
+            QVERIFY(QMetaObject::invokeMethod(dialog, "applyRecognition", Q_ARG(QString, value)));
+        QVERIFY(QMetaObject::invokeMethod(dialog, "stopRecognition"));
+        QCOMPARE(tableField->property("text").toString(), QStringLiteral("12\t\t7\n\t3,4\t"));
+        QCOMPARE(dialog->property("missedLines").toInt(), 1);
+        QVERIFY(dialog->property("canCreate").toBool());
+        QVERIFY(QMetaObject::invokeMethod(dialog, "saveDraft"));
+        QTRY_VERIFY(!dialog->property("visible").toBool());
+        QCOMPARE(h.notebook.exportBookForTransfer(source.value("bookId").toString()), sourceExport);
+        QCOMPARE(h.notebook.pageCount(), 3);
+        QVERIFY(h.notebook.goToPage(2));
+        const auto saved = h.notebook.pageItems().first().toMap();
+        QCOMPARE(saved.value("rows").toInt(), 2);
+        QCOMPARE(saved.value("cols").toInt(), 3);
+        QCOMPARE(saved.value("cells").toList(), (QVariantList{QStringLiteral("12"), QStringLiteral(""), QStringLiteral("7"),
+            QStringLiteral(""), QStringLiteral("3,4"), QStringLiteral("")}));
+
+        // Remove the rules from the same source and check the handwritten
+        // fallback still produces row jobs instead of guessing columns.
+        auto unruled = source.value("content").toMap();
+        unruled.remove("items");
+        unruled.insert("strokes", handwriting);
+        completed.clear();
+        analyzer.analyze(unruled, regions);
+        QTRY_COMPARE(completed.size(), 1);
+        QVERIFY(completed.first().at(1).toString().isEmpty());
+        const auto fallback = completed.first().at(0).toMap();
+        QVERIFY(fallback.value("tableCellInk").toList().isEmpty());
+        QVERIFY(fallback.value("tableText").toString().isEmpty());
+        QCOMPARE(fallback.value("tableInk").toList().size(), 2);
+    }
+
     void mixedPageReviewCreatesOneNotebookWithEditableLinkedPages()
     {
         WorkspaceHarness h;
@@ -900,30 +1506,34 @@ private slots:
         QCOMPARE(links.size(), 2);
         QCOMPARE(pages.size(), 3);
 
-        auto *linked = h.find<QObject>("workspaceLinkedItems");
-        QVERIFY(linked);
-        const auto editLinked = [&](const QVariantMap &link) {
-            if (!clickItem(h, h.find<QQuickItem>("workspaceLinkedItemsButton"))) return false;
-            if (!QTest::qWaitFor([&] { return linked->property("opened").toBool(); })) return false;
-            const QString name = QStringLiteral("workspaceLinkedEdit_") + link.value("id").toString();
+        auto *strip = h.find<QQuickItem>("notebookPageStrip");
+        QVERIFY(strip);
+        QTRY_VERIFY(strip->isVisible());
+        QVERIFY(!h.find<QQuickItem>("workspaceLinkedItemsButton")->isVisible());
+        const auto openSheet = [&](int index) {
+            const QString name = QStringLiteral("notebookPageTab_%1").arg(index);
             QQuickItem *button = nullptr;
             return QTest::qWaitFor([&] { return (button = findVisualItem(h.window()->contentItem(), name)); })
                 && clickItem(h, button);
         };
         const auto diagramLink = links.value(QStringLiteral("diagram"));
-        QVERIFY(editLinked(diagramLink));
+        QVERIFY(openSheet(1));
+        QTRY_COMPARE(h.notebook.pageId(), diagramLink.value("targetPageId").toString());
+        QCOMPARE(h.window()->property("editorWorkspace").toString(), QStringLiteral("diagrams"));
+        QVERIFY(clickAction(h, "diagramEdit"));
         auto *diagramEditor = h.find<QObject>("diagramEditor");
         QVERIFY(diagramEditor);
         QTRY_VERIFY(diagramEditor->property("opened").toBool());
         QCOMPARE(h.notebook.bookId(), writingBook);
         QCOMPARE(h.notebook.pageId(), diagramLink.value("targetPageId").toString());
         QCOMPARE(h.notebook.pageItems().first().toMap().value("id"), diagramLink.value("targetItemId"));
-        auto *canvas = findVisualItem(h.window()->contentItem(), QStringLiteral("diagramCanvas"));
+        auto *canvas = qobject_cast<DiagramItem *>(findVisualItem(h.window()->contentItem(), QStringLiteral("diagramCanvas")));
         QVERIFY(canvas);
-        const auto point = canvas->mapToScene({.205 * canvas->width(), .19 * canvas->height()}).toPoint();
-        auto *touchscreen = QTest::createTouchDevice();
-        QTest::touchEvent(h.window(), touchscreen).press(0, point, h.window());
-        QTest::touchEvent(h.window(), touchscreen).release(0, point, h.window());
+        QVERIFY(waitForLayoutFrame(h.window()));
+        const QRectF view = canvas->viewRect();
+        const QPointF center(view.x() + .205 * view.width(), view.y() + .19 * view.height());
+        QCOMPARE(canvas->nodeAt(center.x(), center.y()), QStringLiteral("start"));
+        QTest::mouseClick(h.window(), Qt::LeftButton, Qt::NoModifier, canvas->mapToScene(center).toPoint());
         QTRY_COMPARE(diagramEditor->property("selectedNode").toString(), QStringLiteral("start"));
         QQuickItem *labelButton = nullptr;
         QTRY_VERIFY((labelButton = findVisualItem(h.window()->contentItem(), QStringLiteral("diagramEditLabel"))));
@@ -943,7 +1553,7 @@ private slots:
         QTRY_VERIFY(!labelInput->isVisible());
         QVERIFY(clickItem(h, diagramControl("text", QStringLiteral("Salva"))));
         QTRY_VERIFY(!diagramEditor->property("visible").toBool());
-        QVERIFY(clickItem(h, h.find<QQuickItem>("editorBackButton")));
+        QVERIFY(openSheet(0));
         QTRY_COMPARE(h.notebook.pageId(), writingPage);
         QCOMPARE(h.window()->property("editorWorkspace").toString(), QStringLiteral("writing"));
         const auto editedDiagram = h.notebook.linkedPageItem(diagramLink.value("id").toString());
@@ -951,7 +1561,10 @@ private slots:
         QCOMPARE(editedDiagram.value("nodes").toList().first().toMap().value("text").toString(), newLabel);
 
         const auto tableLink = links.value(QStringLiteral("table"));
-        QVERIFY(editLinked(tableLink));
+        QVERIFY(openEntry(h, tableLink.value("targetItemId").toString()));
+        QTRY_COMPARE(h.notebook.pageId(), tableLink.value("targetPageId").toString());
+        QCOMPARE(h.window()->property("editorWorkspace").toString(), QStringLiteral("tables"));
+        QVERIFY(clickAction(h, "tableEdit"));
         auto *tableEditor = h.find<QObject>("pageItemDialog");
         QVERIFY(tableEditor);
         QTRY_VERIFY(tableEditor->property("opened").toBool());
@@ -962,7 +1575,7 @@ private slots:
         QVERIFY(tableCell && tableCell->setProperty("text", newHeader));
         QVERIFY(QMetaObject::invokeMethod(tableEditor, "submit", Q_ARG(bool, false)));
         QTRY_VERIFY(!tableEditor->property("visible").toBool());
-        QVERIFY(clickItem(h, h.find<QQuickItem>("editorBackButton")));
+        QVERIFY(openSheet(0));
         QTRY_COMPARE(h.notebook.pageId(), writingPage);
         const auto editedTable = h.notebook.linkedPageItem(tableLink.value("id").toString());
         QCOMPARE(editedTable.value("id"), tableLink.value("targetItemId"));
@@ -1064,7 +1677,7 @@ private slots:
         h.screenshot(landscape ? "workspace-books-landscape" : "workspace-books-narrow");
     }
 
-    void tabletShareOffersContextualFormatsAndSavesCurrentPage()
+    void tabletPdfSharesWithoutTheFilePicker()
     {
         WorkspaceHarness h;
         QVERIFY(h.window());
@@ -1081,8 +1694,10 @@ private slots:
         auto *save = h.find<QQuickItem>("saveShareFile");
         auto *send = h.find<QQuickItem>("sendShareFile");
         auto *print = h.find<QQuickItem>("printShareFile");
-        auto *handoff = h.find<QQuickItem>("printOnMac");
-        QVERIFY(dialog && format && picker && save && send && print && handoff);
+        auto *wifi = h.find<QQuickItem>("pdfShareWifi");
+        auto *bluetooth = h.find<QQuickItem>("pdfShareBluetooth");
+        auto *mail = h.find<QQuickItem>("pdfShareEmail");
+        QVERIFY(dialog && format && picker && save && send && print && wifi && bluetooth && mail);
         QVERIFY(waitForLayoutFrame(h.window()));
         QVERIFY(clickItem(h, h.find<QQuickItem>("shareBookButton")));
         QTRY_VERIFY(dialog->property("opened").toBool());
@@ -1105,36 +1720,49 @@ private slots:
         QVERIFY(pagePdf >= 0);
         QVERIFY(format->setProperty("currentIndex", pagePdf));
         QCOMPARE(qmlMap(dialog, "selection").value("format").toString(), QStringLiteral("pdf-page"));
-        QTRY_COMPARE(handoff->isVisible(), h.wireless.available());
-        QVERIFY(waitForLayoutFrame(h.window()));
-        QVERIFY(clickItem(h, save));
-        QTRY_VERIFY(picker->property("visible").toBool());
+        QTRY_COMPARE(wifi->isVisible(), h.wireless.available());
+        QTRY_COMPARE(bluetooth->isVisible(), h.wireless.available());
+        QVERIFY(mail->isVisible());
+        QVERIFY(!save->isVisible());
+        QVERIFY(!picker->property("visible").toBool());
 
         const auto file = h.directory.filePath(QStringLiteral("current-page.pdf"));
-        QVERIFY(picker->setProperty("selectedFile", QUrl::fromLocalFile(file)));
-        QVERIFY(QMetaObject::invokeMethod(picker, "accepted"));
-        QVERIFY(QMetaObject::invokeMethod(picker, "close"));
+        QVERIFY(h.notebook.exportShareFile(qmlMap(dialog, "selection"), QUrl::fromLocalFile(file)));
         QFile pdf(file);
         QVERIFY2(pdf.open(QIODevice::ReadOnly), qPrintable(h.notebook.error()));
         const auto bytes = pdf.readAll();
         QVERIFY(bytes.startsWith("%PDF-"));
         QVERIFY(bytes.contains("/Count 1"));
 
-        if (h.wireless.available()) {
-            auto *wireless = h.find<QObject>("wirelessSyncDialog");
-            QVERIFY(wireless);
-            QVERIFY(waitForLayoutFrame(h.window()));
-            QVERIFY(clickItem(h, handoff));
-            QTRY_VERIFY(wireless->property("visible").toBool());
-            QTRY_VERIFY(!dialog->property("visible").toBool());
-            QVERIFY(QMetaObject::invokeMethod(wireless, "close"));
-            QVERIFY(QMetaObject::invokeMethod(h.window(), "shareBook"));
-            QTRY_VERIFY(dialog->property("opened").toBool());
-        }
+        QVERIFY(waitForLayoutFrame(h.window()));
+        QVERIFY(clickItem(h, mail));
+        auto *smtpDialog = h.find<QObject>("smtpDialog");
+        QVERIFY(smtpDialog);
+        QTRY_VERIFY(smtpDialog->property("opened").toBool());
+        QVERIFY(smtpDialog->property("configuring").toBool());
+        QVERIFY(h.find<QObject>("smtpHost")->setProperty("text", QStringLiteral("smtp.example.test")));
+        QVERIFY(h.find<QObject>("smtpSender")->setProperty("text", QStringLiteral("sender@example.test")));
+        QVERIFY(QMetaObject::invokeMethod(smtpDialog, "saveSettings"));
+        QTRY_VERIFY(!smtpDialog->property("configuring").toBool());
+        QCOMPARE(qmlMap(smtpDialog, "pdfOption").value("format").toString(), QStringLiteral("pdf-page"));
+        QVERIFY(h.smtp.configured());
+        QVERIFY(!h.smtp.settings().contains("password"));
+        QVERIFY(!picker->property("visible").toBool());
 
         QVERIFY(h.notebook.goToPage(1));
+        QTRY_VERIFY(!smtpDialog->property("visible").toBool());
         QTRY_VERIFY(!dialog->property("visible").toBool());
         QTRY_VERIFY(!picker->property("visible").toBool());
+
+        QVERIFY(QMetaObject::invokeMethod(h.window(), "showSettings"));
+        auto *settings = h.find<QObject>("settingsView");
+        QVERIFY(settings && settings->setProperty("category", 6));
+        auto *settingsButton = h.find<QQuickItem>("openSmtpSettings");
+        QTRY_VERIFY(settingsButton && settingsButton->isVisible() && settingsButton->isEnabled());
+        QVERIFY(QMetaObject::invokeMethod(settingsButton, "clicked"));
+        QTRY_VERIFY(smtpDialog->property("opened").toBool());
+        QVERIFY(smtpDialog->property("configuring").toBool());
+        QCOMPARE(h.find<QObject>("smtpSender")->property("text").toString(), QStringLiteral("sender@example.test"));
     }
 
     void overflowSupportsKeyboardAndDismissesOnContextChange()

@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.21.1)
-project(Quaderno VERSION 0.2.23 LANGUAGES CXX)
+project(Quaderno VERSION 3.0.0 LANGUAGES CXX)
+
+set_property(SOURCE src/main.cpp PROPERTY COMPILE_DEFINITIONS "QUADERNO_VERSION=\"${PROJECT_VERSION}\"")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -15,12 +17,12 @@ target_include_directories(quaderno PRIVATE src)
 target_link_libraries(quaderno PRIVATE Qt6::Quick Qt6::QuickControls2 Qt6::DBus Qt6::Network OpenSSL::SSL ZLIB::ZLIB)
 
 set(qml_sources qml/Main.qml qml/PaperButton.qml qml/PaperIcon.qml qml/SettingsView.qml qml/TabletSettingsPanel.qml qml/AccountsPanel.qml
-    qml/CloudAccountsDialog.qml qml/CloudImportDialog.qml qml/QuickControlsPopup.qml qml/ReadingPreferencesDialog.qml qml/SyncAutomation.qml qml/AppleShareView.qml
+    qml/CloudAccountsDialog.qml qml/CloudImportDialog.qml qml/QuickControlsPopup.qml qml/ReadingPreferencesDialog.qml qml/SyncAutomation.qml qml/AppleShareView.qml qml/SmtpDialog.qml
     qml/TouchKeyboard.qml qml/PinScreen.qml qml/PinKeypad.qml qml/PageDecorations.qml
-    qml/PageTemplateDialog.qml qml/PageItemDialog.qml qml/TableHandwritingDialog.qml qml/PageOverview.qml qml/LibraryOrganizer.qml
+    qml/PageTemplateDialog.qml qml/PageItemDialog.qml qml/TableHandwritingDialog.qml qml/PageOverview.qml qml/NotebookPageStrip.qml qml/LibraryOrganizer.qml
     qml/PageLayers.qml qml/PageTags.qml qml/ChartDialog.qml qml/ReadingControls.qml qml/ReadingGestures.qml
     qml/InkSelection.qml qml/SelectionOverlay.qml qml/UsbTransferDialog.qml qml/UsbImportDialog.qml qml/TableChartDialog.qml
-    qml/WirelessSyncDialog.qml qml/DocumentDropArea.qml qml/PdfDragHandle.qml qml/MarkdownDialog.qml qml/MarkdownEditor.qml
+    qml/WirelessSyncDialog.qml qml/ScreenStreamWindow.qml qml/RemoteInput.qml qml/DocumentDropArea.qml qml/PdfDragHandle.qml qml/MarkdownDialog.qml qml/MarkdownEditor.qml
     qml/ObsidianSyncDialog.qml qml/DiagramEditor.qml qml/DiagramHandwritingDialog.qml qml/DiagramArrangement.js
     qml/WorkspaceTools.qml qml/BookNoteDialog.qml qml/LinkTargetDialog.qml qml/MixedPageDialog.qml)
 get_target_property(qt_disabled_gui_features Qt6::Gui QT_DISABLED_PUBLIC_FEATURES)
@@ -30,7 +32,7 @@ foreach(qml_file IN LISTS qml_sources)
         # The Paper Pro firmware omits Qt's Accessible attached object.
         set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${qml_file}")
         file(READ "${qml_file}" qml_contents)
-        string(REGEX REPLACE "\n[ \t]*Accessible\\.(name|ignored|role|onPressAction):[^\n]*" "" qml_contents "${qml_contents}")
+        string(REGEX REPLACE "\n[ \t]*Accessible\\.(name|description|ignored|role|checkable|checked|onPressAction):[^\n]*" "" qml_contents "${qml_contents}")
         if(qml_contents MATCHES "Accessible\\.")
             message(FATAL_ERROR "${qml_file}: put each Accessible binding on its own physical line so the firmware build can remove it.")
         endif()
@@ -70,6 +72,8 @@ qt_add_qml_module(quaderno
         src/pagestore.cpp src/pagestore.h src/syncpackage.cpp src/syncpackage.h
         src/tablecsv.cpp
         src/appleshare.cpp src/appleshare.h
+        src/smtpclient.cpp src/smtpclient.h
+        src/smtpmail.cpp src/smtpmail.h
         src/deviceinfo.cpp src/deviceinfo.h
         src/screenorientation.cpp src/screenorientation.h
         src/markerbattery.cpp src/markerbattery.h
@@ -89,6 +93,8 @@ qt_add_qml_module(quaderno
         src/blesync.cpp src/blesync.h
         src/deltatransfer.cpp src/deltatransfer.h
         src/wirelesssync.cpp src/wirelesssync.h
+        src/screencapture.cpp src/screencapture.h
+        src/screenstream.cpp src/screenstream.h
         src/syncchannel.cpp src/syncchannel.h
         src/blepipe.cpp src/blepipe.h
         src/wifisynclink.cpp src/wifisynclink.h

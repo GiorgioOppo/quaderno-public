@@ -25,7 +25,8 @@ Dialog {
     readonly property bool canAnalyze: regions.diagram.length > 0 && regions.table.length > 0
         && regions.text.length > 0 && !analyzer.busy && !sourcePage.busy
     readonly property bool canCreate: reviewing && !readingInk && titleField.text.trim().length > 0
-        && Boolean(diagramDraft.nodes?.length) && tableField.text.trim().length > 0 && textField.text.trim().length > 0
+        && Boolean(diagramDraft.nodes?.length) && (tableField.text.trim().length > 0 || tableField.text.includes("\t"))
+        && textField.text.trim().length > 0
     readonly property var parts: [
         {key: "diagram", label: qsTr("Diagramma"), tint: "#315f98"},
         {key: "table", label: qsTr("Tabella"), tint: "#3c6a47"},
@@ -114,6 +115,8 @@ Dialog {
         missedLines = 0
         if (!recognizer.available) return
         recognitionQueue = (draft.tableInk || []).map(row => ({part: "table", strokes: row.strokes}))
+            .concat((draft.tableCellInk || []).map(cell => ({part: "table-cell", row: cell.row, column: cell.column,
+                strokes: cell.strokes})))
             .concat((draft.textInk || []).map(row => ({part: "text", strokes: row.strokes})))
             .concat((draft.diagramInk || []).map(label => ({part: "diagram", strokes: label.strokes,
                 nodeId: label.nodeId, orientation: label.stacked ? "stacked" : label.vertical ? "clockwise" : "auto"})))
@@ -134,6 +137,8 @@ Dialog {
         const job = recognitionQueue[queueIndex]
         if (job.part === "diagram")
             recognizer.recognizeDiagramLabel(job.strokes, language, job.orientation)
+        else if (job.part === "text")
+            recognizer.recognizeProse(job.strokes, language)
         else
             recognizer.recognize(job.strokes, language)
     }
@@ -148,6 +153,12 @@ Dialog {
             textField.text += (textField.text ? "\n" : "") + text
         } else if (job.part === "table") {
             tableField.text += (tableField.text ? "\n" : "") + text.replace(/\s*\n\s*/g, " ")
+        } else if (job.part === "table-cell") {
+            const rows = tableField.text.split("\n")
+            const cells = rows[job.row].split("\t")
+            cells[job.column] = text.replace(/[\t\r\n]+/g, " ")
+            rows[job.row] = cells.join("\t")
+            tableField.text = rows.join("\n")
         } else if (diagramDraft.nodes) {
             const nodes = diagramDraft.nodes.map(node => node.id === job.nodeId && !(node.text || "").trim()
                 ? Object.assign({}, node, {text: text.slice(0, 200)})
@@ -443,7 +454,7 @@ Dialog {
             text: editor.errorText || (analyzer.busy ? qsTr("Analisi delle aree…") : editor.readingInk
                 ? qsTr("Riconoscimento locale · %1 / %2").arg(editor.queueIndex + 1).arg(editor.recognitionQueue.length)
                 : editor.reviewing && !recognizer.available ? qsTr("Il motore di scrittura non è disponibile. Puoi completare le bozze a mano.")
-                : editor.missedLines > 0 ? qsTr("Alcune righe richiedono una trascrizione manuale.") : sourcePage.error)
+                : editor.missedLines > 0 ? qsTr("Alcune righe o celle richiedono una trascrizione manuale.") : sourcePage.error)
             color: editor.errorText ? "#8d3030" : "#535862"
         }
     }

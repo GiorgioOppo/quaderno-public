@@ -4,6 +4,10 @@
     <context>
         <name>Main</name>
         <message>
+            <source>Strumenti</source>
+            <translation>Tools</translation>
+        </message>
+        <message>
             <source>%1%</source>
             <translation>%1%</translation>
         </message>
@@ -785,6 +789,30 @@
             <source>Tocca il punto della pagina in cui aggiungere il post-it.</source>
             <translation>Tap the point on the page where you want to add the sticky note.</translation>
         </message>
+        <message>
+            <source>PDF ricevuto · Download/Quaderno</source>
+            <translation>PDF received · Downloads/Quaderno</translation>
+        </message>
+        <message>
+            <source>Apri PDF</source>
+            <translation>Open PDF</translation>
+        </message>
+        <message>
+            <source>Chiudi avviso</source>
+            <translation>Dismiss notification</translation>
+        </message>
+        <message>
+            <source>Schermo del Paper Pro</source>
+            <translation>Paper Pro Screen</translation>
+        </message>
+        <message>
+            <source>Condivisione schermo…</source>
+            <translation>Screen sharing…</translation>
+        </message>
+        <message>
+            <source>Interrompi condivisione</source>
+            <translation>Stop sharing</translation>
+        </message>
     </context>
     <context>
         <name>SettingsView</name>
@@ -1069,6 +1097,10 @@
             <translation>About</translation>
         </message>
         <message>
+            <source>Quaderno %1</source>
+            <translation>Quaderno %1</translation>
+        </message>
+        <message>
             <source>Software %1</source>
             <translation>Software %1</translation>
         </message>
@@ -1248,6 +1280,26 @@
         <message>
             <source>pressione palmo lazo OCR forme correzioni diagrammi riconoscimento automatico</source>
             <translation>pressure palm lasso OCR shapes corrections diagrams automatic recognition</translation>
+        </message>
+        <message>
+            <source>Apple iCloud Obsidian Google Drive Dropbox OneDrive cloud sync SMTP email posta</source>
+            <translation>Apple iCloud Obsidian Google Drive Dropbox OneDrive cloud sync SMTP email mail</translation>
+        </message>
+        <message>
+            <source>Invia PDF via email</source>
+            <translation>Email PDF</translation>
+        </message>
+        <message>
+            <source>Mittente: %1</source>
+            <translation>Sender: %1</translation>
+        </message>
+        <message>
+            <source>Configura il server SMTP per spedire PDF da Quaderno.</source>
+            <translation>Configure the SMTP server to send PDFs from Quaderno.</translation>
+        </message>
+        <message>
+            <source>Server di posta in uscita (SMTP)</source>
+            <translation>Outgoing mail server (SMTP)</translation>
         </message>
     </context>
     <context>

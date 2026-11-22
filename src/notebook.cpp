@@ -321,6 +321,14 @@ bool isLibraryItem(const QVariant &type)
     return type == QStringLiteral("chart") || type == QStringLiteral("table") || type == QStringLiteral("diagram");
 }
 
+QString objectWorkspace(const QVariant &type)
+{
+    if (type == QStringLiteral("chart")) return QStringLiteral("charts");
+    if (type == QStringLiteral("table")) return QStringLiteral("tables");
+    if (type == QStringLiteral("diagram")) return QStringLiteral("diagrams");
+    return {};
+}
+
 qsizetype imageCount(const QVariantList &items)
 {
     return std::count_if(items.cbegin(), items.cend(), [](const QVariant &entry) {
@@ -875,6 +883,36 @@ bool Notebook::diagramBook() const
 {
     const Book *book = currentBook();
     return book && book->workspace == QStringLiteral("diagrams");
+}
+
+QString Notebook::workspaceForPage(const Page &page, const Book &book)
+{
+    if (page.hasBackground())
+        return QStringLiteral("books");
+    if (!page.markdownBlockId.isEmpty())
+        return QStringLiteral("writing");
+
+    QString workspace;
+    for (const QVariant &entry : page.items) {
+        const QVariant type = entry.toMap().value(QStringLiteral("type"));
+        if (type == QStringLiteral("text"))
+            return QStringLiteral("writing");
+        const QString candidate = objectWorkspace(type);
+        if (candidate.isEmpty())
+            continue;
+        if (!workspace.isEmpty() && candidate != workspace)
+            return QStringLiteral("writing");
+        workspace = candidate;
+    }
+    if (!workspace.isEmpty())
+        return workspace;
+    return book.workspace == QStringLiteral("diagrams") ? book.workspace : QStringLiteral("writing");
+}
+
+QString Notebook::pageWorkspace() const
+{
+    const Page *page = currentPage();
+    return page ? workspaceForPage(*page, *currentBook()) : QString{};
 }
 
 bool Notebook::markdownBook() const
@@ -2365,11 +2403,17 @@ QVariantMap Notebook::linkedPageItem(const QString &id) const
     const Page &targetPage = book.pages.at(location->page);
     QVariantMap item = PageContent::resolveTableCharts(targetPage.items).at(location->item).toMap();
     const QString itemTitle = libraryItemTitle(item, book.title);
+    const QString workspace = workspaceForPage(targetPage, book);
+    const bool internalPage = location->book == m_state.activeBook && location->page != m_state.page;
     item.insert(QStringLiteral("bookId"), book.id);
     item.insert(QStringLiteral("pageId"), targetPage.id);
     item.insert(QStringLiteral("bookTitle"), book.title);
     item.insert(QStringLiteral("pageNumber"), location->page + 1);
     item.insert(QStringLiteral("linkId"), id);
+    item.insert(QStringLiteral("pageWorkspace"), workspace);
+    item.insert(QStringLiteral("internalPage"), internalPage);
+    item.insert(QStringLiteral("internalObjectSheet"), internalPage
+        && workspace == objectWorkspace(item.value(QStringLiteral("type"))));
     item.insert(QStringLiteral("displayTitle"), itemTitle.isEmpty() ? book.title : itemTitle);
     return item;
 }
@@ -2648,11 +2692,21 @@ QVariantList Notebook::pageSummaries() const
     result.reserve(book->pages.size());
     for (int index = 0; index < book->pages.size(); ++index) {
         const Page &page = book->pages.at(index);
+        const QString workspace = workspaceForPage(page, *book);
+        QString title;
+        if (workspace == QStringLiteral("charts") || workspace == QStringLiteral("tables") || workspace == QStringLiteral("diagrams")) {
+            const auto target = std::find_if(page.items.cbegin(), page.items.cend(), [&](const QVariant &entry) {
+                return objectWorkspace(entry.toMap().value(QStringLiteral("type"))) == workspace;
+            });
+            if (target != page.items.cend())
+                title = libraryItemTitle(target->toMap(), book->title);
+        }
         bool annotated = !page.strokes.isEmpty() || !page.items.isEmpty() || !page.transcripts.isEmpty();
         for (const InkLayer &layer : page.layers)
             annotated |= !layer.strokes.isEmpty();
         result.append(QVariantMap{{QStringLiteral("index"), index}, {QStringLiteral("pageId"), page.id},
-            {QStringLiteral("bookmarked"), page.bookmarked}, {QStringLiteral("annotated"), annotated}});
+            {QStringLiteral("bookmarked"), page.bookmarked}, {QStringLiteral("annotated"), annotated},
+            {QStringLiteral("workspace"), workspace}, {QStringLiteral("title"), title}});
     }
     return result;
 }

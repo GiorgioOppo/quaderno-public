@@ -14,6 +14,14 @@ Dialog {
     property bool draftOnly: false
     readonly property Item markerTarget: visible && !labelDialog.visible && !deleteDialog.visible
         && !arrangeDialog.visible && !overflow.visible ? canvas : null
+    readonly property Item remoteSurface: {
+        if (!opened || deleteDialog.visible || arrangeDialog.visible || overflow.visible
+                || shapeProperty.popup?.visible)
+            return null
+        if (labelDialog.visible)
+            return labelDialog.opened && labelDialog.contentItem ? labelDialog.contentItem.parent : null
+        return contentItem ? contentItem.parent : null
+    }
     property string errorText: ""
     property string importNotice: ""
     property string importTitle: ""
@@ -610,6 +618,7 @@ Dialog {
 
             Action {
                 objectName: "diagramConnectTool"
+                property bool remoteClickable: true
                 text: qsTr("Collega")
                 iconName: "edge"
                 filled: editor.connecting
@@ -624,12 +633,14 @@ Dialog {
                 onClicked: editor.toggleLasso()
             }
             Tool {
+                property bool remoteClickable: true
                 text: qsTr("Annulla ultima modifica")
                 iconName: "undo"
                 enabled: editor.history.length > 0
                 onClicked: editor.undo()
             }
             Tool {
+                property bool remoteClickable: true
                 text: qsTr("Ripristina ultima modifica")
                 iconName: "redo"
                 enabled: editor.future.length > 0
@@ -650,18 +661,21 @@ Dialog {
                 onClicked: editor.togglePan()
             }
             Tool {
+                property bool remoteClickable: true
                 text: qsTr("Riduci vista")
                 iconName: "zoom-out"
                 enabled: editor.zoom > 1
                 onClicked: editor.changeZoom(0.8, canvas.width / 2, canvas.height / 2)
             }
             Tool {
+                property bool remoteClickable: true
                 text: qsTr("Ingrandisci vista")
                 iconName: "zoom-in"
                 enabled: editor.zoom < 3
                 onClicked: editor.changeZoom(1.25, canvas.width / 2, canvas.height / 2)
             }
             Action {
+                property bool remoteClickable: true
                 text: Math.round(editor.zoom * 100) + "%"
                 quiet: true
                 enabled: editor.zoom > 1
@@ -711,6 +725,7 @@ Dialog {
                         spacing: 4 * editor.uiScale
                         Action {
                             objectName: "diagramMoreShapes"
+                            property bool remoteClickable: true
                             Layout.fillWidth: true
                             Layout.minimumWidth: 0
                             text: editor.shapeCategory === "more" ? qsTr("Forme di base") : qsTr("Altre forme")
@@ -718,6 +733,7 @@ Dialog {
                         }
                         Action {
                             objectName: "diagramUmlShapes"
+                            property bool remoteClickable: true
                             text: "UML"
                             checkable: true
                             checked: editor.shapeCategory === "uml"
@@ -738,6 +754,7 @@ Dialog {
                             delegate: Action {
                                 id: shapeButton
                                 required property var modelData
+                                property bool remoteClickable: true
                                 objectName: "diagramShape_" + modelData.shape
                                 Layout.fillWidth: true
                                 Layout.minimumWidth: 0
@@ -847,8 +864,22 @@ Dialog {
                     }
 
                     MouseArea {
+                        property bool remoteClickable: !editor.pointerStart && !editor.lassoEnabled
+                            && !editor.panEnabled && !editor.connectorSource.length
                         anchors.fill: parent
                         preventStealing: true
+                        function remoteActivateAt(x: real, y: real) {
+                            if (!remoteClickable)
+                                return
+                            const node = canvas.nodeAt(x, y)
+                            if (editor.connecting) {
+                                if (node)
+                                    editor.connectTo(node)
+                                return
+                            }
+                            editor.selectedNodes = node ? [node] : []
+                            editor.selectedEdge = node ? "" : canvas.edgeAt(x, y)
+                        }
                         onPressed: mouse => editor.markerPressed(mouse.x, mouse.y)
                         onPositionChanged: mouse => editor.markerMoved(mouse.x, mouse.y)
                         onReleased: mouse => editor.markerReleased(mouse.x, mouse.y)
@@ -1069,6 +1100,7 @@ Dialog {
                         visible: editor.hasSelection && !editor.connecting
 
                         ComboBox {
+                            id: shapeProperty
                             objectName: "diagramShapeProperty"
                             visible: editor.activeNode !== null
                             width: editor.sidePanels ? inspector.width - 12 * editor.uiScale : 132 * editor.uiScale
@@ -1084,6 +1116,7 @@ Dialog {
                         }
                         Action {
                             objectName: "diagramEditLabel"
+                            property bool remoteClickable: true
                             visible: editor.activeNode !== null || editor.activeEdge !== null
                             text: qsTr("Etichetta")
                             iconName: "rename"
@@ -1093,6 +1126,7 @@ Dialog {
                             onClicked: editor.openLabel()
                         }
                         Tool {
+                            property bool remoteClickable: true
                             visible: editor.activeNode !== null
                             text: qsTr("Duplica forma")
                             iconName: "duplicate"
@@ -1100,6 +1134,7 @@ Dialog {
                             onClicked: editor.duplicateShape()
                         }
                         Tool {
+                            property bool remoteClickable: true
                             visible: editor.activeEdge !== null
                             text: qsTr("Inverti freccia")
                             iconName: "reverse"
@@ -1109,6 +1144,7 @@ Dialog {
                         }
                         Action {
                             objectName: "diagramOrthogonalRoute"
+                            property bool remoteClickable: true
                             visible: editor.activeEdge !== null
                             text: qsTr("Ortogonale")
                             iconName: "orthogonal"
@@ -1177,11 +1213,13 @@ Dialog {
         }
         Item { Layout.fillWidth: true }
         Action {
+            property bool remoteClickable: true
             Layout.bottomMargin: editor.padding
             text: qsTr("Chiudi")
             onClicked: editor.close()
         }
         Action {
+            property bool remoteClickable: true
             Layout.rightMargin: editor.padding
             Layout.bottomMargin: editor.padding
             text: qsTr("Salva")
@@ -1301,6 +1339,8 @@ Dialog {
 
                 TextArea {
                     id: labelInput
+                    objectName: "diagramLabelInput"
+                    property bool remoteEditable: true
                     property int textLimit: 200
                     placeholderText: qsTr("Testo dell’etichetta")
                     selectByMouse: !editor.tabletMode
@@ -1329,11 +1369,13 @@ Dialog {
         footer: RowLayout {
             Item { Layout.fillWidth: true }
             Action {
+                property bool remoteClickable: true
                 Layout.bottomMargin: labelDialog.padding
                 text: qsTr("Annulla")
                 onClicked: labelDialog.close()
             }
             Action {
+                property bool remoteClickable: true
                 Layout.rightMargin: labelDialog.padding
                 Layout.bottomMargin: labelDialog.padding
                 text: qsTr("Applica")

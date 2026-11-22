@@ -21,6 +21,7 @@ Dialog {
     property bool closingApplication: false
     property Item keyboardTarget: null
     readonly property bool dirty: source.text !== initialText || nameField.text !== initialName
+    readonly property Item remoteSurface: opened && contentItem ? contentItem.parent : null
     readonly property bool previewing: mode.currentIndex === 1
     readonly property bool keyboardOpen: showTouchKeyboard && keyboardTarget !== null && !previewing
     readonly property int wordCount: source.text.split(/\s+/).filter(token => /[^\s#*_`~>\[\](){},.!?:;|+\-]/.test(token)).length
@@ -146,6 +147,9 @@ Dialog {
     }
     component ModeTab: TabButton {
         id: tab
+        required property int modeIndex
+        property bool remoteClickable: !editor.confirmingDiscard
+        function remoteActivate() { mode.currentIndex = modeIndex }
         background: Rectangle {
             color: tab.checked ? "#e6effb" : "#f2f2f7"
             radius: 7 * editor.uiScale
@@ -174,6 +178,7 @@ Dialog {
             TextField {
                 id: nameField
                 objectName: "markdownName"
+                property bool remoteEditable: !editor.confirmingDiscard
                 visible: editor.creating
                 Layout.fillWidth: true
                 maximumLength: 80
@@ -187,9 +192,11 @@ Dialog {
                 objectName: "markdownMode"
                 Layout.fillWidth: true
                 ModeTab {
+                    modeIndex: 0
                     text: qsTr("Scrivi")
                 }
                 ModeTab {
+                    modeIndex: 1
                     text: qsTr("Anteprima")
                 }
             }
@@ -198,30 +205,35 @@ Dialog {
                 Layout.fillWidth: true
                 spacing: 4 * editor.uiScale
                 PaperButton {
+                    property bool remoteClickable: !editor.confirmingDiscard
                     uiScale: editor.uiScale
                     text: qsTr("Titolo")
                     focusPolicy: Qt.NoFocus
                     onClicked: editor.insertLinePrefix("## ")
                 }
                 PaperButton {
+                    property bool remoteClickable: !editor.confirmingDiscard
                     uiScale: editor.uiScale
                     text: qsTr("Grassetto")
                     focusPolicy: Qt.NoFocus
                     onClicked: editor.insertMarkup("**", "**")
                 }
                 PaperButton {
+                    property bool remoteClickable: !editor.confirmingDiscard
                     uiScale: editor.uiScale
                     text: qsTr("Corsivo")
                     focusPolicy: Qt.NoFocus
                     onClicked: editor.insertMarkup("*", "*")
                 }
                 PaperButton {
+                    property bool remoteClickable: !editor.confirmingDiscard
                     uiScale: editor.uiScale
                     text: qsTr("Elenco")
                     focusPolicy: Qt.NoFocus
                     onClicked: editor.insertLinePrefix("- ")
                 }
                 PaperButton {
+                    property bool remoteClickable: !editor.confirmingDiscard
                     uiScale: editor.uiScale
                     text: qsTr("Attività")
                     focusPolicy: Qt.NoFocus
@@ -237,6 +249,7 @@ Dialog {
                     TextArea {
                         id: source
                         objectName: "markdownSource"
+                        property bool remoteEditable: !editor.confirmingDiscard
                         font.pixelSize: 16 * editor.uiScale
                         placeholderText: qsTr("Scrivi in Markdown")
                         Accessible.name: placeholderText
@@ -268,6 +281,7 @@ Dialog {
                 font.pixelSize: 13 * editor.uiScale
             }
             PaperButton {
+                property bool remoteClickable: true
                 visible: editor.keyboardOpen
                 Layout.alignment: Qt.AlignRight
                 uiScale: editor.uiScale
@@ -309,6 +323,7 @@ Dialog {
             layoutDirection: Qt.RightToLeft
             spacing: 5 * editor.uiScale
             PaperButton {
+                property bool remoteClickable: true
                 uiScale: editor.uiScale
                 text: editor.confirmingDiscard ? qsTr("Continua a scrivere") : qsTr("Salva")
                 filled: true
@@ -316,6 +331,7 @@ Dialog {
                 onClicked: editor.confirmingDiscard ? editor.confirmingDiscard = false : editor.save()
             }
             PaperButton {
+                property bool remoteClickable: !editor.confirmingDiscard
                 uiScale: editor.uiScale
                 text: editor.confirmingDiscard ? qsTr("Scarta modifiche") : qsTr("Annulla")
                 onClicked: editor.confirmingDiscard ? editor.discard() : editor.requestDiscard(false)

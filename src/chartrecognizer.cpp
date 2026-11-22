@@ -19,6 +19,10 @@ constexpr qsizetype maxStrokes = 120;
 constexpr qsizetype maxInkPoints = 100000;
 constexpr qsizetype maxCandidateFrames = 32;
 constexpr double maxAxisMagnitude = 1e12;
+constexpr qreal minBarWidth = 0.025;
+constexpr qreal maxBarWidth = 0.55;
+constexpr qreal minBarHeight = 0.07;
+constexpr qreal barBaselineTolerance = 0.07;
 
 using Path = QList<QPointF>;
 
@@ -117,12 +121,12 @@ Path limitSamples(const Path &path, qsizetype limit)
     return result;
 }
 
-bool straight(const Path &path, qreal tolerance)
+bool straight(const Path &path, qreal tolerance, qreal minimumChord = 0.035)
 {
     const QPointF a = path.constFirst();
     const QPointF b = path.constLast();
     const qreal chord = length(b - a);
-    if (chord < 0.035)
+    if (chord < minimumChord)
         return false;
 
     qreal travelled = 0;
@@ -230,7 +234,8 @@ QPointF chartPoint(QPointF position)
 bool findBar(const Path &path, QPointF &bar)
 {
     const QRectF box = bounds(path);
-    if (box.width() < 0.025 || box.width() > 0.55 || box.height() < 0.07 || std::abs(box.top()) > 0.07)
+    if (box.width() < minBarWidth || box.width() > maxBarWidth || box.height() < minBarHeight
+        || std::abs(box.top()) > barBaselineTolerance)
         return false;
 
     const qreal xTolerance = std::max(0.010, box.width() * 0.13);
@@ -255,6 +260,61 @@ bool findBar(const Path &path, QPointF &bar)
         return false;
     bar = chartPoint({box.center().x(), box.bottom()});
     return true;
+}
+
+bool joinSplitBars(const QList<Path> &paths, Path &bars)
+{
+    Path sideTips;
+    QList<QLineF> caps;
+    for (const Path &path : paths) {
+        if (!straight(path, 0.012, minBarWidth))
+            continue;
+        QPointF start = path.constFirst();
+        QPointF end = path.constLast();
+        const qreal width = std::abs(end.x() - start.x());
+        const qreal height = std::abs(end.y() - start.y());
+        if (height >= minBarHeight && width <= 0.18 * height) {
+            if (start.y() > end.y())
+                std::swap(start, end);
+            if (std::abs(start.y()) <= barBaselineTolerance)
+                sideTips.append(end);
+        } else if (width >= minBarWidth && width <= maxBarWidth && height <= 0.18 * width
+                   && std::min(start.y(), end.y()) >= minBarHeight) {
+            if (start.x() > end.x())
+                std::swap(start, end);
+            caps.append(QLineF(start, end));
+        }
+    }
+
+    QList<bool> claimed(sideTips.size(), false);
+    qsizetype usedPaths = 0;
+    for (const auto &cap : caps) {
+        // A side must meet the cap at its tip and be unique at that corner.
+        const qreal tolerance = std::clamp(cap.dx() * 0.18, 0.009, 0.032);
+        const auto matchingSide = [&](QPointF corner) {
+            qsizetype match = -1;
+            for (qsizetype index = 0; index < sideTips.size(); ++index) {
+                const QPointF difference = sideTips.at(index) - corner;
+                if (std::abs(difference.x()) > tolerance || std::abs(difference.y()) > 0.032)
+                    continue;
+                if (match >= 0)
+                    return qsizetype(-1);
+                match = index;
+            }
+            return match;
+        };
+        const qsizetype left = matchingSide(cap.p1());
+        const qsizetype right = matchingSide(cap.p2());
+        if (left < 0 || right < 0 || left == right)
+            continue;
+        if (claimed.at(left) || claimed.at(right))
+            return false;
+        claimed[left] = true;
+        claimed[right] = true;
+        bars.append(chartPoint((cap.p1() + cap.p2()) / 2));
+        usedPaths += 3;
+    }
+    return usedPaths == paths.size();
 }
 
 Path singleTrend(QList<Path> series)
@@ -299,6 +359,57 @@ Path singleTrend(QList<Path> series)
     return result;
 }
 
+bool looksLikeAnnotation(const Path &path)
+{
+    const QRectF box = bounds(path);
+    if (box.width() > 0.22 || box.height() > 0.085)
+        return false;
+    const Path outline = simplify(path, 0.004);
+    int previousDirection = 0;
+    int reversals = 0;
+    for (qsizetype index = 1; index < outline.size(); ++index) {
+        const qreal change = outline.at(index).y() - outline.at(index - 1).y();
+        if (std::abs(change) < 0.007)
+            continue;
+        const int direction = change > 0 ? 1 : -1;
+        if (previousDirection && previousDirection != direction)
+            ++reversals;
+        previousDirection = direction;
+    }
+    return reversals >= 3;
+}
+
+Path trendWithoutAnnotations(const QList<Path> &series)
+{
+    if (Path trend = singleTrend(series); !trend.isEmpty())
+        return trend;
+
+    QList<Path> data;
+    QList<Path> annotations;
+    for (const Path &path : series) {
+        if (looksLikeAnnotation(path))
+            annotations.append(path);
+        else
+            data.append(path);
+    }
+    if (data.isEmpty() || annotations.isEmpty())
+        return {};
+
+    const Path trend = singleTrend(std::move(data));
+    if (trend.isEmpty() || trend.constLast().x() - trend.constFirst().x() < 0.32)
+        return {};
+    // Keep nearby ink when it could be a disconnected piece of the same series.
+    for (const Path &annotation : annotations) {
+        for (const auto &point : annotation) {
+            for (qsizetype index = 1; index < trend.size(); ++index) {
+                if (distanceToSegment(point, trend.at(index - 1), trend.at(index)) < 0.055)
+                    return {};
+            }
+        }
+    }
+    return trend;
+}
+
 Series findSeries(const QList<Path> &paths, const Frame &frame)
 {
     QList<Path> series;
@@ -323,12 +434,15 @@ Series findSeries(const QList<Path> &paths, const Frame &frame)
         return {};
 
     Path bars;
+    QList<Path> splitEdges;
     for (const Path &path : std::as_const(series)) {
         QPointF bar;
         if (findBar(path, bar))
             bars.append(bar);
+        else
+            splitEdges.append(path);
     }
-    if (bars.size() == series.size()) {
+    if (joinSplitBars(splitEdges, bars) && !bars.isEmpty()) {
         std::sort(bars.begin(), bars.end(), [](QPointF a, QPointF b) { return a.x() < b.x(); });
         for (qsizetype pos = 1; pos < bars.size(); ++pos) {
             if (bars.at(pos).x() - bars.at(pos - 1).x() < 0.025)
@@ -339,7 +453,7 @@ Series findSeries(const QList<Path> &paths, const Frame &frame)
     if (!bars.isEmpty())
         return {};
 
-    const Path line = singleTrend(std::move(series));
+    const Path line = trendWithoutAnnotations(series);
     return line.isEmpty() ? Series{} : Series{QStringLiteral("line"), line};
 }
 

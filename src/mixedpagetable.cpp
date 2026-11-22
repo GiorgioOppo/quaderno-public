@@ -1,5 +1,7 @@
 #include "mixedpagetable.h"
 
+#include "inkrender.h"
+
 #include <algorithm>
 #include <vector>
 
@@ -148,4 +150,44 @@ QList<QList<QRectF>> MixedPageTable::cells(const QImage &image, const QRectF &se
         result.append(line);
     }
     return result;
+}
+
+QVariantList MixedPageTable::cellInk(const QList<QList<QRectF>> &grid, const QVariantList &strokes,
+                                   const QPainterPath &contour)
+{
+    if (grid.isEmpty() || grid.first().isEmpty())
+        return {};
+    const qsizetype columns = grid.first().size();
+    QList<QRectF> interiors;
+    for (const auto &row : grid)
+        interiors.append(row);
+
+    QList<QVariantList> grouped(interiors.size());
+    for (const auto &entry : strokes) {
+        const auto stroke = entry.toMap();
+        const auto tool = stroke.value(QStringLiteral("tool")).toString();
+        if (!tool.isEmpty() && tool != QStringLiteral("pen") && tool != QStringLiteral("pencil")
+            && tool != QStringLiteral("marker"))
+            continue;
+        const auto points = storedInkPoints(stroke);
+        if (points.isEmpty())
+            continue;
+        const auto cell = std::find_if(interiors.cbegin(), interiors.cend(), [&points](const QRectF &inside) {
+            return inside.contains(points.first().position);
+        });
+        if (cell == interiors.cend() || !std::all_of(points.cbegin(), points.cend(), [&](const InkPoint &point) {
+            return cell->contains(point.position) && contour.contains(point.position);
+        }))
+            continue;
+        grouped[cell - interiors.cbegin()].append(entry);
+    }
+
+    QVariantList jobs;
+    for (qsizetype index = 0; index < grouped.size(); ++index) {
+        if (!grouped.at(index).isEmpty()) {
+            jobs.append(QVariantMap{{QStringLiteral("row"), int(index / columns)},
+                {QStringLiteral("column"), int(index % columns)}, {QStringLiteral("strokes"), grouped.at(index)}});
+        }
+    }
+    return jobs;
 }

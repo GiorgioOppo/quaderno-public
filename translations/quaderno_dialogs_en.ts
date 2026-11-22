@@ -82,6 +82,34 @@
             <source>Prepara una copia da controllare prima dell’invio.</source>
             <translation>Prepare a copy to review before sending.</translation>
         </message>
+        <message>
+            <source>Invia via Wi-Fi</source>
+            <translation>Send via Wi-Fi</translation>
+        </message>
+        <message>
+            <source>Invia via Bluetooth</source>
+            <translation>Send via Bluetooth</translation>
+        </message>
+        <message>
+            <source>Invia via email</source>
+            <translation>Send by email</translation>
+        </message>
+        <message>
+            <source>Abbina Quaderno sul Mac per ricevere i PDF via Wi-Fi o Bluetooth.</source>
+            <translation>Pair Quaderno on the Mac to receive PDFs over Wi-Fi or Bluetooth.</translation>
+        </message>
+        <message>
+            <source>Aggiorna Quaderno sul Mac alla 0.2.24 o successiva per ricevere il PDF.</source>
+            <translation>Update Quaderno on the Mac to 0.2.24 or later to receive the PDF.</translation>
+        </message>
+        <message>
+            <source>Annulla invio</source>
+            <translation>Cancel sending</translation>
+        </message>
+        <message>
+            <source>Connessione al Mac…</source>
+            <translation>Mac connection…</translation>
+        </message>
 </context>
     <context>
         <name>ChartDialog</name>
@@ -678,7 +706,27 @@
             <source>Sposta pagina</source>
             <translation>Move page</translation>
         </message>
-    <message><source>Tutte (%1)</source><translation>All (%1)</translation></message><message><source>Segnalibri (%1)</source><translation>Bookmarks (%1)</translation></message><message><source>Annotate (%1)</source><translation>Annotated (%1)</translation></message><message><source>Prima</source><translation>First</translation></message><message><source>Numero di pagina</source><translation>Page number</translation></message><message><source>di %1</source><translation>of %1</translation></message><message><source>Vai</source><translation>Go</translation></message><message><source>Ultima</source><translation>Last</translation></message><message><source>Cancella cifra</source><translation>Delete digit</translation></message><message><source>Vai alla pagina</source><translation>Go to page</translation></message><message><source>Nessuna pagina corrisponde al filtro.</source><translation>No pages match this filter.</translation></message></context>
+    <message><source>Tutte (%1)</source><translation>All (%1)</translation></message><message><source>Segnalibri (%1)</source><translation>Bookmarks (%1)</translation></message><message><source>Annotate (%1)</source><translation>Annotated (%1)</translation></message><message><source>Prima</source><translation>First</translation></message><message><source>Numero di pagina</source><translation>Page number</translation></message><message><source>di %1</source><translation>of %1</translation></message><message><source>Vai</source><translation>Go</translation></message><message><source>Ultima</source><translation>Last</translation></message><message><source>Cancella cifra</source><translation>Delete digit</translation></message><message><source>Vai alla pagina</source><translation>Go to page</translation></message><message><source>Nessuna pagina corrisponde al filtro.</source><translation>No pages match this filter.</translation></message>        <message>
+            <source>Scrittura</source>
+            <translation>Writing</translation>
+        </message>
+        <message>
+            <source>Grafico</source>
+            <translation>Chart</translation>
+        </message>
+        <message>
+            <source>Tabella</source>
+            <translation>Table</translation>
+        </message>
+        <message>
+            <source>Diagramma</source>
+            <translation>Diagram</translation>
+        </message>
+        <message>
+            <source>%1 · %2</source>
+            <translation>%1 · %2</translation>
+        </message>
+</context>
     <context>
         <name>PageTags</name>
         <message>
@@ -1514,6 +1562,7 @@
     </context>
   <context>
     <name>SelectionOverlay</name>
+    <message><source>Converti in grafico</source><translation>Convert to chart</translation></message>
     <message><source>Aggiungi</source><translation>Add</translation></message>
     <message><source>Sottrai</source><translation>Subtract</translation></message>
     <message><source>Trascrivi</source><translation>Transcribe</translation></message>
@@ -2150,6 +2199,10 @@
     <context>
         <name>WorkspaceTools</name>
         <message>
+            <source>Chiudi strumenti</source>
+            <translation>Close tools</translation>
+        </message>
+        <message>
             <source>Collega elemento</source>
             <translation>Link an item</translation>
         </message>
@@ -2429,6 +2482,18 @@
             <source>Annulla</source>
             <translation>Cancel</translation>
         </message>
+        <message>
+            <source>Aggiungi foglio tabella</source>
+            <translation>Add table page</translation>
+        </message>
+        <message>
+            <source>Aggiungi foglio grafico</source>
+            <translation>Add chart page</translation>
+        </message>
+        <message>
+            <source>Aggiungi foglio diagramma</source>
+            <translation>Add diagram page</translation>
+        </message>
     </context>
   <context>
     <name>MixedPageDialog</name>
@@ -2450,11 +2515,188 @@
     <message><source>Analisi delle aree…</source><translation>Analyzing selected areas…</translation></message>
     <message><source>Riconoscimento locale · %1 / %2</source><translation>On-device recognition · %1 / %2</translation></message>
     <message><source>Il motore di scrittura non è disponibile. Puoi completare le bozze a mano.</source><translation>The handwriting engine is unavailable. You can complete the drafts manually.</translation></message>
-    <message><source>Alcune righe richiedono una trascrizione manuale.</source><translation>Some lines need manual transcription.</translation></message>
+    <message><source>Alcune righe o celle richiedono una trascrizione manuale.</source><translation>Some lines or cells need manual transcription.</translation></message>
     <message><source>Ferma riconoscimento</source><translation>Stop recognition</translation></message>
     <message><source>Indietro</source><translation>Back</translation></message>
     <message><source>Annulla</source><translation>Cancel</translation></message>
     <message><source>Crea quaderno</source><translation>Create notebook</translation></message>
     <message><source>Riconosci</source><translation>Recognize</translation></message>
   </context>
+    <context>
+        <name>SmtpDialog</name>
+        <message>
+            <source>Server di posta in uscita (SMTP)</source>
+            <translation>Outgoing mail server (SMTP)</translation>
+        </message>
+        <message>
+            <source>Invia PDF via email</source>
+            <translation>Email PDF</translation>
+        </message>
+        <message>
+            <source>Nome del server SMTP</source>
+            <translation>SMTP server name</translation>
+        </message>
+        <message>
+            <source>STARTTLS</source>
+            <translation>STARTTLS</translation>
+        </message>
+        <message>
+            <source>TLS implicito</source>
+            <translation>Implicit TLS</translation>
+        </message>
+        <message>
+            <source>Sicurezza della connessione</source>
+            <translation>Connection security</translation>
+        </message>
+        <message>
+            <source>Porta</source>
+            <translation>Port</translation>
+        </message>
+        <message>
+            <source>Nome utente SMTP (se richiesto)</source>
+            <translation>SMTP username (if required)</translation>
+        </message>
+        <message>
+            <source>Indirizzo mittente</source>
+            <translation>Sender address</translation>
+        </message>
+        <message>
+            <source>Nuova password (facoltativa)</source>
+            <translation>New password (optional)</translation>
+        </message>
+        <message>
+            <source>Password o password per app</source>
+            <translation>Password or app password</translation>
+        </message>
+        <message>
+            <source>Usa i parametri SMTP del tuo gestore di posta. La password salvata resta su questo dispositivo.</source>
+            <translation>Use your mail provider’s SMTP settings. The saved password stays on this device.</translation>
+        </message>
+        <message>
+            <source>Rimuovi configurazione</source>
+            <translation>Remove configuration</translation>
+        </message>
+        <message>
+            <source>Rimuovere il server e la password salvata?</source>
+            <translation>Remove the server and its saved password?</translation>
+        </message>
+        <message>
+            <source>Rimuovi</source>
+            <translation>Remove</translation>
+        </message>
+        <message>
+            <source>Allegato: %1 · %2</source>
+            <translation>Attachment: %1 · %2</translation>
+        </message>
+        <message>
+            <source>Pagina corrente</source>
+            <translation>Current page</translation>
+        </message>
+        <message>
+            <source>Intero quaderno</source>
+            <translation>Entire notebook</translation>
+        </message>
+        <message>
+            <source>Indirizzo destinatario</source>
+            <translation>Recipient address</translation>
+        </message>
+        <message>
+            <source>Oggetto</source>
+            <translation>Subject</translation>
+        </message>
+        <message>
+            <source>Messaggio (facoltativo)</source>
+            <translation>Message (optional)</translation>
+        </message>
+        <message>
+            <source>Annulla invio</source>
+            <translation>Cancel sending</translation>
+        </message>
+        <message>
+            <source>Chiudi</source>
+            <translation>Close</translation>
+        </message>
+        <message>
+            <source>Salva</source>
+            <translation>Save</translation>
+        </message>
+        <message>
+            <source>Invia PDF</source>
+            <translation>Send PDF</translation>
+        </message>
+    </context>
+    <context>
+        <name>NotebookPageStrip</name>
+        <message>
+            <source>Scrittura</source>
+            <translation>Writing</translation>
+        </message>
+        <message>
+            <source>Grafico</source>
+            <translation>Chart</translation>
+        </message>
+        <message>
+            <source>Tabella</source>
+            <translation>Table</translation>
+        </message>
+        <message>
+            <source>Diagramma</source>
+            <translation>Diagram</translation>
+        </message>
+        <message>
+            <source>%1 · %2</source>
+            <translation>%1 · %2</translation>
+        </message>
+        <message>
+            <source>Pagina %1</source>
+            <translation>Page %1</translation>
+        </message>
+    </context>
+    <context>
+        <name>ScreenStreamWindow</name>
+        <message>
+            <source>Schermo del Paper Pro</source>
+            <translation>Paper Pro Screen</translation>
+        </message>
+        <message>
+            <source>Schermo del Paper Pro in diretta</source>
+            <translation>Live Paper Pro screen</translation>
+        </message>
+        <message>
+            <source>Comandi in pausa sul Paper Pro.</source>
+            <translation>Controls paused on the Paper Pro.</translation>
+        </message>
+        <message>
+            <source>Fai clic sui comandi o su un campo per digitare.</source>
+            <translation>Click a control or click a field to type.</translation>
+        </message>
+        <message>
+            <source>Sola visualizzazione</source>
+            <translation>View only</translation>
+        </message>
+        <message>
+            <source>In attesa della prima immagine…</source>
+            <translation>Waiting for the first frame…</translation>
+        </message>
+        <message>
+            <source>Sul Paper Pro, premi Condividi schermo via Wi-Fi.</source>
+            <translation>On the Paper Pro, choose Share screen over Wi-Fi.</translation>
+        </message>
+        <message>
+            <source>Collega il Paper Pro e il Mac alla stessa rete usando Sincronizzazione wireless.</source>
+            <translation>Connect the Paper Pro and Mac to the same network using Wireless sync.</translation>
+        </message>
+        <message>
+            <source>Collegamento Wi-Fi…</source>
+            <translation>Wi-Fi connection…</translation>
+        </message>
+        <message>
+            <source>Interrompi</source>
+            <translation>Stop</translation>
+        </message>
+        <message>
+            <source>Chiudi</source>
+            <translation>Close</translation>
+        </message>
+    </context>
 </TS>

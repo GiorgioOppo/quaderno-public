@@ -9,13 +9,17 @@
 #include <QObject>
 #include <QProcess>
 #include <QTimer>
+#include <QUrl>
 #include <QtQml/qqmlregistration.h>
+#include <memory>
 
 #ifdef Q_OS_MACOS
 #include "blecentral.h"
 #elif defined(Q_OS_LINUX)
 #include "bleperipheral.h"
 #endif
+
+Q_MOC_INCLUDE("notebook.h")
 
 class WirelessSync final : public QObject
 {
@@ -41,6 +45,12 @@ class WirelessSync final : public QObject
     Q_PROPERTY(bool reconnectPending READ reconnectPending NOTIFY reconnectionChanged)
     Q_PROPERTY(int reconnectDelaySeconds READ reconnectDelaySeconds NOTIFY reconnectionChanged)
     Q_PROPERTY(bool connectionPaused READ connectionPaused NOTIFY reconnectionChanged)
+    Q_PROPERTY(QString pdfTransport READ pdfTransport NOTIFY pdfChanged)
+    Q_PROPERTY(QString pdfTransferSupported READ pdfTransferSupported NOTIFY pdfChanged)
+    Q_PROPERTY(bool pdfSending READ pdfSending NOTIFY pdfChanged)
+    Q_PROPERTY(qreal pdfProgress READ pdfProgress NOTIFY pdfChanged)
+    Q_PROPERTY(QString pdfStatus READ pdfStatus NOTIFY pdfChanged)
+    Q_PROPERTY(QUrl receivedPdf READ receivedPdf NOTIFY pdfChanged)
 
 public:
     WirelessSync(Notebook *notebook, const QString &pairingPath, bool tablet, bool canActivateBluetooth = false,
@@ -66,6 +76,15 @@ public:
     bool reconnectPending() const { return m_reconnect.isActive() || m_listenerRetry.isActive(); }
     int reconnectDelaySeconds() const { return m_reconnectDelayMs / 1000; }
     bool connectionPaused() const { return m_paused; }
+    QString pdfTransport() const;
+    QString pdfTransferSupported() const;
+    bool pdfSending() const;
+    qreal pdfProgress() const;
+    QString pdfStatus() const { return m_pdfStatus; }
+    QUrl receivedPdf() const { return m_receivedPdf; }
+    static constexpr qsizetype screenStreamPayloadLimit = 512 * 1024;
+    bool screenStreamAvailable() const;
+    bool sendScreenStreamMessage(const QVariantMap &metadata, const QByteArray &payload);
     void setAutomaticAllowed(bool allowed);
     void setAutomaticWifiOnly(bool wifiOnly);
     void setAutomaticTransport(const QString &transport);
@@ -79,6 +98,10 @@ public:
     Q_INVOKABLE void stop();
     Q_INVOKABLE void forget();
     Q_INVOKABLE bool resumeAutomaticConnection();
+    Q_INVOKABLE bool sendPdf(Notebook *notebook, const QVariantMap &option, const QString &transport);
+    Q_INVOKABLE void cancelPdf();
+    Q_INVOKABLE bool openReceivedPdf();
+    Q_INVOKABLE void dismissReceivedPdf();
 
 signals:
     void changed();
@@ -86,11 +109,16 @@ signals:
     void linkChanged();
     void automaticPolicyChanged();
     void reconnectionChanged();
+    void pdfChanged();
+    void screenStreamLinkChanged();
+    void screenStreamMessageReceived(const QVariantMap &metadata, const QByteArray &payload);
 
 private:
     friend class WirelessSyncTests;
     enum class Link { None, Bluetooth, Wifi, Waiting };
     enum class Rendezvous { Inactive, Discovering, Idle, Connecting, Wifi, Bluetooth };
+    enum class PdfSupport { Unknown, Supported, Unsupported };
+    struct PdfTransfer;
     bool prepareConnection(Link link, const QString &code, bool automatic = false);
     void connectBluetooth(const QString &code, bool allowActivation, bool automatic = false);
     void connectWifi(const QString &address, const QString &code, bool automatic);
@@ -125,6 +153,24 @@ private:
     void stopReconnectTimers();
     static int reconnectDelayMs(bool tablet, int failures);
     void saveConnection();
+    void handlePeerCapabilities(const QVariantMap &metadata);
+    const SyncChannel *screenStreamChannel() const;
+    void handleScreenStreamCapability(const SyncChannel &channel, const QVariantMap &metadata, const QByteArray &payload);
+    bool receiveScreenStreamMessage(const SyncChannel &channel, const QVariantMap &metadata, const QByteArray &payload);
+    void resetScreenStreamTransport();
+    bool receivePdfMessage(const QVariantMap &metadata, const QByteArray &payload);
+    void beginPdfOffer();
+    void sendPdfChunk();
+    void sendPdfMessage(const QString &type, const QString &request, QVariantMap metadata = {},
+                        const QByteArray &payload = {});
+    bool startPdfReceive(const QVariantMap &metadata, const QString &request);
+    bool writePdfChunk(const QVariantMap &metadata, const QByteArray &payload);
+    QUrl storeReceivedPdf();
+    void finishPdf(const QString &status, bool completed = false);
+    void setPdfStatus(const QString &status);
+    void resetPdfTransport();
+    bool transportSelectionBusy() const;
+    static qsizetype pdfMaximumSize(Link link);
 
     const QString m_pairingPath;
     const bool m_tablet;
@@ -171,4 +217,12 @@ private:
     QByteArray m_pendingSecret;
     QString m_status;
     QString m_bluetoothStatus;
+    std::unique_ptr<PdfTransfer> m_pdf;
+    QTimer m_pdfDeadline;
+    PdfSupport m_pdfSupport = PdfSupport::Unknown;
+    QString m_pdfStatus;
+    QUrl m_receivedPdf;
+    QString m_pdfDownloadDirectory; // Isolated destination in protocol tests.
+    bool m_pdfCompleted = false;
+    bool m_screenStreamPeerSupports = false;
 };

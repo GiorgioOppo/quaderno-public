@@ -38,6 +38,7 @@ Dialog {
 
     readonly property bool transcript: transcriptSelection !== null
     readonly property bool editingTable: itemType === "table"
+    readonly property Item remoteSurface: opened && contentItem ? contentItem.parent : null
     readonly property bool existing: originalItem !== null && Boolean(originalItem.id)
     readonly property bool canSave: !confirmDelete && pendingRows === 0 && (editingTable || textInput.text.trim().length > 0)
     readonly property var cellValues: visible && editingTable ? notebook.tableCellValues(tableDraft()) : []
@@ -316,6 +317,7 @@ Dialog {
         id: area
 
         required property int textLimit
+        property bool remoteEditable: !editor.transcript && !editor.confirmDelete && editor.pendingRows === 0
 
         color: editor.ink
         placeholderTextColor: editor.muted
@@ -372,6 +374,7 @@ Dialog {
             }
 
             PaperButton {
+                property bool remoteClickable: !editor.confirmDelete && editor.pendingRows === 0
                 uiScale: editor.uiScale
                 text: "+"
                 Accessible.name: dimension.increaseLabel
@@ -406,6 +409,7 @@ Dialog {
 
                 Area {
                     id: textInput
+                    objectName: "pageItemText"
 
                     textLimit: 4000
                     placeholderText: qsTr("Scrivi il testo")
@@ -477,6 +481,7 @@ Dialog {
                 Layout.fillWidth: true
                 spacing: 5 * editor.uiScale
                 PaperButton {
+                    property bool remoteClickable: true
                     uiScale: editor.uiScale
                     text: qsTr("Mantieni dimensioni")
                     onClicked: editor.pendingRows = 0
@@ -520,6 +525,7 @@ Dialog {
                             readonly property int row: Math.floor(index / (editor.columnCount + 1)) - 1
                             readonly property int column: index % (editor.columnCount + 1) - 1
                             readonly property bool headerCell: row < 0 || column < 0
+                            property bool remoteClickable: !headerCell && !editor.confirmDelete && editor.pendingRows === 0
                             readonly property bool selected: row === editor.selectedRow && column === editor.selectedColumn
                             readonly property bool selectedHeader: headerCell && (row === editor.selectedRow || column === editor.selectedColumn)
 
@@ -585,6 +591,7 @@ Dialog {
                 spacing: 5 * editor.uiScale
 
                 PaperButton {
+                    property bool remoteClickable: editor.pendingRows === 0
                     uiScale: editor.uiScale
                     text: qsTr("Somma")
                     enabled: editor.canInsertFormula
@@ -592,6 +599,7 @@ Dialog {
                 }
 
                 PaperButton {
+                    property bool remoteClickable: editor.pendingRows === 0
                     uiScale: editor.uiScale
                     text: qsTr("Media")
                     enabled: editor.canInsertFormula
@@ -603,6 +611,7 @@ Dialog {
                             {label: qsTr("Conta numeri"), formula: "COUNT"}]
                     PaperButton {
                         required property var modelData
+                        property bool remoteClickable: editor.pendingRows === 0
                         uiScale: editor.uiScale
                         text: modelData.label
                         enabled: editor.canInsertFormula
@@ -610,6 +619,7 @@ Dialog {
                     }
                 }
                 PaperButton {
+                    property bool remoteClickable: true
                     uiScale: editor.uiScale
                     text: qsTr("Guida formule")
                     filled: editor.formulaHelpOpen
@@ -636,6 +646,7 @@ Dialog {
             }
 
             PaperButton {
+                property bool remoteClickable: !editor.confirmDelete && editor.pendingRows === 0
                 visible: editor.showTouchKeyboard
                 Layout.alignment: Qt.AlignRight
                 uiScale: editor.uiScale
@@ -721,6 +732,7 @@ Dialog {
             }
 
             PaperButton {
+                property bool remoteClickable: true
                 Layout.bottomMargin: editor.bottomPadding
                 uiScale: editor.uiScale
                 text: qsTr("Annulla")
@@ -733,6 +745,8 @@ Dialog {
             }
 
             PaperButton {
+                objectName: "savePageItemButton"
+                property bool remoteClickable: !editor.transcript
                 Layout.rightMargin: editor.rightPadding
                 Layout.bottomMargin: editor.bottomPadding
                 uiScale: editor.uiScale
