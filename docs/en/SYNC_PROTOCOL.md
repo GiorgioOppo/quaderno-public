@@ -12,6 +12,8 @@ Anchored sticky notes introduced in 0.2.11 include the marker's page position, t
 
 Anchored page links introduced in **0.2.14** use portable format **12**. They carry the reference to the original chart, table or diagram. If the destination is in a different notebook, send that notebook as well or select it separately for automatic sync. Transfer the original notebook so the link can find its destination by ID.
 
+UML shapes added in **0.2.23** require portable format **14**. The flowchart shapes added in **0.2.20** require format **13**. Both requirements apply to shapes stored in `handwritingSource.baseDiagram` for recovery. Before sending a notebook, the sender checks the format that notebook requires. [Data format compatibility](DATA.md#library-format-versions)
+
 If an annotation has not appeared on the other device, check the connection and workflow before importing the book again:
 
 1. Keep **Quaderno open and unlocked on both devices**. There is no background synchronization service when either app is closed.

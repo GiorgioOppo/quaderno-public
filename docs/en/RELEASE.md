@@ -2,9 +2,9 @@
 
 **English** · [Italiano](../RILASCIO.md)
 
-## Source preview 0.2.19
+## Source preview 0.2.23
 
-Build 0.2.19 from the repository. The public `v0.1.0` tag identifies the historical source snapshot. The source tree includes Quaderno, the installer and guides in English and Italian. Quaderno uses the MIT License, and its optional recognizers carry separate terms. [Original source tag](https://github.com/GiorgioOppo/quaderno-public/tree/v0.1.0) · [License](../../LICENSE) · [Third-party notices](../../THIRD_PARTY_NOTICES.md) · [Changelog](../../CHANGELOG.md)
+Build 0.2.23 from source. The public `v0.1.0` tag identifies the historical source snapshot. The source tree includes Quaderno, the installer and guides in English and Italian. Quaderno uses the MIT License, and its optional recognizers carry separate terms. [Original source tag](https://github.com/GiorgioOppo/quaderno-public/tree/v0.1.0) · [License](../../LICENSE) · [Third-party notices](../../THIRD_PARTY_NOTICES.md) · [Changelog](../../CHANGELOG.md)
 
 Before making a repository public, review the exact source tree and commit metadata, plus the visibility of issues, workflow logs, and release assets. Use sample data in screenshots and test logs. Verify the final source commit with the build and startup checks, then use that commit for the preview tag. [Development guide](DEVELOPMENT.md) · [GitHub repository visibility](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/managing-repository-settings/setting-repository-visibility)
 

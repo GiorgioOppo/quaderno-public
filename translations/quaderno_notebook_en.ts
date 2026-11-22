@@ -3,6 +3,14 @@
 <TS version="2.1" language="en" sourcelanguage="it">
     <context>
         <name>Notebook</name>
+        <message><source>%1 - pagina %2</source><translation>%1 - page %2</translation></message>
+        <message><source>%1 - originale</source><translation>%1 - original</translation></message>
+        <message><source>La pagina selezionata è cambiata. Riapri il menu di condivisione.</source><translation>The selected page changed. Reopen the sharing menu.</translation></message>
+        <message><source>L’elemento selezionato non è più disponibile per la condivisione.</source><translation>The selected item is no longer available to share.</translation></message>
+        <message><source>Scegli un file locale con estensione .%1.</source><translation>Choose a local file with the .%1 extension.</translation></message>
+        <message><source>Impossibile salvare il file. %1</source><translation>Could not save the file. %1</translation></message>
+        <message><source>Impossibile preparare l’immagine della pagina.</source><translation>Could not prepare the page image.</translation></message>
+        <message><source>Tabella (.csv)</source><translation>Table (.csv)</translation></message>
         <message>
             <source>Il collegamento non è più presente sulla pagina.</source>
             <translation>The link is no longer on this page.</translation>

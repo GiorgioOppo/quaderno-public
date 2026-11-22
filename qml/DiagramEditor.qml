@@ -35,6 +35,7 @@ Dialog {
     property var pointerStart: null
     property var previewNodes: null
     property var draggedShape: null
+    property string shapeCategory: "basic"
     property point shapeDrop: Qt.point(-1, -1)
     property string connectorSource: ""
     property point connectorPoint: Qt.point(0, 0)
@@ -74,13 +75,35 @@ Dialog {
         color: "#24262c"
     }
 
-    readonly property var palette: [
+    readonly property var basicShapes: [
         { shape: "terminal", title: qsTr("Inizio / fine") },
         { shape: "process", title: qsTr("Processo") },
         { shape: "decision", title: qsTr("Decisione") },
         { shape: "data", title: qsTr("Dati") },
         { shape: "note", title: qsTr("Nota") }
     ]
+    readonly property var moreShapes: [
+        { shape: "database", title: qsTr("Database") },
+        { shape: "subprocess", title: qsTr("Sottoprocesso") },
+        { shape: "display", title: qsTr("Display") },
+        { shape: "manual-input", title: qsTr("Input manuale") },
+        { shape: "preparation", title: qsTr("Preparazione") },
+        { shape: "delay", title: qsTr("Attesa") },
+        { shape: "off-page", title: qsTr("Fuori pagina") },
+        { shape: "cloud", title: qsTr("Nuvola") }
+    ]
+    readonly property var umlShapes: [
+        { shape: "uml-class", title: qsTr("Classe"), width: 0.29, height: 0.21 },
+        { shape: "uml-interface", title: qsTr("Interfaccia"), width: 0.29, height: 0.21 },
+        { shape: "uml-object", title: qsTr("Oggetto"), width: 0.27, height: 0.18 },
+        { shape: "uml-actor", title: qsTr("Attore"), width: 0.16, height: 0.22 },
+        { shape: "uml-use-case", title: qsTr("Caso d’uso"), width: 0.27, height: 0.13 },
+        { shape: "uml-component", title: qsTr("Componente"), width: 0.27, height: 0.17 },
+        { shape: "uml-package", title: qsTr("Pacchetto"), width: 0.27, height: 0.17 },
+        { shape: "uml-deployment", title: qsTr("Nodo"), width: 0.26, height: 0.19 },
+        { shape: "uml-lifeline", title: qsTr("Linea di vita"), width: 0.21, height: 0.33 }
+    ]
+    readonly property var palette: basicShapes.concat(moreShapes, umlShapes)
     readonly property string selectedNode: selectedNodes.length === 1 ? selectedNodes[0] : ""
     readonly property bool hasSelection: selectedNodes.length > 0 || selectedEdge.length > 0
     readonly property var activeNode: nodes.find(node => node.id === selectedNode) || null
@@ -107,6 +130,7 @@ Dialog {
         selectedEdge = ""
         connecting = false
         lassoEnabled = false
+        shapeCategory = "basic"
         fitView()
         connectFrom = ""
         errorText = ""
@@ -271,6 +295,7 @@ Dialog {
     }
 
     function shapeSize(kind) {
+        if (kind.width && kind.height) return Qt.size(kind.width, kind.height)
         return kind.shape === "decision" ? Qt.size(0.29, 0.18) : Qt.size(0.25, 0.13)
     }
 
@@ -297,7 +322,7 @@ Dialog {
                 const x = 0.04 + col * 0.32
                 const y = 0.05 + row * 0.18
                 const gap = 0.01
-                if (!nodes.some(node => x < node.x + node.width + gap && x + shapeWidth + gap > node.x
+                if (y + shapeHeight <= 1 && !nodes.some(node => x < node.x + node.width + gap && x + shapeWidth + gap > node.x
                         && y < node.y + node.height + gap && y + shapeHeight + gap > node.y))
                     position = Qt.point(x, y)
             }
@@ -660,7 +685,7 @@ Dialog {
                 Layout.column: 0
                 Layout.fillWidth: !editor.sidePanels
                 Layout.fillHeight: editor.sidePanels
-                Layout.preferredWidth: editor.sidePanels ? 124 * editor.uiScale : 0
+                Layout.preferredWidth: editor.sidePanels ? 176 * editor.uiScale : 0
                 implicitHeight: shapeList.implicitHeight + 12 * editor.uiScale
                 color: "#f6f6f8"
                 border.color: "#d9dce2"
@@ -681,14 +706,35 @@ Dialog {
                         font.pixelSize: 13 * editor.uiScale
                     }
 
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 4 * editor.uiScale
+                        Action {
+                            objectName: "diagramMoreShapes"
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 0
+                            text: editor.shapeCategory === "more" ? qsTr("Forme di base") : qsTr("Altre forme")
+                            onClicked: editor.shapeCategory = editor.shapeCategory === "more" ? "basic" : "more"
+                        }
+                        Action {
+                            objectName: "diagramUmlShapes"
+                            text: "UML"
+                            checkable: true
+                            checked: editor.shapeCategory === "uml"
+                            filled: checked
+                            onClicked: editor.shapeCategory = editor.shapeCategory === "uml" ? "basic" : "uml"
+                        }
+                    }
+
                     GridLayout {
                         Layout.fillWidth: true
-                        columns: editor.sidePanels ? 1 : editor.palette.length
+                        columns: editor.sidePanels ? 2 : editor.shapeCategory === "more" ? 4 : 5
                         columnSpacing: 4 * editor.uiScale
                         rowSpacing: 4 * editor.uiScale
 
                         Repeater {
-                            model: editor.palette
+                            model: editor.shapeCategory === "uml" ? editor.umlShapes
+                                : editor.shapeCategory === "more" ? editor.moreShapes : editor.basicShapes
                             delegate: Action {
                                 id: shapeButton
                                 required property var modelData
@@ -1240,6 +1286,13 @@ Dialog {
 
         contentItem: ColumnLayout {
             spacing: 8 * editor.uiScale
+            Label {
+                Layout.fillWidth: true
+                visible: ["uml-class", "uml-interface", "uml-object"].includes(editor.activeNode?.shape)
+                text: qsTr("Usa una riga vuota per separare nome, attributi e operazioni.")
+                wrapMode: Text.WordWrap
+                font.pixelSize: 13 * editor.uiScale
+            }
             ScrollView {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 76 * editor.uiScale

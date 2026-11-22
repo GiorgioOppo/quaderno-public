@@ -12,6 +12,8 @@ Le note ancorate introdotte nella 0.2.11 includono posizione del segnaposto, tes
 
 I collegamenti ancorati introdotti nella **0.2.14** usano il formato portabile **12**. Contengono il riferimento al grafico, alla tabella o al diagramma originale. Se la destinazione è in un altro quaderno, invia anche quel quaderno oppure selezionalo separatamente per l’automatismo. Trasferisci il quaderno originale perché il collegamento possa ritrovare la destinazione tramite il suo identificatore.
 
+Le forme UML della **0.2.23** richiedono il formato portabile **14**. Le forme di flusso aggiunte nella **0.2.20** richiedono il formato **13**. I requisiti valgono anche per le forme conservate per il recupero in `handwritingSource.baseDiagram`. Il mittente verifica la versione richiesta da ogni quaderno prima di inviarlo. [Compatibilità dei formati](DATI.md#versioni-della-libreria)
+
 Se un’annotazione non compare sull’altro dispositivo, controlla collegamento e modalità prima di importare di nuovo il libro:
 
 1. Tieni **Quaderno aperto e sbloccato su entrambi i dispositivi**. Non esiste un servizio di sincronizzazione in background quando una delle app è chiusa.

@@ -121,13 +121,20 @@ void tabletEvent(QQuickWindow *window, const QPointingDevice &device, QEvent::Ty
 // on OCR accuracy or a platform-specific recognition engine in UI tests.
 struct TestHandwritingHelper {
     QStringList created;
+    QString capturePath;
     bool ready = false;
-    TestHandwritingHelper()
+    explicit TestHandwritingHelper(bool captureInk = false)
     {
         const QDir directory(QCoreApplication::applicationDirPath());
         for (const QString &name : {QStringLiteral("quaderno-handwriting"), QStringLiteral("quaderno-handwriting-it.dct"),
                                    QStringLiteral("quaderno-handwriting-en.dct")}) {
             if (directory.exists(name)) return; // Never replace an installed engine or dictionary.
+        }
+        if (captureInk) {
+            capturePath = directory.filePath(QStringLiteral("quaderno-handwriting.ink"));
+            QFile capture(capturePath);
+            if (!capture.open(QIODevice::WriteOnly | QIODevice::NewOnly)) return;
+            created.append(capturePath);
         }
         for (const QString &name : {QStringLiteral("quaderno-handwriting"), QStringLiteral("quaderno-handwriting-it.dct"),
                                    QStringLiteral("quaderno-handwriting-en.dct")}) {
@@ -135,8 +142,9 @@ struct TestHandwritingHelper {
             QFile file(path);
             if (!file.open(QIODevice::WriteOnly | QIODevice::NewOnly)) return;
             created.append(path);
+            const QByteArray capture = captureInk ? QByteArray("cat > \"$0.ink\"\n") : QByteArray("cat >/dev/null\n");
             const QByteArray contents = name.endsWith(".dct") ? QByteArray("test dictionary")
-                : QByteArray("#!/bin/sh\ncat >/dev/null\nsleep 0.1\nprintf '%s\\n' '{\"text\":\"12\"}'\n");
+                : "#!/bin/sh\n" + capture + "sleep 0.1\nprintf '%s\\n' '{\"text\":\"12\"}'\n";
             if (file.write(contents) != contents.size()) return;
             file.close();
             if (!file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner)) return;
@@ -1826,6 +1834,49 @@ private slots:
         QVERIFY(qmlList(dialog, "cellEntries").isEmpty());
         QCOMPARE(h.notebook.pageItems(), originalItems);
         QCOMPARE(h.notebook.strokes(), originalInk);
+    }
+
+    void diagramLabelRecognitionEnlargesAndTurnsSmallVerticalInk_data()
+    {
+        QTest::addColumn<QString>("orientation");
+        QTest::addColumn<bool>("downward");
+        QTest::newRow("automatic-down") << QStringLiteral("auto") << true;
+        QTest::newRow("automatic-up") << QStringLiteral("auto") << false;
+        QTest::newRow("manual-clockwise") << QStringLiteral("clockwise") << false;
+        QTest::newRow("manual-counterclockwise") << QStringLiteral("counterclockwise") << true;
+        QTest::newRow("stacked-letters") << QStringLiteral("stacked") << true;
+    }
+
+    void diagramLabelRecognitionEnlargesAndTurnsSmallVerticalInk()
+    {
+        QFETCH(QString, orientation);
+        QFETCH(bool, downward);
+        TestHandwritingHelper fixture(true);
+        QVERIFY(fixture.ready);
+        Handwriting recognizer;
+        if (!recognizer.available()) QSKIP("Platform does not support the installed recognition helper.");
+
+        const auto stroke = [](qreal y) {
+            return QVariantMap{{"tool", "pen"}, {"points", QVariantList{
+                QVariantMap{{"x", .29}, {"y", y}, {"p", .7}},
+                QVariantMap{{"x", .294}, {"y", y + .004}, {"p", .6}}}}};
+        };
+        const QVariantList strokes{stroke(downward ? .2 : .23), stroke(downward ? .23 : .2)};
+        QSignalSpy completed(&recognizer, &Handwriting::finished);
+        recognizer.recognizeDiagramLabel(strokes, QStringLiteral("it"), orientation);
+        QTRY_COMPARE(completed.size(), 1);
+        QVERIFY(completed.first().first().toBool());
+        QFile captured(fixture.capturePath);
+        QVERIFY(captured.open(QIODevice::ReadOnly));
+        const auto ink = QJsonDocument::fromJson(captured.readAll()).array();
+        QCOMPARE(ink.size(), 2);
+        const auto first = ink.first().toArray().first().toArray();
+        const auto last = ink.last().toArray().first().toArray();
+        const auto firstEnd = ink.first().toArray().last().toArray();
+        QVERIFY(last.at(0).toDouble() - first.at(0).toDouble() > (orientation == QStringLiteral("stacked") ? .02 : .15));
+        QVERIFY(qAbs(last.at(1).toDouble() - first.at(1).toDouble()) < 1e-6);
+        QVERIFY(qAbs(firstEnd.at(1).toDouble() - first.at(1).toDouble()) > .015);
+        QCOMPARE(first.at(2).toDouble(), .7);
     }
 
     void chartEditorExposesSignedAxisMinima()

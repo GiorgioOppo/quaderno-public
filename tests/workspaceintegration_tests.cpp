@@ -4,12 +4,16 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QImage>
+#include <algorithm>
 #include <memory>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJSValue>
 #include <QMouseEvent>
+#include <QPainter>
+#include <QPolygonF>
 #include <QQmlApplicationEngine>
 #include <QQmlComponent>
 #include <QQuickItem>
@@ -75,6 +79,64 @@ QQuickItem *findVisualItem(QQuickItem *parent, const QString &name)
         if (auto *found = findVisualItem(child, name)) return found;
     return nullptr;
 }
+
+QByteArray smallRasterDiagram()
+{
+    QImage image(1200, 1600, QImage::Format_RGB32);
+    image.fill(Qt::white);
+    QPainter painter(&image);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.scale(4.0 / 3, 4.0 / 3);
+    painter.setPen(QPen(Qt::black, 2.3));
+    for (const auto &box : {QRectF(108, 144, 185, 75), QRectF(135, 278, 50, 42),
+                            QRectF(315, 145, 106, 215), QRectF(479, 151, 208, 193),
+                            QRectF(690, 151, 38, 193), QRectF(225, 393, 195, 74)}) {
+        painter.drawRect(box);
+    }
+    painter.drawLine(QPointF(421, 245), QPointF(479, 245));
+
+    const QHash<QChar, QList<QPolygonF>> letters{
+        {u'A', {{{0, 10}, {3.6, 0}, {7.5, 10}}, {{1.5, 6.5}, {6, 6.3}}}},
+        {u'C', {{{7.2, 1}, {4.1, 0}, {1.4, 1.4}, {0.2, 6.5}, {2.2, 9.6}, {5.3, 10}, {7.4, 8.6}}}},
+        {u'O', {{{3.6, 0.2}, {1, 1.9}, {0.3, 6.9}, {2.6, 9.7}, {5.6, 9.7}, {7.8, 6.4}, {7.2, 2}, {3.6, 0.2}}}},
+        {u'P', {{{0.8, 10}, {0.6, 0.4}, {4.7, 0.1}, {7.2, 1.3}, {7.5, 4.1}, {5.1, 5.4}, {0.9, 5.3}}}},
+        {u'R', {{{0.2, 9.8}, {0, 0.4}, {4.5, 0.1}, {7.2, 1.5}, {7.0, 4.0}, {4.8, 5.2}, {0.6, 5.4}},
+                {{3, 5.3}, {8, 10.0}}}},
+        {u'S', {{{7.3, 1.3}, {4.2, 0.0}, {0.7, 1.7}, {1.4, 4.0}, {6.4, 5.8}, {7.4, 7.9}, {5.5, 10}, {0.7, 9.2}}}},
+        {u'T', {{{0.1, 0.5}, {7.6, 0.4}}, {{4.0, 0.6}, {3.7, 10.0}}}},
+        {u'U', {{{0.3, 0}, {0.4, 7.2}, {2.2, 9.6}, {4.6, 10}, {7, 8.6}, {7.6, 0.5}}}}
+    };
+    const auto draw = [&](const QString &word, QPointF center, qreal degrees, qreal scale) {
+        painter.save();
+        painter.translate(center);
+        painter.rotate(degrees);
+        painter.scale(scale, scale);
+        painter.translate(-(word.size() * 11 - 3) / 2.0, -5);
+        painter.setPen(QPen(Qt::black, 1.65, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        for (const auto letter : word) {
+            for (const auto &stroke : letters.value(letter))
+                painter.drawPolyline(stroke);
+            painter.translate(11, 0);
+        }
+        painter.restore();
+    };
+    draw(QStringLiteral("CPU"), {200, 181}, 0, .58);
+    draw(QStringLiteral("CPU"), {161, 328}, 0, .64);
+    draw(QStringLiteral("START"), {368, 251}, 90, .87);
+    draw(QStringLiteral("STOP"), {582, 247}, -90, 1.05);
+    draw(QStringLiteral("S"), {709, 230}, 0, .88);
+    draw(QStringLiteral("O"), {710, 244}, 0, .90);
+    draw(QStringLiteral("A"), {708, 260}, 0, .85);
+    draw(QStringLiteral("R"), {709, 275}, 0, .89);
+    painter.end();
+
+    QByteArray png;
+    QBuffer buffer(&png);
+    if (!buffer.open(QIODevice::WriteOnly) || !image.save(&buffer, "PNG"))
+        return {};
+    return png;
+}
+
 struct WorkspaceHarness {
     QTemporaryDir directory;
     AppLanguage language{nullptr};
@@ -553,6 +615,151 @@ private slots:
         QCOMPARE(qmlMap(editor, "originalItem").value("id").toString(), targetId);
     }
 
+    void nativeMixedPageCaptionsUseTheVisibleFootprints()
+    {
+        const auto node = [](QString id, QString shape, QRectF pixels, QString text = {}) {
+            return QVariantMap{{"id", id}, {"shape", shape}, {"text", text}, {"x", pixels.x() / 900},
+                {"y", pixels.y() / 1200}, {"width", pixels.width() / 900}, {"height", pixels.height() / 1200}};
+        };
+        const QVariantList nodes{
+            node("outer", "process", {70, 100, 650, 240}),
+            node("inside", "process", {116, 170, 150, 108}),
+            node("known", "terminal", {525, 170, 160, 108}, "Testo già salvato"),
+            node("corner", "decision", {110, 410, 150, 105}),
+            node("left", "process", {317, 410, 150, 105}),
+            node("right", "decision", {548, 410, 165, 105}),
+        };
+        const QVariantMap diagram{{"type", "diagram"}, {"x", 0}, {"y", 0}, {"width", 1}, {"height", 1},
+            {"nodes", nodes}, {"edges", QVariantList{}}};
+
+        QVariantList strokes;
+        const auto addStroke = [&](std::initializer_list<QPointF> pixels) {
+            QVariantList points;
+            for (const auto &point : pixels)
+                points.append(QVariantMap{{"x", point.x() / 900}, {"y", point.y() / 1200}, {"p", .65}});
+            strokes.append(QVariantMap{{"tool", "pen"}, {"color", "#222222"}, {"width", 4}, {"points", points}});
+        };
+        const auto addCaption = [&](double x, double y) {
+            // Draw the right-hand character first to verify that geometric
+            // grouping retains the original writing order for the recognizer.
+            addStroke({{x + 16, y}, {x + 16, y + 16}, {x + 26, y + 16}});
+            addStroke({{x, y + 16}, {x + 6, y}, {x + 12, y + 16}});
+            addStroke({{x + 3, y + 9}, {x + 9, y + 9}});
+        };
+        addCaption(360, 123);
+        const auto insideStart = strokes.size();
+        addCaption(160, 205);
+        const auto insideStrokes = strokes.mid(insideStart);
+        addCaption(575, 205);
+        addCaption(113, 415);
+        addCaption(376, 523);
+        addCaption(616, 523);
+
+        MixedPageAnalyzer analyzer;
+        QSignalSpy completed(&analyzer, &MixedPageAnalyzer::finished);
+        const QVariantList selection{QRectF(.06, .07, .77, .55)};
+        analyzer.analyze({{"items", QVariantList{diagram}}, {"strokes", strokes}},
+            {{"diagram", selection}, {"table", selection}, {"text", selection}});
+        QTRY_COMPARE(completed.size(), 1);
+        const auto result = completed.first();
+        QCOMPARE(result.at(1).toString(), QString{});
+        const auto draft = result.at(0).toMap();
+        QCOMPARE(draft.value("diagram").toMap().value("nodes").toList(), nodes);
+        const auto jobs = draft.value("diagramInk").toList();
+        QStringList targets;
+        for (const auto &entry : jobs) {
+            const auto job = entry.toMap();
+            const auto id = job.value("nodeId").toString();
+            targets.append(id);
+            if (id == QStringLiteral("inside"))
+                QCOMPARE(job.value("strokes").toList(), insideStrokes);
+        }
+        QCOMPARE(targets, (QStringList{QStringLiteral("outer"), QStringLiteral("inside"),
+            QStringLiteral("left"), QStringLiteral("right")}));
+
+        auto rotated = diagram;
+        rotated.insert("rotation", 90);
+        rotated.insert("nodes", QVariantList{node("turned", "decision", {100, 240, 150, 120})});
+        strokes.clear();
+        addCaption(137, 278); // This lies in the old, unrotated footprint.
+        const auto rotatedStart = strokes.size();
+        addCaption(732, 317);
+        const auto rotatedStrokes = strokes.mid(rotatedStart);
+        completed.clear();
+        const QVariantList rotatedSelection{QRectF(.04, .07, .91, .73)};
+        analyzer.analyze({{"items", QVariantList{rotated}}, {"strokes", strokes}},
+            {{"diagram", rotatedSelection}, {"table", rotatedSelection}, {"text", rotatedSelection}});
+        QTRY_COMPARE(completed.size(), 1);
+        QCOMPARE(completed.first().at(1).toString(), QString{});
+        const auto rotatedJobs = completed.first().at(0).toMap().value("diagramInk").toList();
+        QCOMPARE(rotatedJobs.size(), 1);
+        QCOMPARE(rotatedJobs.first().toMap().value("nodeId").toString(), QStringLiteral("turned"));
+        QCOMPARE(rotatedJobs.first().toMap().value("strokes").toList(), rotatedStrokes);
+    }
+
+    void rasterDiagramKeepsSmallAndVerticalLabelsWithTheirNodes()
+    {
+        const QByteArray png = smallRasterDiagram();
+        QVERIFY(!png.isEmpty());
+        MixedPageAnalyzer analyzer;
+        QSignalSpy completed(&analyzer, &MixedPageAnalyzer::finished);
+        analyzer.analyze({{"background", png}}, {
+            {"diagram", QVariantList{QRectF(.08, .09, .86, .33)}},
+            {"table", QVariantList{QRectF(.10, .50, .25, .12)}},
+            {"text", QVariantList{QRectF(.50, .50, .25, .12)}}});
+        QTRY_COMPARE(completed.size(), 1);
+        const auto result = completed.first();
+        QVERIFY2(result.at(1).toString().isEmpty(), qPrintable(result.at(1).toString()));
+        const auto draft = result.at(0).toMap();
+        const auto diagram = draft.value("diagram").toMap();
+        const auto nodes = diagram.value("nodes").toList();
+        const auto jobs = draft.value("diagramInk").toList();
+        QCOMPARE(nodes.size(), 6);
+        QCOMPARE(jobs.size(), 5);
+
+        const auto bounds = [](const QVariantMap &value) {
+            return QRectF(value.value("x").toDouble(), value.value("y").toDouble(),
+                value.value("width").toDouble(), value.value("height").toDouble());
+        };
+        const QRectF page = bounds(diagram);
+        for (const auto &caption : {QPointF(200, 181), QPointF(368, 251), QPointF(582, 247), QPointF(709, 253)}) {
+            const QPointF position(caption.x() / 900, caption.y() / 1200);
+            const auto node = std::find_if(nodes.cbegin(), nodes.cend(), [&](const QVariant &entry) {
+                const QRectF box = bounds(entry.toMap());
+                return QRectF(page.x() + box.x() * page.width(), page.y() + box.y() * page.height(),
+                    box.width() * page.width(), box.height() * page.height()).contains(position);
+            });
+            QVERIFY(node != nodes.cend());
+            const auto id = node->toMap().value("id");
+            const auto job = std::find_if(jobs.cbegin(), jobs.cend(), [&](const QVariant &entry) {
+                return entry.toMap().value("nodeId") == id;
+            });
+            QVERIFY(job != jobs.cend());
+            const QRectF crop = job->toMap().value("bounds").toRectF();
+            QVERIFY(crop.adjusted(-.005, -.005, .005, .005).contains(position));
+            const bool vertical = caption.x() != 200;
+            QCOMPARE(job->toMap().value("vertical").toBool(), vertical);
+            const qreal ratio = crop.height() * 1200 / (crop.width() * 900);
+            QVERIFY(vertical ? ratio > 2 : ratio < 0.6);
+            if (caption.x() == 709)
+                QCOMPARE(job->toMap().value("glyphBounds").toList().size(), 4);
+        }
+
+        const auto smallNode = std::find_if(nodes.cbegin(), nodes.cend(), [&](const auto &value) {
+            const QRectF box = bounds(value.toMap());
+            return QRectF(page.x() + box.x() * page.width(), page.y() + box.y() * page.height(),
+                box.width() * page.width(), box.height() * page.height()).contains(QPointF(160. / 900, 299. / 1200));
+        });
+        QVERIFY(smallNode != nodes.cend());
+        const auto label = std::find_if(jobs.cbegin(), jobs.cend(), [&](const QVariant &entry) {
+            return entry.toMap().value("nodeId") == smallNode->toMap().value("id");
+        });
+        QVERIFY(label != jobs.cend());
+        const auto crop = label->toMap().value("tinyCrop").toRectF();
+        QVERIFY(crop.contains(QPointF(161. / 900, 328. / 1200)));
+        QVERIFY(crop.top() > 320. / 1200);
+    }
+
     void mixedPageReviewCreatesOneNotebookWithEditableLinkedPages()
     {
         WorkspaceHarness h;
@@ -855,6 +1062,79 @@ private slots:
         QVERIFY(QMetaObject::invokeMethod(overview, "close"));
         QTRY_VERIFY(!overview->property("visible").toBool());
         h.screenshot(landscape ? "workspace-books-landscape" : "workspace-books-narrow");
+    }
+
+    void tabletShareOffersContextualFormatsAndSavesCurrentPage()
+    {
+        WorkspaceHarness h;
+        QVERIFY(h.window());
+        QVERIFY(h.notebook.savePageItem(tableFixture(QStringLiteral("Scope test"))));
+        const QVariantMap node{{"id", "node-1"}, {"shape", "process"}, {"text", "Prepare"},
+            {"x", .12}, {"y", .15}, {"width", .46}, {"height", .32}};
+        QVERIFY(h.notebook.savePageItem({{"type", "diagram"}, {"nodes", QVariantList{node}}, {"edges", QVariantList{}}}));
+        QVERIFY(h.notebook.addPage());
+        QVERIFY(h.notebook.goToPage(0));
+
+        auto *dialog = h.find<QObject>("appleShareView");
+        auto *format = h.find<QObject>("fileShareFormat");
+        auto *picker = h.find<QObject>("shareSavePicker");
+        auto *save = h.find<QQuickItem>("saveShareFile");
+        auto *send = h.find<QQuickItem>("sendShareFile");
+        auto *print = h.find<QQuickItem>("printShareFile");
+        auto *handoff = h.find<QQuickItem>("printOnMac");
+        QVERIFY(dialog && format && picker && save && send && print && handoff);
+        QVERIFY(waitForLayoutFrame(h.window()));
+        QVERIFY(clickItem(h, h.find<QQuickItem>("shareBookButton")));
+        QTRY_VERIFY(dialog->property("opened").toBool());
+        QCOMPARE(dialog->property("sourceBook").toString(), h.notebook.bookId());
+        QCOMPARE(dialog->property("sourcePage").toString(), h.notebook.pageId());
+        QVERIFY(!send->isVisible());
+        QVERIFY(!print->isVisible());
+
+        const auto options = qmlList(dialog, "formats");
+        const auto findFormat = [&options](const QString &name) {
+            for (qsizetype index = 0; index < options.size(); ++index)
+                if (options.at(index).toMap().value("format").toString() == name)
+                    return int(index);
+            return -1;
+        };
+        for (const auto &name : {"pdf", "markdown", "markdown-assets", "drawio", "csv", "quaderno", "png"})
+            QVERIFY2(findFormat(QString::fromLatin1(name)) >= 0, name);
+        QCOMPARE(findFormat(QStringLiteral("source")), -1);
+        const auto pagePdf = findFormat(QStringLiteral("pdf-page"));
+        QVERIFY(pagePdf >= 0);
+        QVERIFY(format->setProperty("currentIndex", pagePdf));
+        QCOMPARE(qmlMap(dialog, "selection").value("format").toString(), QStringLiteral("pdf-page"));
+        QTRY_COMPARE(handoff->isVisible(), h.wireless.available());
+        QVERIFY(waitForLayoutFrame(h.window()));
+        QVERIFY(clickItem(h, save));
+        QTRY_VERIFY(picker->property("visible").toBool());
+
+        const auto file = h.directory.filePath(QStringLiteral("current-page.pdf"));
+        QVERIFY(picker->setProperty("selectedFile", QUrl::fromLocalFile(file)));
+        QVERIFY(QMetaObject::invokeMethod(picker, "accepted"));
+        QVERIFY(QMetaObject::invokeMethod(picker, "close"));
+        QFile pdf(file);
+        QVERIFY2(pdf.open(QIODevice::ReadOnly), qPrintable(h.notebook.error()));
+        const auto bytes = pdf.readAll();
+        QVERIFY(bytes.startsWith("%PDF-"));
+        QVERIFY(bytes.contains("/Count 1"));
+
+        if (h.wireless.available()) {
+            auto *wireless = h.find<QObject>("wirelessSyncDialog");
+            QVERIFY(wireless);
+            QVERIFY(waitForLayoutFrame(h.window()));
+            QVERIFY(clickItem(h, handoff));
+            QTRY_VERIFY(wireless->property("visible").toBool());
+            QTRY_VERIFY(!dialog->property("visible").toBool());
+            QVERIFY(QMetaObject::invokeMethod(wireless, "close"));
+            QVERIFY(QMetaObject::invokeMethod(h.window(), "shareBook"));
+            QTRY_VERIFY(dialog->property("opened").toBool());
+        }
+
+        QVERIFY(h.notebook.goToPage(1));
+        QTRY_VERIFY(!dialog->property("visible").toBool());
+        QTRY_VERIFY(!picker->property("visible").toBool());
     }
 
     void overflowSupportsKeyboardAndDismissesOnContextChange()

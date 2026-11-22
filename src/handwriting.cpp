@@ -7,7 +7,12 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QOperatingSystemVersion>
+#include <QPointF>
 #include <QRegularExpression>
+
+#include <algorithm>
+#include <cmath>
+#include <utility>
 
 namespace {
 constexpr qsizetype maxPoints = 120'000;
@@ -63,6 +68,122 @@ QJsonArray validatedInk(const QVariantList &selection, QString &error)
     if (ink.isEmpty())
         error = QObject::tr("Seleziona un tratto di scrittura a mano.");
     return ink;
+}
+
+QJsonArray horizontalLabelColumn(const QJsonArray &ink)
+{
+    struct Band {
+        qreal left = 1, top = 1, right = 0, bottom = 0;
+        QList<qsizetype> paths;
+    };
+    QList<Band> strokes;
+    for (qsizetype index = 0; index < ink.size(); ++index) {
+        Band band;
+        for (const auto &sample : ink.at(index).toArray()) {
+            const auto point = sample.toArray();
+            const qreal x = point.at(0).toDouble();
+            const qreal y = point.at(1).toDouble();
+            band.left = qMin(band.left, x);
+            band.top = qMin(band.top, y);
+            band.right = qMax(band.right, x);
+            band.bottom = qMax(band.bottom, y);
+        }
+        band.paths.append(index);
+        strokes.append(band);
+    }
+    std::stable_sort(strokes.begin(), strokes.end(), [](const Band &a, const Band &b) { return a.top < b.top; });
+    QList<Band> letters;
+    for (const auto &stroke : std::as_const(strokes)) {
+        if (letters.isEmpty() || stroke.top - letters.last().bottom > .0015) {
+            letters.append(stroke);
+            continue;
+        }
+        auto &letter = letters.last();
+        letter.left = qMin(letter.left, stroke.left);
+        letter.right = qMax(letter.right, stroke.right);
+        letter.bottom = qMax(letter.bottom, stroke.bottom);
+        letter.paths.append(stroke.paths);
+    }
+    if (letters.size() < 2 || letters.size() > 24)
+        return ink;
+
+    qreal width = 0;
+    const auto advance = [](const Band &letter) {
+        const qreal gap = std::clamp((letter.bottom - letter.top) * .18, .002, .015);
+        return letter.right - letter.left + gap;
+    };
+    for (const auto &letter : std::as_const(letters))
+        width += advance(letter);
+    const qreal scale = qMin(1., .8 / width);
+    qreal cursor = 0;
+    QJsonArray horizontal;
+    for (auto &letter : letters) {
+        std::sort(letter.paths.begin(), letter.paths.end());
+        for (const auto index : letter.paths) {
+            QJsonArray path;
+            for (const auto &sample : ink.at(index).toArray()) {
+                const auto point = sample.toArray();
+                const qreal x = cursor + point.at(0).toDouble() - letter.left;
+                const qreal y = point.at(1).toDouble() - (letter.top + letter.bottom) / 2;
+                path.append(QJsonArray{.1 + x * scale, .5 + y * scale, point.at(2)});
+            }
+            horizontal.append(path);
+        }
+        cursor += advance(letter);
+    }
+    return horizontal;
+}
+
+QJsonArray preparedLabelInk(const QJsonArray &ink, const QString &orientation)
+{
+    constexpr qreal pageAspect = 4.0 / 3.0;
+    // Distances and rotation use the aspect ratio of the recognizers' page.
+    qreal left = 1, top = pageAspect, right = 0, bottom = 0;
+    const auto position = [](const QJsonArray &point) {
+        return QPointF(point.at(0).toDouble(), point.at(1).toDouble() * pageAspect);
+    };
+    for (const auto &stroke : ink) {
+        for (const auto &sample : stroke.toArray()) {
+            const auto point = position(sample.toArray());
+            left = qMin(left, point.x());
+            top = qMin(top, point.y());
+            right = qMax(right, point.x());
+            bottom = qMax(bottom, point.y());
+        }
+    }
+    const qreal width = right - left;
+    const qreal height = bottom - top;
+    int turn = 0;
+    if (orientation == QStringLiteral("clockwise")) {
+        turn = 1;
+    } else if (orientation == QStringLiteral("counterclockwise")) {
+        turn = -1;
+    } else if (orientation == QStringLiteral("auto") && height > 2.3 * width && ink.size() > 1) {
+        const auto first = ink.first().toArray();
+        const auto last = ink.last().toArray();
+        const qreal startY = (position(first.first().toArray()).y() + position(first.last().toArray()).y()) / 2;
+        const qreal endY = (position(last.first().toArray()).y() + position(last.last().toArray()).y()) / 2;
+        if (height > 0 && std::abs(endY - startY) >= height * .45)
+            turn = endY > startY ? -1 : 1;
+    }
+    const qreal writtenWidth = turn ? height : width;
+    const qreal writtenHeight = turn ? width : height;
+    const qreal extent = qMax(writtenWidth, writtenHeight / pageAspect);
+    const qreal magnification = std::clamp(.045 / qMax(.001, writtenHeight), 1., 6.);
+    const qreal scale = extent > 0 ? qMin(magnification, .85 / extent) : 1.;
+    const QPointF center((left + right) / 2, (top + bottom) / 2);
+    QJsonArray result;
+    for (const auto &stroke : ink) {
+        QJsonArray path;
+        for (const auto &sample : stroke.toArray()) {
+            const auto point = sample.toArray();
+            const auto delta = position(point) - center;
+            const auto rotated = turn ? QPointF(-turn * delta.y(), turn * delta.x()) : delta;
+            path.append(QJsonArray{.5 + rotated.x() * scale, .5 + rotated.y() * scale / pageAspect, point.at(2)});
+        }
+        result.append(path);
+    }
+    return result;
 }
 }
 
@@ -172,6 +293,16 @@ bool Handwriting::available() const
 
 void Handwriting::recognize(const QVariantList &strokes, const QString &language)
 {
+    recognizeInk(strokes, language, {});
+}
+
+void Handwriting::recognizeDiagramLabel(const QVariantList &strokes, const QString &language, const QString &orientation)
+{
+    recognizeInk(strokes, language, orientation.isEmpty() ? QStringLiteral("auto") : orientation);
+}
+
+void Handwriting::recognizeInk(const QVariantList &strokes, const QString &language, const QString &labelOrientation)
+{
     if (m_busy)
         return;
     if (!available()) {
@@ -196,7 +327,9 @@ void Handwriting::recognize(const QVariantList &strokes, const QString &language
         complete({}, error);
         return;
     }
-    m_input = QJsonDocument(ink).toJson(QJsonDocument::Compact);
+    const auto prepared = labelOrientation == QStringLiteral("stacked") ? horizontalLabelColumn(ink) : ink;
+    m_input = QJsonDocument(labelOrientation.isEmpty() ? ink : preparedLabelInk(prepared, labelOrientation))
+        .toJson(QJsonDocument::Compact);
     if (m_input.size() > maxInputBytes) {
         complete({}, tr("La selezione è troppo grande. Seleziona un passaggio più breve."));
         return;

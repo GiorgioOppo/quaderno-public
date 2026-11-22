@@ -320,7 +320,8 @@ QVariantMap validatedDiagram(const QVariantMap &item, QVariantMap validated)
         QString id, shape, text;
         const auto rect = readNormalizedRect(node);
         if (!rect || !readDiagramId(node.value(idKey), id) || nodeIds.contains(id)
-            || !readText(node.value(shapeKey), 8, shape) || !shapes.contains(shape)
+            || !readText(node.value(shapeKey), 16, shape)
+            || (!shapes.contains(shape) && !diagramShapeRequiresNewFormat(shape) && !diagramShapeRequiresUmlFormat(shape))
             || !readDiagramLabel(node.value(textKey), diagramNodeTextLimit, text))
             return {};
         nodeIds.insert(id);

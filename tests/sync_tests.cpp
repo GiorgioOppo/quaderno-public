@@ -115,6 +115,10 @@ private slots:
         QTest::newRow("explicit-ten-cannot-read-notes") << QVariant{10} << 11 << false;
         QTest::newRow("current-reader-notes") << QVariant{11} << 11 << true;
         QTest::newRow("future-reader-current-notes") << QVariant{12} << 11 << true;
+        QTest::newRow("flowchart-reader-cannot-read-uml")
+            << QVariant{NotebookFormat::extendedDiagramShapesVersion} << NotebookFormat::umlDiagramShapesVersion << false;
+        QTest::newRow("uml-reader")
+            << QVariant{NotebookFormat::umlDiagramShapesVersion} << NotebookFormat::umlDiagramShapesVersion << true;
         QTest::newRow("reader-version-string-fails-closed") << QVariant{"11"} << 9 << false;
         QTest::newRow("reader-version-zero-fails-closed") << QVariant{0} << 9 << false;
         QTest::newRow("reader-version-boolean-fails-closed") << QVariant{true} << 9 << false;
@@ -153,24 +157,36 @@ private slots:
     void extendedFieldsCannotHideBehindOlderEnvelope_data()
     {
         QTest::addColumn<QJsonObject>("item");
-        QTest::newRow("diagram-style") << QJsonObject{{"type", "diagram"}, {"styleScale", .5}};
-        QTest::newRow("diagram-recovery") << QJsonObject{{"type", "diagram"}, {"handwritingSource", QJsonObject{{"baseDiagram", QJsonObject{}}}}};
-        QTest::newRow("anchored-note") << QJsonObject{{"type", "note"}, {"text", "Keep this annotation"}};
+        QTest::addColumn<QVariant>("peerVersion");
+        QTest::addColumn<int>("declaredVersion");
+        QTest::newRow("diagram-style") << QJsonObject{{"type", "diagram"}, {"styleScale", .5}} << QVariant{} << 9;
+        QTest::newRow("diagram-recovery")
+            << QJsonObject{{"type", "diagram"}, {"handwritingSource", QJsonObject{{"baseDiagram", QJsonObject{}}}}} << QVariant{} << 9;
+        QTest::newRow("anchored-note") << QJsonObject{{"type", "note"}, {"text", "Keep this annotation"}} << QVariant{} << 9;
+        constexpr int previousVersion = NotebookFormat::extendedDiagramShapesVersion;
+        const QJsonObject uml{{"type", "diagram"}, {"nodes", QJsonArray{QJsonObject{{"shape", "uml-class"}}}}};
+        QTest::newRow("uml-node") << uml << QVariant{previousVersion} << previousVersion;
+        QTest::newRow("uml-recovery-node")
+            << QJsonObject{{"type", "diagram"}, {"handwritingSource", QJsonObject{{"baseDiagram", uml}}}}
+            << QVariant{previousVersion} << previousVersion;
     }
 
     void extendedFieldsCannotHideBehindOlderEnvelope()
     {
         QFETCH(QJsonObject, item);
+        QFETCH(QVariant, peerVersion);
+        QFETCH(int, declaredVersion);
         QTemporaryDir directory;
         DeltaTransfer transfer(nullptr, nullptr, directory.path());
         transfer.setConnected(true, QString(32, QLatin1Char('c')));
-        QVERIFY(transfer.receiveMessage({{"type", "syncHello"}, {"request", QString(32, QLatin1Char('a'))},
-            {"deltaVersion", 1}}, {}));
+        QVariantMap hello{{"type", "syncHello"}, {"request", QString(32, QLatin1Char('a'))}, {"deltaVersion", 1}};
+        if (peerVersion.isValid()) hello.insert("maxNotebookVersion", peerVersion);
+        QVERIFY(transfer.receiveMessage(hello, {}));
         QSignalSpy sent(&transfer, &DeltaTransfer::sendMessage);
         QSignalSpy failed(&transfer, &DeltaTransfer::failed);
         const QJsonObject document{{"id", "book-one"}, {"title", "Annotations"},
             {"pages", QJsonArray{QJsonObject{{"items", QJsonArray{item}}}}}};
-        transfer.sendPreview(previewMetadata(), bytes({{"version", 9}, {"books", QJsonArray{document}}}), 8 * 1024 * 1024);
+        transfer.sendPreview(previewMetadata(), bytes({{"version", declaredVersion}, {"books", QJsonArray{document}}}), 8 * 1024 * 1024);
         QCOMPARE(failed.size(), 1);
         QVERIFY(sent.isEmpty());
     }

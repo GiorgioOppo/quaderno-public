@@ -854,6 +854,29 @@ private slots:
         QTest::qWait(90); // The inspector's Flow lays out the newly visible edge tools on the next frame.
         QTest::mouseClick(h.window(), Qt::LeftButton, Qt::NoModifier, center(orthogonal));
         QTRY_COMPARE(qmlArray(editor, "edges").first().toMap().value("route").toString(), QStringLiteral("orthogonal"));
+        auto *moreShapes = visibleItem(h.window()->contentItem(), "diagramMoreShapes");
+        QVERIFY(moreShapes);
+        QTest::mouseClick(h.window(), Qt::LeftButton, Qt::NoModifier, center(moreShapes));
+        QQuickItem *database = nullptr;
+        QQuickItem *cloud = nullptr;
+        QTRY_VERIFY((database = visibleItem(h.window()->contentItem(), "diagramShape_database"))
+            && (cloud = visibleItem(h.window()->contentItem(), "diagramShape_cloud"))
+            && database->width() > 0 && database->height() > 0
+            && cloud->y() >= database->y() + database->height());
+        QTest::mouseClick(h.window(), Qt::LeftButton, Qt::NoModifier, center(database));
+        QTRY_COMPARE(qmlArray(editor, "nodes").size(), 3);
+        QCOMPARE(qmlArray(editor, "nodes").last().toMap().value("shape").toString(), QStringLiteral("database"));
+        auto *uml = visibleItem(h.window()->contentItem(), "diagramUmlShapes");
+        QVERIFY(uml);
+        QTest::mouseClick(h.window(), Qt::LeftButton, Qt::NoModifier, center(uml));
+        QQuickItem *actor = nullptr;
+        QQuickItem *lifeline = nullptr;
+        QTRY_VERIFY((actor = visibleItem(h.window()->contentItem(), "diagramShape_uml-actor"))
+            && (lifeline = visibleItem(h.window()->contentItem(), "diagramShape_uml-lifeline"))
+            && actor->width() > 0 && actor->height() > 0 && lifeline->y() >= actor->y() + actor->height());
+        QTest::mouseClick(h.window(), Qt::LeftButton, Qt::NoModifier, center(actor));
+        QTRY_COMPARE(qmlArray(editor, "nodes").size(), 4);
+        QCOMPARE(qmlArray(editor, "nodes").last().toMap().value("shape").toString(), QStringLiteral("uml-actor"));
         QVERIFY2(h.qmlWarnings.isEmpty(), qPrintable(h.qmlWarnings.join(QStringLiteral(" | "))));
     }
 

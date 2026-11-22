@@ -33,6 +33,14 @@
       <source>Scegli una destinazione nel menu Condividi.</source>
       <translation>Choose a destination from the Share menu.</translation>
     </message>
+    <message><source>Scegli un formato da condividere.</source><translation>Choose a format to share.</translation></message>
+    <message><source>Impossibile aprire il menu Condividi di macOS.</source><translation>Could not open the macOS Share menu.</translation></message>
+    <message><source>Impossibile creare lo ZIP con gli allegati Markdown.</source><translation>Could not create the ZIP with the Markdown attachments.</translation></message>
+    <message><source>Scegli il PDF della pagina o del quaderno da stampare.</source><translation>Choose the page or notebook PDF to print.</translation></message>
+    <message><source>Impossibile preparare il PDF per la stampa.</source><translation>Could not prepare the PDF for printing.</translation></message>
+    <message><source>Impossibile aprire il PDF per la stampa.</source><translation>Could not open the PDF for printing.</translation></message>
+    <message><source>Operazione di stampa completata.</source><translation>Print operation completed.</translation></message>
+    <message><source>Operazione di stampa interrotta.</source><translation>Print operation interrupted.</translation></message>
       <message><source>La coda Apple non è leggibile. I file esportati sono conservati.</source><translation>The Apple queue cannot be read. Exported files have been kept.</translation></message>
     <message><source>Impossibile aggiornare la coda Apple. Riapri Quaderno e riprova.</source><translation>Could not update the Apple queue. Reopen Quaderno and try again.</translation></message>
     <message><source>La coda Apple contiene 256 esportazioni. I file sono conservati.</source><translation>The Apple queue contains 256 exports. The files have been kept.</translation></message>

@@ -1,6 +1,7 @@
 #include "notebook.h"
 #include "notebookformat.h"
 
+#include "chartrecognizer.h"
 #include "epubimport.h"
 #include "diagramitem.h"
 #include "diagramexport.h"
@@ -99,6 +100,8 @@ bool safeMarkdownDestination(const QUrl &file, const QFileInfo &output, const QS
 QString documentFileName(QString name, const QString &suffix)
 {
     name = name.left(80).trimmed();
+    if (!name.isEmpty() && name.back().isHighSurrogate())
+        name.chop(1);
     name.replace(QRegularExpression(QStringLiteral("[/\\\\:\\p{Cc}]")), QStringLiteral("_"));
     if (name.isEmpty() || name.startsWith(QLatin1Char('.')))
         name.prepend(QStringLiteral("Quaderno"));
@@ -373,19 +376,35 @@ QRectF itemRect(const QVariantMap &item)
                   item.value(QStringLiteral("width")).toDouble(), item.value(QStringLiteral("height")).toDouble());
 }
 
+int diagramShapesVersion(const QVariantMap &diagram)
+{
+    int version = 0;
+    for (const auto &node : diagram.value(QStringLiteral("nodes")).toList()) {
+        const auto shape = node.toMap().value(QStringLiteral("shape")).toString();
+        if (diagramShapeRequiresUmlFormat(shape)) return NotebookFormat::umlDiagramShapesVersion;
+        if (diagramShapeRequiresNewFormat(shape)) version = NotebookFormat::extendedDiagramShapesVersion;
+    }
+    return version;
+}
+
 int requiredItemVersion(const QVariantMap &item)
 {
-    if (item.value(QStringLiteral("type")) == QStringLiteral("link"))
+    const QVariant type = item.value(QStringLiteral("type"));
+    if (type == QStringLiteral("link"))
         return NotebookFormat::pageLinksVersion;
-    if (item.value(QStringLiteral("type")) == QStringLiteral("note"))
+    if (type == QStringLiteral("note"))
         return PageNoteFileVersion;
-    if (item.contains(QStringLiteral("styleScale"))
-        || item.value(QStringLiteral("handwritingSource")).toMap().contains(QStringLiteral("baseDiagram")))
+    const auto recovery = item.value(QStringLiteral("handwritingSource")).toMap();
+    if (type == QStringLiteral("diagram")) {
+        const auto version = qMax(diagramShapesVersion(item),
+            diagramShapesVersion(recovery.value(QStringLiteral("baseDiagram")).toMap()));
+        if (version) return version;
+    }
+    if (item.contains(QStringLiteral("styleScale")) || recovery.contains(QStringLiteral("baseDiagram")))
         return DiagramExtensionFileVersion;
     if (item.contains(QStringLiteral("handwritingSource")) || item.contains(QStringLiteral("rotation"))
         || item.contains(QStringLiteral("textScale")))
         return ExtendedFileVersion;
-    const QVariant type = item.value(QStringLiteral("type"));
     if (type == QStringLiteral("image"))
         return ImageFileVersion;
     if (type != QStringLiteral("diagram"))
@@ -897,6 +916,174 @@ bool Notebook::exportDocument(const QUrl &file)
     return exportPdf(file.toLocalFile());
 }
 
+QVariantList Notebook::shareOptions() const
+{
+    const Book *book = currentBook();
+    const Page *page = currentPage();
+    if (!book || !page || book->trashed || m_importing)
+        return {};
+
+    QVariantList options;
+    const auto add = [&](const QString &format, const QString &extension, const QString &title,
+                         const QString &itemId = {}, const QVariantMap &target = {}) {
+        QVariantMap option = target;
+        option.insert(QStringLiteral("format"), format);
+        option.insert(QStringLiteral("extension"), extension);
+        option.insert(QStringLiteral("bookId"), book->id);
+        option.insert(QStringLiteral("pageId"), page->id);
+        option.insert(QStringLiteral("itemId"), itemId);
+        option.insert(QStringLiteral("name"), documentFileName(title, u'.' + extension));
+        option.insert(QStringLiteral("title"), title);
+        options.append(option);
+    };
+
+    const QString pageTitle = tr("%1 - pagina %2").arg(book->title.left(60)).arg(m_state.page + 1);
+    add(QStringLiteral("pdf"), QStringLiteral("pdf"), book->title);
+    add(QStringLiteral("pdf-page"), QStringLiteral("pdf"), pageTitle);
+    add(QStringLiteral("markdown"), QStringLiteral("md"), book->title);
+    add(QStringLiteral("markdown-assets"), QStringLiteral("md"), book->title);
+    add(QStringLiteral("png"), QStringLiteral("png"), pageTitle);
+    add(QStringLiteral("quaderno"), QStringLiteral("quaderno"), book->title);
+
+    const QString sourceId = page->source.value(QStringLiteral("origin"),
+        page->source.value(QStringLiteral("asset"))).toString();
+    const auto source = book->sourceDocuments.value(sourceId).toMap();
+    const QString sourceKind = source.value(QStringLiteral("kind")).toString();
+    if (sourceKind == QStringLiteral("pdf") || sourceKind == QStringLiteral("epub")) {
+        add(QStringLiteral("source"), sourceKind, tr("%1 - originale").arg(book->title.left(66)), {},
+            {{QStringLiteral("sourceId"), sourceId}});
+    }
+
+    QSet<QPair<QString, QPair<QString, QString>>> seen;
+    const auto addItem = [&](const QVariantMap &item, const QString &itemId, const QString &targetBook,
+                             const QString &targetPage, const QString &targetTitle) {
+        const QString type = item.value(QStringLiteral("type")).toString();
+        if (!isLibraryItem(type) || itemId.isEmpty()) return;
+        const QString targetItem = item.value(QStringLiteral("id")).toString();
+        const auto identity = qMakePair(targetBook, qMakePair(targetPage, targetItem));
+        if (seen.contains(identity)) return;
+        seen.insert(identity);
+        const QString format = type == QStringLiteral("diagram") ? QStringLiteral("drawio") : QStringLiteral("csv");
+        const QString name = libraryItemTitle(item, targetTitle);
+        add(format, format, name.isEmpty() ? targetTitle : name, itemId,
+            {{QStringLiteral("type"), type}, {QStringLiteral("targetBookId"), targetBook},
+             {QStringLiteral("targetPageId"), targetPage}, {QStringLiteral("targetItemId"), targetItem}});
+    };
+    for (const auto &entry : page->items) {
+        const auto item = entry.toMap();
+        addItem(item, item.value(QStringLiteral("id")).toString(), book->id, page->id, book->title);
+    }
+    for (const auto &entry : page->items) {
+        const auto item = entry.toMap();
+        if (item.value(QStringLiteral("type")) != QStringLiteral("link")) continue;
+        const QString id = item.value(QStringLiteral("id")).toString();
+        const auto target = pageLinkTarget(item);
+        if (!target) continue;
+        const auto &targetBook = m_state.books.at(target->book);
+        const auto &targetPage = targetBook.pages.at(target->page);
+        addItem(targetPage.items.at(target->item).toMap(), id, targetBook.id, targetPage.id, targetBook.title);
+    }
+    return options;
+}
+
+QUrl Notebook::suggestedShareFile(const QVariantMap &option) const
+{
+    const QString name = option.value(QStringLiteral("name")).toString();
+    if (name.isEmpty() || name.startsWith(u'.') || name.contains(u'\\') || QFileInfo(name).fileName() != name)
+        return {};
+    QString directory = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+    if (!QFileInfo(directory).isDir())
+        directory = QDir::homePath();
+    return QUrl::fromLocalFile(QDir(directory).filePath(name));
+}
+
+bool Notebook::exportShareFile(const QVariantMap &option, const QUrl &file)
+{
+    const Book *book = currentBook();
+    const Page *page = currentPage();
+    if (!book || !page || book->trashed || m_importing
+        || option.value(QStringLiteral("bookId")) != book->id || option.value(QStringLiteral("pageId")) != page->id)
+        return fail(tr("La pagina selezionata è cambiata. Riapri il menu di condivisione."));
+
+    const auto keys = {QStringLiteral("format"), QStringLiteral("itemId"), QStringLiteral("sourceId"),
+        QStringLiteral("targetBookId"), QStringLiteral("targetPageId"), QStringLiteral("targetItemId")};
+    const auto choices = shareOptions();
+    const auto match = std::find_if(choices.cbegin(), choices.cend(), [&](const QVariant &entry) {
+        const auto candidate = entry.toMap();
+        return std::all_of(keys.begin(), keys.end(), [&](const QString &key) {
+            return candidate.value(key) == option.value(key);
+        });
+    });
+    if (match == choices.cend())
+        return fail(tr("L’elemento selezionato non è più disponibile per la condivisione."));
+
+    const auto choice = match->toMap();
+    const QString format = choice.value(QStringLiteral("format")).toString();
+    const QString extension = choice.value(QStringLiteral("extension")).toString();
+    const QFileInfo output(file.toLocalFile());
+    const bool suffixMatches = output.suffix().compare(extension, Qt::CaseInsensitive) == 0
+        || (extension == QStringLiteral("md") && isMarkdownExtension(output.suffix()));
+    if (!file.isLocalFile() || (!file.host().isEmpty() && file.host() != QStringLiteral("localhost"))
+        || !output.isAbsolute() || output.isSymLink() || output.isDir() || !suffixMatches
+        || output.absoluteFilePath() == m_filePath
+        || (output.exists() && output.canonicalFilePath() == QFileInfo(m_filePath).canonicalFilePath()))
+        return fail(tr("Scegli un file locale con estensione .%1.").arg(extension));
+
+    if (format == QStringLiteral("pdf") || format == QStringLiteral("pdf-page"))
+        return exportPdf(output.absoluteFilePath(), format == QStringLiteral("pdf-page"));
+    if (format == QStringLiteral("markdown")) return exportMarkdown(file);
+    if (format == QStringLiteral("markdown-assets")) return exportMarkdownWithAssets(file);
+    if (format == QStringLiteral("csv") || format == QStringLiteral("drawio")) {
+        const QString targetBookId = choice.value(QStringLiteral("targetBookId")).toString();
+        const QString targetPageId = choice.value(QStringLiteral("targetPageId")).toString();
+        const QString targetItemId = choice.value(QStringLiteral("targetItemId")).toString();
+        const auto &targetBook = m_state.books.at(findBook(m_state, targetBookId));
+        const auto &targetPage = targetBook.pages.at(findPage(targetBook, targetPageId));
+        const auto item = PageContent::resolveTableCharts(targetPage.items).at(findPageItem(targetPage, targetItemId)).toMap();
+        if (format == QStringLiteral("csv")) {
+            return item.value(QStringLiteral("type")) == QStringLiteral("table")
+                ? exportTableCsv(file, item) : exportChartCsv(file, ChartRecognizer().csv(item));
+        }
+        const QString exportError = DiagramExport().save(file, item, choice.value(QStringLiteral("title")).toString());
+        if (!exportError.isEmpty()) return fail(exportError);
+        setError({});
+        return true;
+    }
+
+    QSaveFile destination(output.absoluteFilePath());
+    if (!destination.open(QIODevice::WriteOnly))
+        return fail(tr("Impossibile salvare il file. %1").arg(destination.errorString()));
+    if (format == QStringLiteral("png")) {
+        QImage image(QSize(1200, 1600), QImage::Format_RGB32);
+        QPainter painter(&image);
+        if (!painter.isActive()) return fail(tr("Impossibile preparare l’immagine della pagina."));
+        if (!paintExportPage(painter, image.size(), *book, *page)) return false;
+        painter.end();
+        QImageWriter writer(&destination, "png");
+        if (!writer.write(image))
+            return fail(tr("Impossibile salvare il file. %1").arg(writer.errorString()));
+    } else {
+        QByteArray bytes;
+        if (format == QStringLiteral("quaderno")) {
+            bytes = exportBookForTransfer(book->id);
+            if (bytes.isEmpty()) return false;
+        } else {
+            const QString sourceId = choice.value(QStringLiteral("sourceId")).toString();
+            const auto source = book->sourceDocuments.value(sourceId).toMap();
+            bytes = QByteArray::fromBase64(source.value(QStringLiteral("data")).toString().toLatin1(),
+                QByteArray::AbortOnBase64DecodingErrors);
+            if (bytes.isEmpty() || QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex() != sourceId.toLatin1())
+                return fail(tr("La sorgente della pagina è mancante o danneggiata."));
+        }
+        if (destination.write(bytes) != bytes.size())
+            return fail(tr("Impossibile salvare il file. %1").arg(destination.errorString()));
+    }
+    if (!destination.commit())
+        return fail(tr("Impossibile salvare il file. %1").arg(destination.errorString()));
+    setError({});
+    return true;
+}
+
 QUrl Notebook::suggestedMarkdownName() const
 {
     QString directory = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
@@ -1080,6 +1267,12 @@ bool Notebook::exportMarkdownWithAssets(const QUrl &file)
                     }))
                     return false;
                 links += imageLink(name, tr("Grafico"));
+            } else if (type == QStringLiteral("table")) {
+                const QString name = pagePrefix + QStringLiteral("table-%1.csv").arg(++itemNumber);
+                const auto bytes = tableCsvData(item);
+                if (!addAsset(name, [&](QIODevice &device) { return !bytes.isEmpty() && device.write(bytes) == bytes.size(); }))
+                    return false;
+                links += QStringLiteral("[%1](%2/%3)\n").arg(tr("Tabella (.csv)"), QFileInfo(assets->path()).fileName(), name);
             } else if (type == QStringLiteral("note")) {
                 ++noteNumber;
                 links += QStringLiteral("%1\n").arg(tr("Nota %1 · Pagina %2").arg(noteNumber).arg(index + 1));
@@ -1173,6 +1366,24 @@ bool Notebook::exportChartCsv(const QUrl &file, const QString &data)
     return true;
 }
 
+bool Notebook::paintExportPage(QPainter &painter, const QSize &size, const Book &book, const Page &page)
+{
+    painter.fillRect(QRect(QPoint(), size), Qt::white);
+    if (page.hasBackground()) {
+        QString error;
+        const auto background = page.source.isEmpty() ? QImage::fromData(page.backgroundData(), "JPEG")
+            : renderDocumentPage(sourceForPage(book, page), 2400, error);
+        if (background.isNull())
+            return fail(error.isEmpty() ? tr("Impossibile leggere lo sfondo della pagina.") : error);
+        paintPdfBackground(painter, size, background);
+    } else {
+        PageContent::paintTemplate(painter, size, page.paper);
+    }
+    PageContent::paintItems(painter, size, PageContent::resolveTableCharts(page.items));
+    paintStoredStrokes(painter, size, visibleStrokes(page));
+    return true;
+}
+
 bool Notebook::exportPdf(const QString &path, bool currentPageOnly)
 {
     const Book *book = currentBook();
@@ -1209,21 +1420,8 @@ bool Notebook::exportPdf(const QString &path, bool currentPageOnly)
         for (qsizetype index = first; index < end; ++index) {
             if (index > first && !writer.newPage())
                 return fail(tr("Impossibile aggiungere una pagina al PDF."));
-            painter.fillRect(QRect(QPoint(), size), Qt::white);
-            const Page &page = book->pages.at(index);
-            if (!page.hasBackground())
-                PageContent::paintTemplate(painter, size, page.paper);
-            else
-                {
-                QString error;
-                const QImage background = page.source.isEmpty() ? QImage::fromData(page.backgroundData(), "JPEG")
-                    : renderDocumentPage(sourceForPage(*book, page), 2400, error);
-                if (background.isNull())
-                    return fail(error.isEmpty() ? tr("Impossibile leggere lo sfondo della pagina.") : error);
-                paintPdfBackground(painter, size, background);
-            }
-            PageContent::paintItems(painter, size, PageContent::resolveTableCharts(page.items));
-            paintStoredStrokes(painter, size, visibleStrokes(page));
+            if (!paintExportPage(painter, size, *book, book->pages.at(index)))
+                return false;
         }
         // Keep the book's original pages intact. Note markers refer to these
         // appendices, where all typed text is paginated and ink has its own
@@ -4720,6 +4918,7 @@ bool Notebook::commit(State next, int changes, bool enforceSizeLimit)
     PageStore::Builder builder(previousContents, &m_storageBlobs);
     QVariantList books;
     QString storageError;
+    int manifestVersion = NotebookFormat::pageLinksVersion;
     for (const Book &book : std::as_const(next.books)) {
         const int previousBookIndex = findBook(m_state, book.id);
         QHash<QString, const Page *> previousPages;
@@ -4728,6 +4927,12 @@ bool Notebook::commit(State next, int changes, bool enforceSizeLimit)
         QVariantList pages;
         QStringList pageIds;
         for (const Page &page : book.pages) {
+            if (manifestVersion < NotebookFormat::maximumSupportedVersion) {
+                for (const auto &item : page.items) {
+                    manifestVersion = qMax(manifestVersion, requiredItemVersion(item.toMap()));
+                    if (manifestVersion == NotebookFormat::maximumSupportedVersion) break;
+                }
+            }
             const Page *old = previousPages.value(page.id, nullptr);
             QString hash;
             if (old && *old == page && old->activeLayer == page.activeLayer && old->markdownBlockId == page.markdownBlockId)
@@ -4754,7 +4959,7 @@ bool Notebook::commit(State next, int changes, bool enforceSizeLimit)
     for (const Folder &folder : std::as_const(next.folders))
         folders.append(QVariantMap{{QStringLiteral("id"), folder.id}, {QStringLiteral("title"), folder.title},
                                    {QStringLiteral("parentId"), folder.parentId}});
-    const QVariantMap metadata{{QStringLiteral("version"), NotebookFormat::maximumSupportedVersion},
+    const QVariantMap metadata{{QStringLiteral("version"), manifestVersion},
         {QStringLiteral("books"), books}, {QStringLiteral("folders"), folders},
         {QStringLiteral("activeBook"), next.activeBook >= 0 ? next.books.at(next.activeBook).id : QString{}},
         {QStringLiteral("page"), next.page}};

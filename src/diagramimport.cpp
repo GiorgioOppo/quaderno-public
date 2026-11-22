@@ -25,6 +25,9 @@ constexpr qsizetype maxExpandedBytes = 4 * 1024 * 1024;
 constexpr qsizetype maxCells = 4096;
 constexpr qsizetype maxNodes = 64;
 constexpr qsizetype maxEdges = 128;
+constexpr qsizetype maxNodeLabelLength = 200;
+const QString compartmentBreak = QStringLiteral("\n\n");
+const QString interfaceStereotype = QStringLiteral("«interface»");
 
 QByteArray unpackPage(const QString &encoded)
 {
@@ -358,11 +361,14 @@ struct Style {
     }
 
     bool enabled(const QString &key) const { return options.value(key) == QStringLiteral("1"); }
+    QString shape() const { return options.value(QStringLiteral("shape"), name).toLower(); }
 };
 
 QString nodeShape(const Style &style)
 {
-    const QString shape = style.options.value(QStringLiteral("shape"), style.name);
+    const QString shape = style.shape();
+    if (shape == QStringLiteral("ellipse") && style.options.value(QStringLiteral("quadernoUml")) == QStringLiteral("uml-use-case"))
+        return QStringLiteral("uml-use-case");
     static const QHash<QString, QString> shapes{
         {QStringLiteral("ellipse"), QStringLiteral("terminal")},
         {QStringLiteral("oval"), QStringLiteral("terminal")},
@@ -373,12 +379,40 @@ QString nodeShape(const Style &style)
         {QStringLiteral("mxgraph.flowchart.decision"), QStringLiteral("decision")},
         {QStringLiteral("parallelogram"), QStringLiteral("data")},
         {QStringLiteral("mxgraph.flowchart.data"), QStringLiteral("data")},
-        {QStringLiteral("mxgraph.flowchart.manual_input"), QStringLiteral("data")},
         {QStringLiteral("note"), QStringLiteral("note")},
         {QStringLiteral("text"), QStringLiteral("note")},
         {QStringLiteral("document"), QStringLiteral("note")},
         {QStringLiteral("mxgraph.flowchart.document"), QStringLiteral("note")},
         {QStringLiteral("mxgraph.flowchart.process"), QStringLiteral("process")},
+        {QStringLiteral("database"), QStringLiteral("database")},
+        {QStringLiteral("cylinder"), QStringLiteral("database")},
+        {QStringLiteral("cylinder2"), QStringLiteral("database")},
+        {QStringLiteral("cylinder3"), QStringLiteral("database")},
+        {QStringLiteral("mxgraph.flowchart.database"), QStringLiteral("database")},
+        {QStringLiteral("process"), QStringLiteral("subprocess")},
+        {QStringLiteral("predefined_process"), QStringLiteral("subprocess")},
+        {QStringLiteral("mxgraph.flowchart.predefined_process"), QStringLiteral("subprocess")},
+        {QStringLiteral("display"), QStringLiteral("display")},
+        {QStringLiteral("mxgraph.flowchart.display"), QStringLiteral("display")},
+        {QStringLiteral("manualinput"), QStringLiteral("manual-input")},
+        {QStringLiteral("manual_input"), QStringLiteral("manual-input")},
+        {QStringLiteral("mxgraph.flowchart.manual_input"), QStringLiteral("manual-input")},
+        {QStringLiteral("preparation"), QStringLiteral("preparation")},
+        {QStringLiteral("hexagon"), QStringLiteral("preparation")},
+        {QStringLiteral("mxgraph.flowchart.preparation"), QStringLiteral("preparation")},
+        {QStringLiteral("delay"), QStringLiteral("delay")},
+        {QStringLiteral("mxgraph.flowchart.delay"), QStringLiteral("delay")},
+        {QStringLiteral("offpageconnector"), QStringLiteral("off-page")},
+        {QStringLiteral("mxgraph.flowchart.off-page_reference"), QStringLiteral("off-page")},
+        {QStringLiteral("mxgraph.flowchart.off_page_reference"), QStringLiteral("off-page")},
+        {QStringLiteral("cloud"), QStringLiteral("cloud")},
+        {QStringLiteral("umlactor"), QStringLiteral("uml-actor")},
+        {QStringLiteral("umlusecase"), QStringLiteral("uml-use-case")},
+        {QStringLiteral("mxgraph.uml.use_case"), QStringLiteral("uml-use-case")},
+        {QStringLiteral("module"), QStringLiteral("uml-component")},
+        {QStringLiteral("folder"), QStringLiteral("uml-package")},
+        {QStringLiteral("cube"), QStringLiteral("uml-deployment")},
+        {QStringLiteral("umllifeline"), QStringLiteral("uml-lifeline")},
     };
     if (shape.isEmpty() || shape == QStringLiteral("rectangle")) {
         if (style.enabled(QStringLiteral("rounded")))
@@ -388,7 +422,7 @@ QString nodeShape(const Style &style)
     return shapes.value(shape);
 }
 
-bool hasSimplifiedStyle(const Style &style, bool edge)
+bool hasSimplifiedStyle(const Style &style, bool edge, const QString &expectedFontStyle = {})
 {
     const auto differentColor = [&](const QString &key, const QColor &defaultColor, bool isFill = false) {
         const QString value = style.options.value(key).toLower();
@@ -407,7 +441,7 @@ bool hasSimplifiedStyle(const Style &style, bool edge)
     const QString fontSize = style.options.value(QStringLiteral("fontSize"));
     if ((!rotation.isEmpty() && rotation.toDouble() != 0)
         || (!gradient.isEmpty() && gradient != QStringLiteral("none"))
-        || (!fontStyle.isEmpty() && fontStyle != QStringLiteral("0"))
+        || (!fontStyle.isEmpty() && fontStyle != QStringLiteral("0") && fontStyle != expectedFontStyle)
         || (!fontSize.isEmpty() && fontSize != QStringLiteral("12") && fontSize != QStringLiteral("16"))
         || style.options.contains(QStringLiteral("image")) || style.enabled(QStringLiteral("shadow"))
         || style.enabled(QStringLiteral("flipH")) || style.enabled(QStringLiteral("flipV"))
@@ -471,33 +505,118 @@ struct ConvertedDiagram {
     bool appearanceChanged = false;
 };
 
+QString classifierShape(const Style &style, const QString &heading, bool hasChildren)
+{
+    if (style.shape() != QStringLiteral("swimlane"))
+        return {};
+    const QString marker = style.options.value(QStringLiteral("quadernoUml"));
+    if (marker == QStringLiteral("uml-class") || marker == QStringLiteral("uml-interface") || marker == QStringLiteral("uml-object"))
+        return marker;
+    // The diagrams.net classifier template is a horizontal stack of text
+    // rows. Generic swimlanes remain outside this import path.
+    if (!hasChildren || style.options.value(QStringLiteral("childLayout")) != QStringLiteral("stackLayout")
+        || !style.enabled(QStringLiteral("horizontal"))
+        || style.options.value(QStringLiteral("horizontalStack")) != QStringLiteral("0")
+        || style.options.value(QStringLiteral("collapsible")) != QStringLiteral("0")
+        || style.options.value(QStringLiteral("startSize")).toDouble() <= 0)
+        return {};
+    const QString title = heading.trimmed();
+    if (title.startsWith(interfaceStereotype, Qt::CaseInsensitive)
+        || title.startsWith(QStringLiteral("<<interface>>"), Qt::CaseInsensitive))
+        return QStringLiteral("uml-interface");
+    return style.options.value(QStringLiteral("fontStyle")).toInt() & 4
+        ? QStringLiteral("uml-object") : QStringLiteral("uml-class");
+}
+
+QString classifierLabel(QString heading, const QList<const Cell *> &children, QSet<QString> &consumed,
+                        ConvertedDiagram &result, const Style &style, const QString &shape)
+{
+    const QString prefix = interfaceStereotype + u'\n';
+    if (shape == QStringLiteral("uml-interface") && style.enabled(QStringLiteral("quadernoUmlStereotype"))
+        && heading.startsWith(prefix))
+        heading.remove(0, prefix.size());
+    QStringList sections{heading};
+    QStringList rows;
+    qsizetype lastSectionWithContent = 0;
+    for (const Cell *child : children) {
+        if (!child->vertex || child->edge || child->hidden)
+            continue;
+        const Style childStyle(child->style);
+        const QString name = childStyle.shape();
+        if (name == QStringLiteral("line") && child->value.isEmpty()) {
+            sections.append(rows.join(u'\n'));
+            rows.clear();
+        } else {
+            const bool transparentText = name.isEmpty()
+                && childStyle.options.value(QStringLiteral("strokeColor")) == QStringLiteral("none")
+                && childStyle.options.value(QStringLiteral("fillColor")) == QStringLiteral("none");
+            if (name != QStringLiteral("text") && !transparentText)
+                continue;
+            const QString label = plainLabel(child->value, childStyle.enabled(QStringLiteral("html")),
+                                             maxNodeLabelLength, result.labelsShortened);
+            if (!label.isEmpty() || !childStyle.enabled(QStringLiteral("quadernoEmptySection")))
+                lastSectionWithContent = sections.size();
+            rows.append(label);
+            result.appearanceChanged |= child->customGeometry || hasEmbeddedImage(child->value, childStyle);
+        }
+        consumed.insert(child->id);
+    }
+    sections.append(rows.join(u'\n'));
+    return plainLabel(sections.sliced(0, lastSectionWithContent + 1).join(compartmentBreak),
+                      false, maxNodeLabelLength, result.labelsShortened);
+}
+
 ConvertedDiagram convert(const Page &page)
 {
     ConvertedDiagram result;
     result.omitted = page.unsupported;
     QSet<QString> layers;
+    QHash<QString, QList<const Cell *>> children;
     for (const auto &cell : page.cells) {
         if (!cell.vertex && !cell.edge && !cell.hidden && cell.parent == QStringLiteral("0"))
             layers.insert(cell.id);
+        if (cell.vertex)
+            children[cell.parent].append(&cell);
     }
 
     QList<Node> nodes;
+    QSet<QString> consumed;
     QRectF bounds;
     for (const auto &cell : page.cells) {
-        if (!cell.vertex)
+        if (!cell.vertex || !layers.contains(cell.parent))
             continue;
-        const Style style(cell.style);
-        const auto shape = nodeShape(style);
-        if (cell.edge || cell.hidden || !layers.contains(cell.parent) || shape.isEmpty() || !cell.rect.isValid()
+        if (cell.edge || cell.hidden || !cell.rect.isValid()
             || !std::isfinite(cell.rect.x()) || !std::isfinite(cell.rect.y()) || nodes.size() == maxNodes) {
             result.omitted = true;
             continue;
         }
-        result.appearanceChanged |= cell.customGeometry || hasSimplifiedStyle(style, false) || hasEmbeddedImage(cell.value, style);
-        nodes.append({cell.id, shape, plainLabel(cell.value, style.enabled(QStringLiteral("html")), 200, result.labelsShortened),
-                      cell.rect});
+        const Style style(cell.style);
+        const bool hasHeadingPrefix = style.enabled(QStringLiteral("quadernoUmlStereotype"));
+        const qsizetype headingLimit = maxNodeLabelLength + (hasHeadingPrefix ? interfaceStereotype.size() + 1 : 0);
+        bool labelShortened = false;
+        QString label = plainLabel(cell.value, style.enabled(QStringLiteral("html")), headingLimit, labelShortened);
+        const auto cellChildren = children.value(cell.id);
+        const QString classifier = classifierShape(style, label, !cellChildren.isEmpty());
+        const QString shape = classifier.isEmpty() ? nodeShape(style) : classifier;
+        if (shape.isEmpty()) {
+            result.omitted = true;
+            continue;
+        }
+        result.labelsShortened |= labelShortened;
+        QString expectedFontStyle;
+        if (!classifier.isEmpty()) {
+            label = classifierLabel(label, cellChildren, consumed, result, style, classifier);
+            expectedFontStyle = classifier == QStringLiteral("uml-object") ? QStringLiteral("4") : QStringLiteral("1");
+        } else if (hasHeadingPrefix) {
+            label = plainLabel(label, false, maxNodeLabelLength, result.labelsShortened);
+        }
+        result.appearanceChanged |= cell.customGeometry || hasSimplifiedStyle(style, false, expectedFontStyle)
+            || hasEmbeddedImage(cell.value, style);
+        nodes.append({cell.id, shape, label, cell.rect});
         bounds = bounds.united(cell.rect);
     }
+    for (const auto &cell : page.cells)
+        result.omitted |= cell.vertex && !layers.contains(cell.parent) && !consumed.contains(cell.id);
     if (nodes.isEmpty())
         return result;
 

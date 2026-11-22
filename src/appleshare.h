@@ -6,7 +6,10 @@
 #include <QString>
 #include <QUrl>
 #include <QtQml/qqmlregistration.h>
+#include <memory>
 
+class QProcess;
+class QTemporaryDir;
 
 #ifdef Q_OS_MACOS
 int runSshAskpass(const QString &prompt);
@@ -31,6 +34,9 @@ public:
     QString status() const { return m_status; }
     QVariantList deliveries() const { return m_deliveries; }
 
+    Q_INVOKABLE void shareFile(Notebook *notebook, const QVariantMap &option);
+    Q_INVOKABLE void cancelPendingFileShare();
+    Q_INVOKABLE void printPdf(Notebook *notebook, const QVariantMap &option);
     Q_INVOKABLE void sharePdf(Notebook *notebook);
     Q_INVOKABLE void savePdf(Notebook *notebook);
     Q_INVOKABLE void importNotebookFile(Notebook *notebook);
@@ -54,6 +60,8 @@ private:
     const bool m_tablet;
     bool m_busy = false;
     QString m_status;
+    std::unique_ptr<QTemporaryDir> m_shareDirectory;
+    QProcess *m_shareCompression = nullptr;
     QString m_deliveryDirectory;
     QVariantList m_deliveries;
     QByteArray m_deliveryRevision;

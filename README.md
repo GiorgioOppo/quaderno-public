@@ -2,7 +2,7 @@
 
 **English** · [Italiano](README.it.md)
 
-Quaderno is an experimental native note-taking app for **reMarkable Paper Pro** and **Macs with Apple silicon**. It brings handwriting, text, tables, and document annotations together in a library stored on your device. **0.2.19 is a source preview.** Build this version from the repository. The `v0.1.0` tag identifies the original source preview. [Build instructions](docs/en/DEVELOPMENT.md) · [Release status](docs/en/RELEASE.md)
+Quaderno is an experimental native note-taking app for **reMarkable Paper Pro** and **Macs with Apple silicon**. It brings handwriting, text, tables, and document annotations together in a library stored on your device. **0.2.23 is a source preview.** Build this version from the repository. The `v0.1.0` tag identifies the original source preview. [Build instructions](docs/en/DEVELOPMENT.md) · [Release status](docs/en/RELEASE.md)
 
 ![Quaderno editor showing a vector chart on a sample page](docs/immagini/editor.png)
 
@@ -15,7 +15,7 @@ Quaderno is an experimental native note-taking app for **reMarkable Paper Pro** 
 - On Paper Pro, use the Marker to draw around diagram, table and text areas on a mixed page. The optional offline image OCR proposes Latin-script prose, table contents and labels for diagram shapes from PDFs and image backgrounds. Review the drafts, then save one editable notebook with links to the diagram and table. [Mixed-page recognition](docs/en/USER_GUIDE.md#recognize-a-mixed-page-on-paper-pro)
 - Import CSV or TSV files into editable tables, calculate sums and averages, and export the results as CSV.
 - Create line and bar charts from editable points or choose a table and its X/Y columns. A table on the same page updates its chart automatically. A source on another page supplies an editable copy of the current values. Convert hand-drawn sketches to editable charts and export calibrated data as CSV.
-- Build flowcharts with a shape palette, canvas connectors and an inspector in **Diagrams**. Review a hand-drawn flowchart proposal, add new freehand shapes and arrows to an existing diagram, edit its shapes, labels and arrows, and reuse it on other pages. Export `.drawio` files or Markdown with a diagram PNG and editable `.drawio` attachment. [Diagrams](docs/en/DIAGRAMS.md)
+- Build flowcharts with an expanded shape palette, canvas connectors and an inspector in **Diagrams**. Review a hand-drawn flowchart and its shape labels, add freehand shapes and arrows to an existing diagram, and exchange supported shapes and connections with draw.io. Markdown export can include a diagram PNG and an editable `.drawio` attachment. [Diagrams](docs/en/DIAGRAMS.md)
 - Highlight and underline PDFs and DRM-free, reflowable EPUBs. Place a **Post-it** at a point on the page, type or write inside it, and reopen its numbered marker to edit it. Add a link at a point on the page to open a chart, table or diagram. Zoom, bookmark pages, search text in newly imported PDFs, and export annotated pages with readable note appendices. [Book notes](docs/en/BOOK_NOTES.md)
 - Import local PDF and DRM-free EPUB copies from Apple Books on Mac, then send the annotated copy to Paper Pro with Quaderno. [Apple Books on Mac](docs/en/USER_GUIDE.md#notes-books-and-icloud-on-mac)
 - Import editable Markdown, including from a direct HTTPS URL. Export it with linked images for ink, charts, diagrams, and embedded photos. On Mac, save the text in an Obsidian vault. On Mac and Paper Pro, copy links to an Obsidian Publish site. [Markdown and Obsidian](docs/en/USER_GUIDE.md#markdown-and-obsidian)
@@ -37,7 +37,7 @@ The toolbar follows the task on the page. Frequent controls stay visible, with s
 | **Writing** | Reach pen, color, thickness, favorites and lasso in a compact row. Edit Markdown, add text and images, and insert content from the library. |
 | **Charts** | Choose manual points or a table source, select X/Y columns, review the preview, edit chart data and appearance, and export CSV. |
 | **Tables** | Edit cells and formulas, create or import CSV tables, write into cells with the pen and lasso, build a chart, and export CSV. |
-| **Diagrams** | Place shapes, connect nodes, edit properties in the inspector, recognize freehand flowcharts, and import or export `.drawio`. |
+| **Diagrams** | Place flowchart and UML shapes, connect nodes, edit properties in the inspector, recognize freehand flowcharts, and import or export `.drawio`. |
 
 An action opens the only matching object directly. If a page contains several candidates, choose the intended one. Tables and linked charts, diagrams and writing can share a page. Open an object from its section to get the matching toolbar. [Function and workflow map](docs/en/FUNCTIONS_AND_WORKFLOWS.md)
 
@@ -58,7 +58,7 @@ Quaderno stores its library in a local format. USB-C transfers run when you requ
 
 On Paper Pro with firmware 3.29.1.0, **Settings → SSH access** controls when the tablet accepts new connections over Wi-Fi and USB-C. [SSH access](docs/en/SETTINGS.md#ssh-access-on-paper-pro)
 
-Use 0.2.14 or later on both devices for notebooks containing page links (portable format 12), and transfer a link’s target notebook separately when it lives in another notebook. In automatic sync, paired devices check over Bluetooth for pending changes and use local Wi‑Fi for the transfer when reachable, with Bluetooth as a fallback. [Automatic sync](docs/en/SYNC_PROTOCOL.md#automatic-synchronization)
+Use 0.2.23 or later on both devices for notebooks containing UML shapes (portable format 14). The expanded flowchart palette requires 0.2.20 or later (format 13). Page links require 0.2.14 or later (format 12). Transfer a link’s target notebook separately when it lives in another notebook. In automatic sync, paired devices check over Bluetooth for pending changes and use local Wi‑Fi when reachable, with Bluetooth as a fallback. [Automatic sync](docs/en/SYNC_PROTOCOL.md#automatic-synchronization)
 
 - **On Mac**, build for Apple silicon and open `Quaderno.app`. [Build instructions](docs/en/DEVELOPMENT.md) · [Installation](docs/en/INSTALLATION.md)
 - **On Paper Pro**, check your model and firmware, build the corresponding package, and follow the USB-C installation steps. [Build and packaging](docs/en/DEVELOPMENT.md#paper-pro) · [Paper Pro installation](docs/en/INSTALLATION.md)

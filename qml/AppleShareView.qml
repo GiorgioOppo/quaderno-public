@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import Quaderno
 
@@ -12,8 +13,21 @@ Dialog {
     required property MacDocumentExchange documentExchange
     required property real uiScale
     required property bool tabletMode
+    property bool locked: false
+    property bool canTransfer: false
+    property bool showApple: false
+    property string sourceBook: ""
+    property string sourcePage: ""
+    property var formats: []
+    property var pendingOption: null
+    property string saveStatus: ""
     property int deliveryFilter: 0
     property string preferredDestination: "notes"
+    readonly property var selection: formats[formatPicker.currentIndex] || null
+    readonly property bool selectedPdf: selection !== null && (selection.format === "pdf" || selection.format === "pdf-page")
+    readonly property bool validContext: !locked && sourceBook.length > 0 && sourcePage.length > 0
+        && notebook.bookId === sourceBook && notebook.pageId === sourcePage
+    signal transferRequested()
     readonly property var visibleDeliveries: appleShare.deliveries.filter(entry => {
         const finished = entry.state === "completed" || entry.state === "cancelled"
         return deliveryFilter === 1 ? !finished : deliveryFilter === 2 ? finished : true
@@ -30,13 +44,116 @@ Dialog {
         return isNaN(date.getTime()) ? "" : Qt.formatDateTime(date, "yyyy-MM-dd hh:mm")
     }
 
+    function begin(apple: bool, itemId: string) {
+        if (locked) return
+        showApple = apple && appleShare.available
+        open()
+        if (itemId.length) {
+            const index = formats.findIndex(option => option.itemId === itemId)
+            if (index >= 0) formatPicker.currentIndex = index
+        }
+    }
+
+    function formatLabel(option: var): string {
+        switch (option.format) {
+        case "pdf": return qsTr("PDF · Intero quaderno")
+        case "pdf-page": return qsTr("PDF · Pagina corrente")
+        case "markdown": return qsTr("Markdown (.md)")
+        case "markdown-assets": return qsTr("Markdown con allegati")
+        case "drawio": return qsTr("draw.io · %1").arg(option.title)
+        case "csv": return qsTr("CSV · %1").arg(option.title)
+        case "quaderno": return qsTr("Quaderno modificabile (.quaderno)")
+        case "png": return qsTr("PNG · Pagina corrente")
+        case "source": return qsTr("Originale · %1").arg(option.extension.toUpperCase())
+        default: return option.extension.toUpperCase()
+        }
+    }
+
+    function saveFile(option: var) {
+        if (!validContext || appleShare.busy || !option) return
+        pendingOption = option
+        saveStatus = ""
+        savePicker.selectedFile = notebook.suggestedShareFile(option)
+        if (!savePicker.selectedFile.toString().length) {
+            saveStatus = qsTr("Il formato non è più disponibile per questa pagina.")
+            pendingOption = null
+            return
+        }
+        savePicker.open()
+    }
+
+    function sendFile() {
+        if (!validContext || !selection) return
+        saveStatus = ""
+        appleShare.shareFile(notebook, selection)
+    }
+
+    function printFile() {
+        if (!validContext || !selectedPdf) return
+        saveStatus = ""
+        appleShare.printPdf(notebook, selection)
+    }
+
+    onAboutToShow: {
+        sourceBook = notebook.bookId
+        sourcePage = notebook.pageId
+        saveStatus = ""
+        formats = notebook.shareOptions().map(option => Object.assign({}, option, {label: formatLabel(option)}))
+        formatPicker.currentIndex = formats.length ? 0 : -1
+    }
+    onAboutToHide: {
+        pendingOption = null
+        savePicker.close()
+    }
+    onLockedChanged: if (locked) {
+        appleShare.cancelPendingFileShare()
+        close()
+    }
+    onShowAppleChanged: if (shareScroll.contentItem) shareScroll.contentItem.contentY = 0
+    onClosed: {
+        showApple = false
+        sourceBook = ""
+        sourcePage = ""
+        formats = []
+        shareScroll.contentItem.contentY = 0
+    }
+
+    Connections {
+        target: share.notebook
+        function onDocumentChanged() {
+            if (share.visible && (share.notebook.bookId !== share.sourceBook || share.notebook.pageId !== share.sourcePage)) {
+                share.appleShare.cancelPendingFileShare()
+                share.close()
+            }
+        }
+    }
+
+    FileDialog {
+        id: savePicker
+        objectName: "shareSavePicker"
+        title: qsTr("Salva una copia")
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: share.pendingOption ? share.pendingOption.extension : ""
+        nameFilters: share.pendingOption ? [qsTr("%1 (*.%2)").arg(share.pendingOption.extension.toUpperCase())
+            .arg(share.pendingOption.extension)] : []
+        onAccepted: {
+            const option = share.pendingOption
+            const destination = selectedFile
+            share.pendingOption = null
+            if (!option || !share.validContext) return
+            share.saveStatus = share.notebook.exportShareFile(option, destination)
+                ? qsTr("Copia salvata.") : share.notebook.error
+        }
+        onRejected: share.pendingOption = null
+    }
+
     readonly property color ink: "#1e2024"
     readonly property color muted: "#535862"
     readonly property color blue: "#155cc2"
     readonly property color border: "#dedfe4"
     readonly property color surface: "#f6f7f9"
 
-    title: qsTr("Condividi quaderno")
+    title: qsTr("Condividi ed esporta")
     anchors.centerIn: Overlay.overlay
     width: Math.min(460 * uiScale, (parent ? parent.width : 460 * uiScale) - 32 * uiScale)
     padding: 18 * uiScale
@@ -74,7 +191,6 @@ Dialog {
         id: destination
 
         required property string description
-        required property bool last
 
         Layout.fillWidth: true
         implicitHeight: implicitContentHeight + topPadding + bottomPadding
@@ -91,16 +207,6 @@ Dialog {
             border.width: destination.visualFocus ? 2 : 0
             radius: 8 * share.uiScale
 
-            Rectangle {
-                visible: !destination.last
-                anchors.bottom: parent.bottom
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.leftMargin: 12 * share.uiScale
-                anchors.rightMargin: anchors.leftMargin
-                height: Math.max(1, share.uiScale)
-                color: share.border
-            }
         }
 
         contentItem: RowLayout {
@@ -160,9 +266,106 @@ Dialog {
                 }
             }
 
+            RowLayout {
+                Layout.fillWidth: true
+                visible: share.appleShare.available
+                PaperButton {
+                    Layout.fillWidth: true
+                    uiScale: share.uiScale
+                    text: qsTr("File")
+                    filled: !share.showApple
+                    onClicked: share.showApple = false
+                }
+                PaperButton {
+                    Layout.fillWidth: true
+                    uiScale: share.uiScale
+                    text: qsTr("Apple")
+                    filled: share.showApple
+                    onClicked: share.showApple = true
+                }
+            }
+
+            Detail {
+                visible: !share.showApple && !share.validContext
+                text: qsTr("Apri un quaderno per esportarlo.")
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                visible: !share.showApple && share.validContext && share.formats.length > 0
+                spacing: 8 * share.uiScale
+                ComboBox {
+                    id: formatPicker
+                    objectName: "fileShareFormat"
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    Layout.minimumHeight: 44 * share.uiScale
+                    model: share.formats
+                    textRole: "label"
+                    font.pixelSize: 15 * share.uiScale
+                    enabled: !share.appleShare.busy
+                    Accessible.name: qsTr("Formato della copia")
+                }
+                Detail {
+                    visible: share.selection?.format === "markdown-assets"
+                    text: share.appleShare.available
+                          ? qsTr("Il salvataggio conserva gli allegati accanto al Markdown. Condividi li raccoglie in uno ZIP.")
+                          : qsTr("Conserva la cartella degli allegati accanto al file Markdown.")
+                }
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: 6 * share.uiScale
+                    PaperButton {
+                        objectName: "saveShareFile"
+                        uiScale: share.uiScale
+                        text: qsTr("Salva file…")
+                        filled: true
+                        iconName: "download"
+                        enabled: share.selection !== null && !share.appleShare.busy
+                        onClicked: share.saveFile(share.selection)
+                    }
+                    PaperButton {
+                        objectName: "sendShareFile"
+                        uiScale: share.uiScale
+                        text: qsTr("Condividi…")
+                        iconName: "share"
+                        visible: share.appleShare.available
+                        enabled: share.selection !== null && !share.appleShare.busy
+                        onClicked: share.sendFile()
+                    }
+                    PaperButton {
+                        objectName: "printShareFile"
+                        uiScale: share.uiScale
+                        text: qsTr("Stampa…")
+                        iconName: "printer"
+                        visible: share.appleShare.available && share.selectedPdf
+                        enabled: !share.appleShare.busy
+                        onClicked: share.printFile()
+                    }
+                    PaperButton {
+                        objectName: "printOnMac"
+                        uiScale: share.uiScale
+                        text: share.selectedPdf ? qsTr("Stampa dal Mac") : qsTr("Trasferisci quaderno")
+                        iconName: share.selectedPdf ? "printer" : "sync"
+                        visible: share.tabletMode && share.canTransfer
+                            && (share.selectedPdf || share.selection?.format === "quaderno")
+                        onClicked: {
+                            share.close()
+                            share.transferRequested()
+                        }
+                    }
+                }
+                Detail {
+                    visible: share.tabletMode && share.selectedPdf
+                    text: share.canTransfer
+                          ? qsTr("Per stampare, sincronizza il quaderno e apri Condividi → Stampa sul Mac.")
+                          : qsTr("Salva il PDF e aprilo su un computer per stamparlo.")
+                }
+            }
+
             Control {
                 Layout.fillWidth: true
-                visible: !share.tabletMode && share.appleShare.available
+                visible: share.showApple && share.appleShare.available && share.validContext
                 padding: 2 * share.uiScale
 
                 background: Rectangle {
@@ -177,29 +380,16 @@ Dialog {
                     Destination {
                         text: qsTr("Destinazione preferita: %1").arg(share.destinationName(share.preferredDestination))
                         description: qsTr("Prepara una copia da controllare prima dell’invio.")
-                        last: false
                         onClicked: {
-                            if (share.preferredDestination === "files") share.appleShare.savePdf(share.notebook)
+                            if (share.preferredDestination === "files")
+                                share.saveFile(share.formats.find(option => option.format === "pdf"))
                             else share.appleShare.prepareDelivery(share.notebook, share.preferredDestination)
                         }
                     }
 
-                    Destination {
-                        text: qsTr("Condividi PDF")
-                        description: qsTr("Scegli Note o un’altra destinazione nel menu di macOS.")
-                        last: false
-                        onClicked: share.appleShare.sharePdf(share.notebook)
-                    }
-
-                    Destination {
-                        text: qsTr("Salva PDF")
-                        description: qsTr("Salva tutte le pagine. In Libri, scegli File → Importa per aggiungere il PDF.")
-                        last: true
-                        onClicked: share.appleShare.savePdf(share.notebook)
-                    }
-
-                    RowLayout {
+                    Flow {
                         Layout.fillWidth: true
+                        spacing: 5 * share.uiScale
                         Repeater {
                             model: [ {name: qsTr("Note"), id: "notes"}, {name: qsTr("Libri"), id: "books"},
                                 {name: "Numbers", id: "numbers"}, {name: "Keynote", id: "keynote"},
@@ -215,37 +405,9 @@ Dialog {
                 }
             }
 
-            Control {
-                visible: share.tabletMode || !share.appleShare.available
-                Layout.fillWidth: true
-                padding: 13 * share.uiScale
-
-                background: Rectangle {
-                    color: share.surface
-                    border.color: share.border
-                    radius: 10 * share.uiScale
-                }
-
-                contentItem: ColumnLayout {
-                    spacing: 6 * share.uiScale
-
-                    Detail {
-                        text: qsTr("Continua sul Mac")
-                        color: share.ink
-                        font.weight: Font.DemiBold
-                    }
-
-                    Detail {
-                        text: share.tabletMode
-                              ? qsTr("Sincronizza il quaderno con Quaderno sul Mac tramite Wi‑Fi o Bluetooth, poi aprilo sul Mac e scegli la destinazione Apple.")
-                              : qsTr("Apri il quaderno in Quaderno per macOS per condividerlo con Note e Libri o esportarlo in PDF.")
-                    }
-                }
-            }
-
             ColumnLayout {
                 Layout.fillWidth: true
-                visible: share.documentExchange.available && share.notebook.pageCount > 0
+                visible: !share.showApple && share.documentExchange.available && share.validContext
                 spacing: 6 * share.uiScale
 
                 Detail { text: qsTr("Trascina un PDF nel Finder") }
@@ -273,12 +435,12 @@ Dialog {
             }
 
             Detail {
-                visible: !share.tabletMode && text.length > 0
-                text: share.appleShare.status
+                visible: text.length > 0
+                text: share.saveStatus || share.appleShare.status
             }
 
             Flow {
-                visible: share.appleShare.available && share.appleShare.deliveries.length > 0
+                visible: share.showApple && share.appleShare.deliveries.length > 0
                 Layout.fillWidth: true
                 spacing: 5 * share.uiScale
                 Repeater {
@@ -296,7 +458,7 @@ Dialog {
                 }
             }
             Detail {
-                visible: share.appleShare.available && share.appleShare.deliveries.length > 0
+                visible: share.showApple && share.appleShare.deliveries.length > 0
                 text: share.visibleDeliveries.length ? qsTr("Esportazioni mostrate: %1 / %2").arg(share.visibleDeliveries.length).arg(share.appleShare.deliveries.length)
                                                     : qsTr("Nessuna esportazione in questa vista.")
             }
@@ -304,7 +466,7 @@ Dialog {
                 id: deliveriesScroll
                 Layout.fillWidth: true
                 Layout.preferredHeight: 160 * share.uiScale
-                visible: share.appleShare.available && share.appleShare.deliveries.length > 0
+                visible: share.showApple && share.appleShare.deliveries.length > 0
                 clip: true
                 contentWidth: availableWidth
                 ColumnLayout {
@@ -368,7 +530,7 @@ Dialog {
             }
 
             Button {
-                visible: share.appleShare.available && share.appleShare.deliveries.some(entry =>
+                visible: share.showApple && share.appleShare.deliveries.some(entry =>
                     entry.state === "completed" || entry.state === "cancelled")
                 text: qsTr("Archivia completate")
                 enabled: !share.appleShare.busy

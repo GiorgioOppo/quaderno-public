@@ -295,9 +295,104 @@ void removeEnclosurePanels(QList<Shape> &shapes)
     });
 }
 
+bool hasStripEdges(const Mask &ink, const QRect &box)
+{
+    const int tolerance = std::clamp(box.width() / 3, 3, 14);
+    const auto support = [&](bool horizontal, bool last) {
+        const int start = horizontal ? box.left() : box.top();
+        const int end = horizontal ? box.right() : box.bottom();
+        const int edge = horizontal ? (last ? box.bottom() : box.top()) : (last ? box.right() : box.left());
+        const int extent = horizontal ? ink.height : ink.width;
+        int supported = 0;
+        for (int along = start; along <= end; ++along) {
+            for (int cross = qMax(0, edge - tolerance); cross <= qMin(extent - 1, edge + tolerance); ++cross) {
+                const int index = horizontal ? cross * ink.width + along : along * ink.width + cross;
+                if (ink.bits[index]) {
+                    ++supported;
+                    break;
+                }
+            }
+        }
+        return double(supported) / (end - start + 1);
+    };
+    return support(false, false) >= .67 && support(false, true) >= .67
+        && support(true, false) >= .55 && support(true, true) >= .55;
+}
+
+QRect extendStripToCaps(const Mask &ink, QRect strip)
+{
+    // A letter across a tight enclosure may cut its white cavity short.
+    // Search a short distance beyond either end for the actual closing bar.
+    const int left = strip.left() + strip.width() / 6;
+    const int right = strip.right() - strip.width() / 6;
+    const int search = qMin(strip.width(), strip.height() / 6);
+    const auto cap = [&](int edge, int direction) {
+        for (int distance = 1; distance <= search; ++distance) {
+            const int row = edge + distance * direction;
+            if (row < 2 || row + 2 >= ink.height)
+                break;
+            int supported = 0;
+            for (int x = left; x <= right; ++x) {
+                for (int y = row - 2; y <= row + 2; ++y) {
+                    if (ink.bits[y * ink.width + x]) {
+                        ++supported;
+                        break;
+                    }
+                }
+            }
+            if (supported >= (right - left + 1) * .68)
+                return row;
+        }
+        return edge;
+    };
+    strip.setTop(cap(strip.top(), -1));
+    strip.setBottom(cap(strip.bottom(), 1));
+    return strip;
+}
+
+void keepNarrowTitleStrips(const Mask &ink, const QList<QRect> &candidates, QList<Shape> &shapes)
+{
+    const auto frames = shapes;
+    for (auto strip : candidates) {
+        if (shapes.size() >= maximumNodes)
+            return;
+        const bool attached = std::any_of(frames.cbegin(), frames.cend(), [&](const Shape &parent) {
+            const auto &box = parent.bounds;
+            if (parent.kind != QStringLiteral("process") || box.width() < strip.width() * 3
+                || box.height() < strip.height() * .68)
+                return false;
+            const int overlap = qMin(box.bottom(), strip.bottom()) - qMax(box.top(), strip.top()) + 1;
+            const int gap = qMin(qAbs(box.left() - strip.right()), qAbs(box.right() - strip.left()));
+            return overlap >= strip.height() * .65 && gap <= qMax(10., strip.width() * 1.6);
+        });
+        if (!attached)
+            continue;
+        if (!hasStripEdges(ink, strip)) {
+            strip = extendStripToCaps(ink, strip);
+            if (!hasStripEdges(ink, strip))
+                continue;
+        }
+        if (std::any_of(shapes.cbegin(), shapes.cend(), [&](const Shape &shape) {
+            return almostSameShape(shape.bounds, strip);
+        }))
+            continue;
+        // Part of a strip can already look like a normal rectangle when
+        // dark letters split its white cavity. Keep the verified full strip.
+        shapes.removeIf([&](const Shape &shape) {
+            const auto &part = shape.bounds;
+            const int capGap = qMin(qAbs(part.top() - strip.top()), qAbs(part.bottom() - strip.bottom()));
+            return part.width() >= strip.width() * .8 && area(part) < area(strip) * .72
+                && area(part.intersected(strip)) >= area(part) * .88
+                && capGap <= qMax(4, strip.width() / 6);
+        });
+        shapes.append({strip, QStringLiteral("process")});
+    }
+}
+
 QList<Shape> findShapes(const Mask &ink)
 {
     QList<Shape> shapes;
+    QList<QRect> titleStrips;
     const int minSide = qMin(ink.width, ink.height);
     const int minExtent = qMax(9, minSide / 66);
     const int minArea = qMax(75, ink.width * ink.height / 2100);
@@ -314,13 +409,17 @@ QList<Shape> findShapes(const Mask &ink)
             const bool largeGap = radius > scale * 2;
             if (hole.x() == 0 || hole.y() == 0 || hole.right() == frame.right() || hole.bottom() == frame.bottom()
                 || hole.width() + radius * 2 < minExtent || hole.height() + radius * 2 < minExtent
-                || pixels.size() < std::size_t(qMax(50, minArea / 3)) || area(hole) > area(frame) * .85
-                || density < .39 || (largeGap && (density < .53 || area(hole) < area(frame) * .018)))
+                || pixels.size() < std::size_t(qMax(50, minArea / 3)) || area(hole) > area(frame) * .85 || density < .39)
                 return;
             const QRect bounds = hole.adjusted(-radius - 1, -radius - 1, radius + 1, radius + 1).intersected(frame);
             const double aspect = double(bounds.width()) / bounds.height();
+            if (aspect >= .08 && aspect < .43 && bounds.height() > minSide * .075
+                && bounds.width() >= minExtent && density >= .44 && titleStrips.size() < maximumNodes) {
+                titleStrips.append(bounds);
+            }
             const bool compactOutline = density >= .75 && qMin(bounds.width(), bounds.height()) >= minExtent * 1.5;
-            if (area(bounds) < minArea * (compactOutline ? 1.05 : 1.22) || aspect < .29
+            if ((largeGap && (density < .53 || area(hole) < area(frame) * .018))
+                || area(bounds) < minArea * (compactOutline ? 1.05 : 1.22) || aspect < .29
                 || (aspect < .43 && bounds.height() > minSide * .075)
                 || (aspect > 5.5 && area(bounds) < area(frame) * .04))
                 return;
@@ -333,6 +432,7 @@ QList<Shape> findShapes(const Mask &ink)
     completeOutlines(ink, shapes, scale);
     expandEnclosures(ink, shapes);
     removeEnclosurePanels(shapes);
+    keepNarrowTitleStrips(ink, titleStrips, shapes);
     std::stable_sort(shapes.begin(), shapes.end(), [](const Shape &a, const Shape &b) {
         // Draw enclosing nodes first so they never obscure the boxes within.
         return area(a.bounds) > area(b.bounds);

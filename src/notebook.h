@@ -13,6 +13,9 @@
 #include "documentreader.h"
 #include "pagestore.h"
 
+class QPainter;
+class QSize;
+
 class Notebook final : public QObject
 {
     Q_OBJECT
@@ -136,6 +139,9 @@ public:
     Q_INVOKABLE bool exportDocument(const QUrl &file);
     Q_INVOKABLE bool exportMarkdown(const QUrl &file);
     Q_INVOKABLE bool exportMarkdownWithAssets(const QUrl &file);
+    Q_INVOKABLE QVariantList shareOptions() const;
+    Q_INVOKABLE QUrl suggestedShareFile(const QVariantMap &option) const;
+    Q_INVOKABLE bool exportShareFile(const QVariantMap &option, const QUrl &file);
     Q_INVOKABLE QString markdownText() const;
     Q_INVOKABLE QString markdownSource() const;
     Q_INVOKABLE bool updateMarkdownText(const QString &text);
@@ -358,6 +364,7 @@ private:
     std::optional<LinkLocation> pageLinkTarget(const QVariantMap &link) const;
     static int findFolder(const State &state, const QString &id);
     static QString markdownTextOf(const Book &book);
+    static QByteArray tableCsvData(const QVariantMap &table);
     static bool isPureMarkdown(const Book &book);
     static bool hasMarkdownPageAnnotations(const Page &page);
     static bool hasMarkdownSource(const Book &book);
@@ -386,6 +393,7 @@ private:
     void setError(const QString &message);
 
     QVariantMap sourceForPage(const Book &book, const Page &page) const;
+    bool paintExportPage(QPainter &painter, const QSize &size, const Book &book, const Page &page);
     bool importPreparedDocument(PreparedDocument prepared, const QString &title, const QString &folderId,
                                 bool activate = true, QString *importedId = nullptr);
     bool importMarkdownFile(const QUrl &file, const QString &folderId, bool activate = true, QString *importedId = nullptr);

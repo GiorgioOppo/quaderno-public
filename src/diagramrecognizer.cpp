@@ -1,5 +1,6 @@
 #include "diagramrecognizer.h"
 
+#include "diagramitem.h"
 #include "inkrender.h"
 #include "pagecontent.h"
 
@@ -352,21 +353,11 @@ Path nodeOutline(const Node &node)
     // diamond, rather than to the idealized shape used by the final renderer.
     if (!node.outline.isEmpty()) {
         Path closed = node.outline;
-        closed.append(closed.first());
+        if (closed.last() != closed.first())
+            closed.append(closed.first());
         return closed;
     }
-    const QRectF &r = node.bounds;
-    if (node.shape == QStringLiteral("process"))
-        return {r.topLeft(), r.topRight(), r.bottomRight(), r.bottomLeft(), r.topLeft()};
-    if (node.shape == QStringLiteral("decision"))
-        return {{r.center().x(), r.top()}, {r.right(), r.center().y()}, {r.center().x(), r.bottom()},
-                {r.left(), r.center().y()}, {r.center().x(), r.top()}};
-    Path result;
-    for (int i = 0; i <= 40; ++i) {
-        const qreal angle = i * 6.283185307179586 / 40;
-        result.append(r.center() + QPointF(std::cos(angle) * r.width() / 2, std::sin(angle) * r.height() / 2));
-    }
-    return result;
+    return diagramNodeOutline(node.shape, node.bounds).toFillPolygon();
 }
 qreal distanceToOutline(const Node &node, QPointF point)
 {
@@ -392,21 +383,16 @@ int nearestNode(const QList<Node> &nodes, QPointF point)
 }
 bool insideNode(const Node &node, const Path &points)
 {
-    if (points.isEmpty()) return false;
-    if (node.existing) {
-        const QPolygonF contour(nodeOutline(node));
-        for (const QPointF &point : points)
-            if (!contour.containsPoint(point, Qt::OddEvenFill) || distanceToOutline(node, point) < 3) return false;
-        return true;
-    }
-    for (const QPointF &point : points) {
-        const qreal x = 2 * (point.x() - node.bounds.center().x()) / node.bounds.width();
-        const qreal y = 2 * (point.y() - node.bounds.center().y()) / node.bounds.height();
-        if (node.shape == QStringLiteral("process")) {
-            if (!node.bounds.adjusted(3, 3, -3, -3).contains(point)) return false;
-        } else if (node.shape == QStringLiteral("decision")) {
-            if (qAbs(x) + qAbs(y) >= 0.86) return false;
-        } else if (std::hypot(x, y) >= 0.89) return false;
+    const auto inset = node.bounds.adjusted(3, 3, -3, -3);
+    if (points.isEmpty() || std::any_of(points.cbegin(), points.cend(), [&inset](const QPointF &p) {
+        return !inset.contains(p);
+    })) return false;
+
+    const QPolygonF contour(nodeOutline(node));
+    for (const auto &point : points) {
+        if (!contour.containsPoint(point, Qt::OddEvenFill)) return false;
+        for (qsizetype i = 1; i < contour.size(); ++i)
+            if (segmentDistance(point, contour.at(i - 1), contour.at(i)) < 3) return false;
     }
     return true;
 }
@@ -803,35 +789,38 @@ qreal edgeLabelDistance(const Edge &edge, const Stroke &stroke)
     return distance;
 }
 
+QPair<QString, QString> labelTarget(const QList<Node> &nodes, const QList<Edge> &edges, const Stroke &stroke)
+{
+    const Node *owner = nullptr;
+    for (const auto &node : nodes) {
+        if (!insideNode(node, stroke.points)) continue;
+        if (!owner || insideNode(*owner, nodeOutline(node))) {
+            owner = &node;
+        } else if (!insideNode(node, nodeOutline(*owner))) {
+            // Overlapping shapes have no unambiguous owner.
+            return {};
+        }
+    }
+    // A caption on a pre-existing node is edited explicitly.
+    if (owner) return owner->existing ? QPair<QString, QString>{} : qMakePair(owner->id, QStringLiteral("node"));
+
+    QString id;
+    qreal best = std::numeric_limits<qreal>::infinity(), second = best;
+    for (const auto &edge : edges) {
+        const qreal distance = edgeLabelDistance(edge, stroke);
+        if (distance < 0) continue;
+        if (distance < best) { second = best; best = distance; id = edge.id; }
+        else second = qMin(second, distance);
+    }
+    return id.isEmpty() || second - best < 8 ? QPair<QString, QString>{} : qMakePair(id, QStringLiteral("edge"));
+}
+
 QRectF normalizedRect(const QVariantMap &data, const QRectF &parent)
 {
     return {parent.x() + data.value(QStringLiteral("x")).toDouble() * parent.width(),
             parent.y() + data.value(QStringLiteral("y")).toDouble() * parent.height(),
             data.value(QStringLiteral("width")).toDouble() * parent.width(),
             data.value(QStringLiteral("height")).toDouble() * parent.height()};
-}
-
-// These are the contours used by diagramitem.cpp. In particular, the saved
-// terminal is a rounded rectangle, not the freehand ellipse that produced it.
-Path existingOutline(const Node &node)
-{
-    const QRectF &r = node.bounds;
-    QPainterPath path;
-    if (node.shape == QStringLiteral("terminal")) {
-        const qreal radius = qMin(r.height() * .5, r.width() * .23);
-        path.addRoundedRect(r, radius, radius);
-    } else if (node.shape == QStringLiteral("decision")) {
-        path.addPolygon(QPolygonF{{r.center().x(), r.top()}, {r.right(), r.center().y()},
-            {r.center().x(), r.bottom()}, {r.left(), r.center().y()}});
-    } else if (node.shape == QStringLiteral("data")) {
-        const qreal slant = qMin(r.width() * .17, r.height() * .40);
-        path.addPolygon(QPolygonF{{r.left() + slant, r.top()}, r.topRight(),
-            {r.right() - slant, r.bottom()}, r.bottomLeft()});
-    } else {
-        path.addRect(r); // process and note (whose border is merely dashed)
-    }
-    path.closeSubpath();
-    return path.toFillPolygon();
 }
 
 QTransform rotationAround(QPointF center, qreal angle)
@@ -892,7 +881,7 @@ QVariantMap recognizeExtension(const QVariantList &input, const QVariantMap &exi
         const QVariantMap data = entry.toMap();
         Node node{data.value(QStringLiteral("id")).toString(), data.value(QStringLiteral("shape")).toString(),
             normalizedRect(data, originalBounds), {}, {}, true};
-        node.outline = existingOutline(node);
+        node.outline = diagramNodeOutline(node.shape, node.bounds).toFillPolygon();
         nodeIndexes.insert(node.id, nodes.size());
         ids.insert(node.id); existingNodeIds.append(node.id);
         nodes.append(std::move(node));
@@ -1007,25 +996,7 @@ QVariantMap recognizeExtension(const QVariantList &input, const QVariantMap &exi
         if (used.contains(i) || excluded.contains(i) || strokes.at(i).points.isEmpty()
             || (strokes.at(i).tool != QStringLiteral("pen") && strokes.at(i).tool != QStringLiteral("pencil")
                 && strokes.at(i).tool != QStringLiteral("marker"))) continue;
-        QString id, kind;
-        bool inExisting = false;
-        for (const Node &node : nodes) if (insideNode(node, strokes.at(i).points)) {
-            if (node.existing) { inExisting = true; break; }
-            if (!id.isEmpty()) { id.clear(); break; }
-            id = node.id; kind = QStringLiteral("node");
-        }
-        if (inExisting) continue; // Existing text is never re-read or overwritten.
-        if (id.isEmpty()) {
-            qreal best = std::numeric_limits<qreal>::infinity(), second = best;
-            for (const Edge &edge : edges) {
-                const qreal distance = edgeLabelDistance(edge, strokes.at(i));
-                if (distance < 0) continue;
-                if (distance < best) { second = best; best = distance; id = edge.id; }
-                else second = qMin(second, distance);
-            }
-            if (second - best < 8) id.clear();
-            if (!id.isEmpty()) kind = QStringLiteral("edge");
-        }
+        const auto [id, kind] = labelTarget(nodes, edges, strokes.at(i));
         if (id.isEmpty()) continue;
         groups[id].append(i); kinds.insert(id, kind); labels.insert(i);
     }
@@ -1129,22 +1100,7 @@ QVariantMap DiagramRecognition::recognize(const QVariantList &input, const QVari
         if (used.contains(i) || strokes.at(i).points.isEmpty()
             || (strokes.at(i).tool != QStringLiteral("pen") && strokes.at(i).tool != QStringLiteral("pencil")
                 && strokes.at(i).tool != QStringLiteral("marker"))) continue;
-        QString id, kind;
-        for (const Node &node : nodes) if (insideNode(node, strokes.at(i).points)) {
-            if (!id.isEmpty()) { id.clear(); break; }
-            id = node.id; kind = QStringLiteral("node");
-        }
-        if (id.isEmpty()) {
-            qreal best = std::numeric_limits<qreal>::infinity(), second = best;
-            for (const Edge &edge : edges) {
-                const qreal distance = edgeLabelDistance(edge, strokes.at(i));
-                if (distance < 0) continue;
-                if (distance < best) { second = best; best = distance; id = edge.id; }
-                else second = qMin(second, distance);
-            }
-            if (second - best < 8) id.clear();
-            if (!id.isEmpty()) kind = QStringLiteral("edge");
-        }
+        const auto [id, kind] = labelTarget(nodes, edges, strokes.at(i));
         if (id.isEmpty()) continue;
         groups[id].append(i);
         groupKinds.insert(id, kind);

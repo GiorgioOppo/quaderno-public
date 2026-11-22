@@ -2,7 +2,7 @@
 
 [English](README.md) · **Italiano**
 
-Quaderno è un’app nativa sperimentale per prendere appunti su **reMarkable Paper Pro** e **Mac Apple Silicon**. Riunisce scrittura a penna, testo, tabelle e annotazioni di documenti in una libreria salvata sul dispositivo. **La 0.2.19 è un’anteprima dei sorgenti.** Compila questa versione dal repository. Il tag `v0.1.0` identifica l’anteprima originale. [Istruzioni di compilazione](docs/SVILUPPO.md) · [Stato del rilascio](docs/RILASCIO.md)
+Quaderno è un’app nativa sperimentale per prendere appunti su **reMarkable Paper Pro** e **Mac Apple Silicon**. Riunisce scrittura a penna, testo, tabelle e annotazioni di documenti in una libreria salvata sul dispositivo. **La 0.2.23 è un’anteprima dei sorgenti.** Compila questa versione dal repository. Il tag `v0.1.0` identifica l’anteprima originale. [Istruzioni di compilazione](docs/SVILUPPO.md) · [Stato del rilascio](docs/RILASCIO.md)
 
 ![Editor di Quaderno con un grafico vettoriale su una pagina di esempio](docs/immagini/editor.png)
 
@@ -15,7 +15,7 @@ Quaderno è un’app nativa sperimentale per prendere appunti su **reMarkable Pa
 - Sul Paper Pro, disegnare con il Marker un contorno attorno alle aree di diagramma, tabella e testo. Il motore OCR offline opzionale propone testo in alfabeto latino, contenuti delle celle ed etichette delle forme da PDF e sfondi immagine. Rivedere le bozze e salvare un unico quaderno modificabile con collegamenti al diagramma e alla tabella. [Riconoscimento di una pagina mista](docs/GUIDA.md#riconoscere-una-pagina-mista-sul-paper-pro)
 - Importare file CSV o TSV in tabelle modificabili, calcolare somme e medie ed esportare i risultati in CSV.
 - Creare grafici a linee e a barre da punti modificabili oppure scegliere una tabella e le colonne X/Y. Una tabella sulla stessa pagina aggiorna il grafico automaticamente. Una sorgente su un’altra pagina fornisce una copia modificabile dei valori correnti. Convertire uno schizzo in un grafico modificabile ed esportare i dati calibrati in CSV.
-- Costruire diagrammi di flusso con palette delle forme, connettori e ispettore nella sezione **Diagrammi**. Rivedere la proposta ricavata da un diagramma a mano libera, aggiungere forme e frecce a un diagramma esistente, modificarne forme, etichette e frecce e riusarlo in altre pagine. Esportare `.drawio` oppure Markdown con PNG del diagramma e allegato `.drawio` modificabile. [Diagrammi](docs/DIAGRAMMI.md)
+- Costruire diagrammi di flusso con una palette estesa, connettori e ispettore nella sezione **Diagrammi**. Rivedere un diagramma riconosciuto a mano libera e le sue etichette, aggiungere forme e frecce a un diagramma esistente e scambiare forme e collegamenti supportati con draw.io. L’esportazione Markdown può includere un PNG del diagramma e un allegato `.drawio` modificabile. [Diagrammi](docs/DIAGRAMMI.md)
 - Evidenziare e sottolineare PDF ed EPUB senza DRM a impaginazione fluida. Collocare un **Post-it** in un punto della pagina, scriverci con tastiera o penna e riaprire il richiamo numerato per modificarlo. Inserire un collegamento in un punto della pagina per aprire un grafico, una tabella o un diagramma. Usare zoom e segnalibri, cercare il testo nei PDF appena importati ed esportare le pagine annotate con appendici leggibili per le note. [Note sui libri](docs/NOTE_LIBRI.md)
 - Importare su Mac copie locali in PDF ed EPUB senza DRM da Apple Books e inviare la copia annotata al Paper Pro con Quaderno. [Apple Books sul Mac](docs/GUIDA.md#note-libri-e-icloud-sul-mac)
 - Importare Markdown modificabile, anche da un URL HTTPS diretto. Esportarlo con immagini collegate per l’inchiostro, i grafici, i diagrammi e le immagini incorporate. Su Mac puoi salvare il testo in un vault Obsidian. Su Mac e Paper Pro puoi copiare i collegamenti a un sito Obsidian Publish. [Markdown e Obsidian](docs/GUIDA.md#markdown-e-obsidian)
@@ -37,7 +37,7 @@ La barra segue il lavoro che fai sulla pagina. I comandi frequenti sono in vista
 | **Scrittura** | Raggiungere penna, colore, spessore, preferiti e lazo in una barra compatta. Modificare Markdown, aggiungere testo e immagini e inserire contenuti dalla libreria. |
 | **Grafici** | Scegliere punti manuali o una tabella di origine, selezionare le colonne X/Y, controllare l’anteprima, modificare dati e aspetto ed esportare CSV. |
 | **Tabelle** | Modificare celle e formule, creare tabelle o importare CSV, inserire valori con penna e lazo, generare un grafico ed esportare CSV. |
-| **Diagrammi** | Disporre forme, collegare nodi, modificarne le proprietà nell’ispettore, riconoscere diagrammi a mano libera e importare o esportare `.drawio`. |
+| **Diagrammi** | Disporre forme di flusso e UML, collegare nodi, modificarne le proprietà nell’ispettore, riconoscere diagrammi a mano libera e importare o esportare `.drawio`. |
 
 Un’azione apre direttamente l’unico oggetto compatibile. Se la pagina contiene più candidati, scegli quello desiderato. Tabelle e grafici collegati, diagrammi e scrittura possono condividere la pagina. Apri un oggetto dalla sua sezione per usare la barra corrispondente. [Mappa completa di funzioni e flussi](docs/FUNZIONI_E_FLUSSI.md)
 
@@ -58,7 +58,7 @@ Quaderno salva la libreria in un formato locale. I trasferimenti USB‑C partono
 
 Sul Paper Pro con firmware 3.29.1.0, **Impostazioni → Accesso SSH** permette di scegliere se accettare nuove connessioni via Wi-Fi e USB-C. [Accesso SSH](docs/IMPOSTAZIONI.md#accesso-ssh-sul-paper-pro)
 
-Usa la 0.2.14 o una versione successiva su entrambi i dispositivi per i libri con collegamenti (formato portabile 12). Se la destinazione è in un altro quaderno, trasferisci anche quel quaderno. La sincronizzazione automatica controlla gli aggiornamenti via Bluetooth e li trasferisce via Wi‑Fi locale quando è raggiungibile, con Bluetooth come riserva. [Sincronizzazione automatica](docs/PROTOCOLLO_SYNC.md#sincronizzazione-automatica)
+Usa la 0.2.23 o successiva su entrambi i dispositivi per i quaderni con forme UML (formato portabile 14). La palette estesa dei diagrammi di flusso richiede la 0.2.20 o successiva (formato 13). I collegamenti richiedono la 0.2.14 o successiva (formato 12). Se la destinazione è in un altro quaderno, trasferisci anche quel quaderno. La sincronizzazione automatica controlla gli aggiornamenti via Bluetooth e usa il Wi‑Fi locale quando è raggiungibile, con Bluetooth come riserva. [Sincronizzazione automatica](docs/PROTOCOLLO_SYNC.md#sincronizzazione-automatica)
 
 - **Sul Mac** compila per Apple Silicon e apri `Quaderno.app`. [Compilazione](docs/SVILUPPO.md) · [Installazione](docs/INSTALLAZIONE.md)
 - **Sul Paper Pro** controlla modello e firmware, prepara il pacchetto corrispondente e installalo via USB‑C. [Compilazione e pacchetto](docs/SVILUPPO.md#paper-pro) · [Installazione sul Paper Pro](docs/INSTALLAZIONE.md)

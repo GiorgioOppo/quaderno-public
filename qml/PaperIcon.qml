@@ -60,6 +60,14 @@ Canvas {
             c.moveTo(12, 14); c.lineTo(12, 3)
             c.moveTo(8.5, 6.5); c.lineTo(12, 3); c.lineTo(15.5, 6.5)
             break
+        case "printer":
+            c.moveTo(7, 8); c.lineTo(7, 3); c.lineTo(17, 3); c.lineTo(17, 8)
+            c.moveTo(7, 17); c.lineTo(4, 17); c.quadraticCurveTo(3, 17, 3, 16)
+            c.lineTo(3, 10); c.quadraticCurveTo(3, 8, 5, 8); c.lineTo(19, 8)
+            c.quadraticCurveTo(21, 8, 21, 10); c.lineTo(21, 16); c.quadraticCurveTo(21, 17, 20, 17); c.lineTo(17, 17)
+            c.moveTo(7, 14); c.lineTo(17, 14); c.lineTo(17, 21); c.lineTo(7, 21); c.closePath()
+            c.moveTo(17.5, 11); c.lineTo(18, 11)
+            break
         case "sync":
             c.moveTo(5, 9); c.bezierCurveTo(7, 4, 15, 3, 19, 8)
             c.moveTo(19, 4); c.lineTo(19, 8); c.lineTo(15, 8)

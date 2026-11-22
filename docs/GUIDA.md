@@ -194,7 +194,7 @@ Nella barra di lettura scegli **Evidenzia** e trascina sulla pagina per segnare 
 - Tocca la stella per aggiungere o rimuovere il segnalibro della pagina corrente. Apri **Segnalibri** per tornare direttamente a una pagina salvata.
 - Scegli **Cerca testo** in fondo alla pagina per trovare parole nel testo incorporato del PDF. Seleziona un risultato per aprirne la pagina. La ricerca usa il testo che il PDF rende estraibile. Per cercare in un PDF importato con una versione precedente di Quaderno, importa nuovamente il file originale.
 
-L’importazione lavora in background con avanzamento e annullamento, conserva la sorgente nativa e renderizza soltanto le pagine richieste. Non c’è più il limite di 150 pagine. La sorgente può occupare fino a 48 MiB per il PDF e 64 MiB per l’EPUB; il PDF preparato dall’EPUB deve rientrare in 48 MiB. Restano i limiti di capacità della libreria e di trasferimento. Le vecchie importazioni raster conservano le annotazioni; reimporta l’originale come copia separata per usare il nuovo lettore. Scegli **Salva PDF** sul Paper Pro o **Condividi → Salva PDF** sul Mac per esportare tutte le pagine, con i livelli visibili e gli oggetti della pagina.
+L’importazione lavora in background con avanzamento e annullamento, conserva la sorgente nativa e renderizza soltanto le pagine richieste. Non c’è più il limite di 150 pagine. La sorgente può occupare fino a 48 MiB per il PDF e 64 MiB per l’EPUB. Il PDF preparato dall’EPUB deve rientrare in 48 MiB. Restano i limiti di capacità della libreria e di trasferimento. Le vecchie importazioni raster conservano le annotazioni. Reimporta l’originale come copia separata per usare il nuovo lettore. Dal pannello **Condividi ed esporta** puoi salvare il PDF annotato della pagina corrente o dell’intero quaderno. [Condividere, esportare e stampare](#condividere-esportare-e-stampare)
 
 Tocca due volte con un dito per ingrandire al 200% intorno al punto toccato; ripeti per adattare l’intera pagina. La penna continua ad annotare. Apri il contatore delle pagine per vedere **Pagine**, inserisci un numero e scegli **Vai**, poi **Apri**. **Prima** e **Ultima** selezionano gli estremi del documento. Filtra la panoramica per **Tutte**, **Segnalibri** o **Annotate**; i conteggi includono annotazioni nei livelli nascosti. Il tastierino numerico compare sul Paper Pro quando non è collegata una tastiera fisica.
 
@@ -266,16 +266,34 @@ Puoi scollegare il cavo dopo aver avviato Quaderno. Per riaprire l’app dal men
 
 Se il collegamento si interrompe, le parti ricevute restano sul dispositivo. Il lavoro automatico interrotto prima dell’applicazione può riprovare con attese limitate e una nuova anteprima; resta disponibile anche **Riprendi trasferimento**. La conferma precedente non viene riutilizzata e un esito di applicazione incerto richiede revisione. Le versioni in conflitto restano separate e le formule delle tabelle rimangono modificabili.
 
+## Condividere, esportare e stampare
+
+Con il quaderno aperto, tocca l’icona **Condividi** per aprire **Condividi ed esporta**. Seleziona il formato e controlla il contenuto prima di salvarlo o condividerlo. I formati per un singolo elemento compaiono quando la pagina contiene o richiama un elemento compatibile.
+
+| Formato | Contenuto |
+| --- | --- |
+| PDF | Pagina corrente o intero quaderno con lo sfondo, i livelli di inchiostro visibili, gli elementi della pagina e le note. |
+| Markdown | Testo modificabile in `.md`. La variante con risorse include gli allegati esportabili. Tieni il file insieme alla cartella delle risorse. |
+| draw.io | Forme, etichette e collegamenti modificabili del diagramma scelto. |
+| CSV | Dati della tabella o del grafico scelto. Il CSV di una tabella contiene i risultati delle formule. |
+| PNG | Immagine della pagina corrente, pronta da allegare a un messaggio o a un documento. |
+| Quaderno | Copia `.quaderno` dell’intero quaderno con gli elementi modificabili e le annotazioni. |
+| File originale | Sorgente PDF o EPUB quando è conservata nel quaderno. Le annotazioni aggiunte in Quaderno sono nel PDF annotato. |
+
+Sul Mac puoi salvare il file o aprire il menu di condivisione di macOS e scegliere una destinazione. Quando il Markdown ha allegati, la condivisione prepara uno ZIP che mantiene i riferimenti ai file. Per stampare, scegli il PDF della pagina corrente o dell’intero quaderno e usa **Stampa…**. Puoi anche premere **⌘P** per stampare l’intero quaderno. Il pannello di macOS permette di scegliere la stampante e le impostazioni di stampa.
+
+Sul Paper Pro puoi salvare il PDF annotato o scegliere **Stampa dal Mac** per aprire la sincronizzazione wireless. Usa **Continua sul Mac** per inviare il quaderno e ritrovare la pagina, poi apri il pannello di stampa in Quaderno sul Mac. Per stampare da un’altra app, trasferisci il PDF salvato al Mac e aprilo in Anteprima. [Sincronizzazione wireless](#sincronizzazione-wireless)
+
 ### Note, Libri e iCloud sul Mac
 
 Per importare un libro, scegli **Importa da Apple Books** dalla libreria di Quaderno sul Mac. **Apri Apple Books** apre Libri. Torna in Quaderno e scegli **Scegli PDF o EPUB…** per selezionare una copia locale senza DRM. Se apri un PDF di Libri in Anteprima, puoi salvarne una copia con **File → Esporta**. Puoi selezionare anche i pacchetti `.epub` che Finder mostra come un singolo libro. L’accesso alla libreria nel cloud e ai titoli protetti del Book Store resta in Apple Books. [PDF in Libri](https://support.apple.com/it-it/guide/books/ibkseed72068/mac) · [Esportare un PDF da Anteprima](https://support.apple.com/it-it/guide/preview/prvw0e8da223/mac)
 
 Dopo l’importazione apri il libro in Quaderno. Da **Sincronizzazione wireless**, scegli **Anteprima invio quaderno**, controlla la destinazione e conferma l’invio. Il limite riguarda il quaderno preparato per il trasferimento, che comprende sorgenti native, eventuali vecchie immagini delle pagine e annotazioni. Le app aggiornate trasferiscono fino a 64 MiB anche via Bluetooth, riprendendo le parti mancanti dopo un’interruzione. Il Wi-Fi resta preferibile per il primo invio di libri grandi. Con un’app precedente, Bluetooth mantiene il limite di 8 MiB. [Sincronizzazione wireless](#sincronizzazione-wireless)
 
-Trascina un PDF o EPUB senza DRM dal Finder alla finestra di Quaderno per importarlo. Puoi anche scegliere **Apri con → Quaderno** dal Finder. Dal quaderno aperto scegli **Condividi**, poi trascina **Pagina corrente** o **Intero quaderno** in una cartella del Finder per ottenere un PDF.
+Trascina un PDF o EPUB senza DRM dal Finder alla finestra di Quaderno per importarlo. Puoi anche scegliere **Apri con → Quaderno** dal Finder. Da **Condividi ed esporta → File**, trascina **Pagina corrente** o **Intero quaderno** in una cartella del Finder per ottenere un PDF.
 
-- Per allegare il quaderno in **Note**, usa **Condividi → Condividi PDF** e seleziona **Note** nel menu di macOS, se disponibile. Puoi scegliere una nota nuova o esistente. Puoi anche salvare il PDF e condividerlo da Finder. [Condividere un file in Note](https://support.apple.com/it-it/102223)
-- Per aggiungerlo a **Libri**, scegli **Condividi → Salva PDF**. In Libri apri **File → Importa** e seleziona il PDF. [Importare PDF in Libri](https://support.apple.com/en-am/guide/books/ibkseed72068/mac)
+- Per allegare il quaderno in **Note**, scegli PDF in **Condividi ed esporta** e seleziona **Note** nel menu di macOS, se disponibile. Puoi scegliere una nota nuova o esistente. Puoi anche salvare il PDF e condividerlo da Finder. [Condividere un file in Note](https://support.apple.com/it-it/102223)
+- Per aggiungerlo a **Libri**, salva il PDF dall’area **Condividi ed esporta**. In Libri apri **File → Importa** e seleziona il PDF. [Importare PDF in Libri](https://support.apple.com/en-am/guide/books/ibkseed72068/mac)
 - Per conservare una copia su **iCloud Drive**, scegli quella cartella nel pannello di salvataggio. La sincronizzazione delle copie in Note o Libri dipende dalle impostazioni iCloud di Apple. Le modifiche alle copie si fanno nelle rispettive app. [Note con iCloud](https://support.apple.com/it-it/guide/icloud/-mm2d069f7097/icloud) · [Libri con iCloud](https://support.apple.com/it-it/guide/icloud/mm3941ae3362/icloud)
 
 ## Impostazioni

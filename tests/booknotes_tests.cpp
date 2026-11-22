@@ -1,4 +1,5 @@
 #include "notebook.h"
+#include "diagramexport.h"
 #include "pagecontent.h"
 #include "inkselection.h"
 #include "pdfimport.h"
@@ -87,6 +88,114 @@ private slots:
         QVERIFY(!receiver.importFromData(QJsonDocument(downgraded).toJson()));
         QCOMPARE(receiver.exportLibraryForTransfer(), before);
         QVERIFY(NotebookFormat::maximumSupportedVersion >= 11);
+    }
+
+    void extendedDiagramShapesRequireNewPortableVersion_data()
+    {
+        QTest::addColumn<QString>("shape");
+        QTest::addColumn<int>("version");
+        QTest::newRow("flowchart") << QStringLiteral("manual-input") << NotebookFormat::extendedDiagramShapesVersion;
+        QTest::newRow("uml") << QStringLiteral("uml-class") << NotebookFormat::umlDiagramShapesVersion;
+    }
+
+    void extendedDiagramShapesRequireNewPortableVersion()
+    {
+        QFETCH(QString, shape);
+        QFETCH(int, version);
+        QTemporaryDir directory;
+        const auto library = directory.filePath("library.json");
+        Notebook notebook(library);
+        QVERIFY(notebook.createBookWithItem("Flowchart", {}, mixedDiagram()));
+        const auto basic = QJsonDocument::fromJson(notebook.exportBookForTransfer(notebook.bookId())).object();
+        QVERIFY(basic.value("version").toInt() < NotebookFormat::extendedDiagramShapesVersion);
+
+        auto diagram = notebook.pageItems().first().toMap();
+        auto node = diagram.value("nodes").toList().first().toMap();
+        node.insert("shape", shape);
+        diagram.insert("nodes", QVariantList{node});
+        QVERIFY2(notebook.savePageItem(diagram), qPrintable(notebook.error()));
+        const auto saved = notebook.pageItems();
+
+        Notebook reopened(library);
+        QVERIFY2(reopened.error().isEmpty(), qPrintable(reopened.error()));
+        QCOMPARE(reopened.pageItems(), saved);
+
+        const auto payload = notebook.exportBookForTransfer(notebook.bookId());
+        auto downgraded = QJsonDocument::fromJson(payload).object();
+        QCOMPARE(downgraded.value("version").toInt(), version);
+        downgraded.insert("version", version - 1);
+        QVERIFY(!Notebook::validateBackupData(QJsonDocument(downgraded).toJson()).isEmpty());
+
+        Notebook receiver(directory.filePath("receiver.json"));
+        QVERIFY2(receiver.importFromData(payload), qPrintable(receiver.error()));
+        QCOMPARE(receiver.pageItems(), saved);
+    }
+
+    void shareExportsEditableLinksAndRejectsAChangedPage()
+    {
+        QTemporaryDir directory;
+        Notebook notebook(directory.filePath("library.json"));
+        QVERIFY(notebook.createBook("Source"));
+        const auto source = notebook.mixedPageSource();
+        QVERIFY2(notebook.createMixedDocument(notebook.bookId(), notebook.pageId(), source.value("revision").toString(),
+                     "Share sample", "# Testo da condividere", mixedDiagram(), mixedTable()), qPrintable(notebook.error()));
+        QCOMPARE(notebook.page(), 0);
+
+        QMap<QString, QVariantMap> options;
+        for (const auto &entry : notebook.shareOptions()) {
+            const auto option = entry.toMap();
+            options.insert(option.value("format").toString(), option);
+        }
+        const auto save = [&](QString format, QString name) {
+            return notebook.exportShareFile(options.value(format), QUrl::fromLocalFile(directory.filePath(name)));
+        };
+        QVERIFY2(save("drawio", "diagram.drawio"), qPrintable(notebook.error()));
+        const auto diagram = DiagramExport().load(QUrl::fromLocalFile(directory.filePath("diagram.drawio")));
+        const auto nodes = diagram.value("diagram").toMap().value("nodes").toList();
+        QCOMPARE(nodes.size(), 1);
+        QCOMPARE(nodes.first().toMap().value("text").toString(), QStringLiteral("Check"));
+        QVERIFY2(save("csv", "table.csv"), qPrintable(notebook.error()));
+        QVERIFY(readFile(directory.filePath("table.csv")).contains("\"2\",\"2\""));
+
+        QVERIFY2(save("markdown-assets", "writing.md"), qPrintable(notebook.error()));
+        const auto markdown = QString::fromUtf8(readFile(directory.filePath("writing.md")));
+        QVERIFY(markdown.contains("# Testo da condividere"));
+        const auto tableLink = QRegularExpression(QStringLiteral("\\((quaderno-assets-[^/]+/page-\\d+-table-\\d+\\.csv)\\)"))
+            .match(markdown);
+        QVERIFY(tableLink.hasMatch());
+        QVERIFY(readFile(directory.filePath(tableLink.captured(1))).contains("\"2\",\"2\""));
+
+        QVERIFY2(save("png", "page.png"), qPrintable(notebook.error()));
+        QCOMPARE(QImage(directory.filePath("page.png")).size(), QSize(1200, 1600));
+        QVERIFY2(save("pdf", "book.pdf"), qPrintable(notebook.error()));
+        QVERIFY2(save("pdf-page", "page.pdf"), qPrintable(notebook.error()));
+        const auto allPages = readFile(directory.filePath("book.pdf"));
+        const auto onePage = readFile(directory.filePath("page.pdf"));
+        QVERIFY(allPages.startsWith("%PDF"));
+        QVERIFY(onePage.startsWith("%PDF"));
+        QString pdfError;
+        const int fullPageCount = inspectPdfData(allPages, pdfError).pageCount;
+        if (fullPageCount > 0) {
+            QCOMPARE(fullPageCount, 3);
+            QCOMPARE(inspectPdfData(onePage, pdfError).pageCount, 1);
+        }
+
+        QVERIFY2(save("quaderno", "share.quaderno"), qPrintable(notebook.error()));
+        const auto portable = readFile(directory.filePath("share.quaderno"));
+        QCOMPARE(portable, notebook.exportBookForTransfer(notebook.bookId()));
+        QVERIFY(notebook.goToPage(1));
+        QVERIFY(!save("drawio", "stale.drawio"));
+        QVERIFY(!QFile::exists(directory.filePath("stale.drawio")));
+        if (fullPageCount > 0) {
+            QVERIFY2(notebook.importDocument(QUrl::fromLocalFile(directory.filePath("book.pdf")), {}),
+                     qPrintable(notebook.error()));
+            for (const auto &entry : notebook.shareOptions()) {
+                const auto option = entry.toMap();
+                options.insert(option.value("format").toString(), option);
+            }
+            QVERIFY2(save("source", "original.pdf"), qPrintable(notebook.error()));
+            QCOMPARE(readFile(directory.filePath("original.pdf")), allPages);
+        }
     }
 
     void createEditMoveDeleteAreUndoableAndKeepLocalHandwriting()

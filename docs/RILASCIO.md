@@ -2,9 +2,9 @@
 
 [English](en/RELEASE.md) · **Italiano**
 
-## Anteprima dei sorgenti 0.2.19
+## Anteprima dei sorgenti 0.2.23
 
-Compila la 0.2.19 dal repository. Il tag pubblico `v0.1.0` identifica l’anteprima originale. Il repository include Quaderno, l’installer e le guide in inglese e italiano. Quaderno usa la licenza MIT e i motori di riconoscimento opzionali seguono le proprie licenze. [Tag originale](https://github.com/GiorgioOppo/quaderno-public/tree/v0.1.0) · [Licenza](../LICENSE) · [Componenti di terze parti](../THIRD_PARTY_NOTICES.md) · [Cronologia](../CHANGELOG.it.md)
+Compila la 0.2.23 dai sorgenti. Il tag pubblico `v0.1.0` identifica l’anteprima originale. Il repository include Quaderno, l’installer e le guide in inglese e italiano. Quaderno usa la licenza MIT e i motori di riconoscimento opzionali seguono le proprie licenze. [Tag originale](https://github.com/GiorgioOppo/quaderno-public/tree/v0.1.0) · [Licenza](../LICENSE) · [Componenti di terze parti](../THIRD_PARTY_NOTICES.md) · [Cronologia](../CHANGELOG.it.md)
 
 Prima di rendere pubblico il repository, rivedi i file e i metadati dei commit, oltre alla visibilità delle issue, dei log delle verifiche automatiche e degli allegati. Usa dati di esempio nelle schermate e nei log. Esegui compilazione e prova di avvio sul commit definitivo e usa quel commit per il tag dell’anteprima. [Guida di sviluppo](SVILUPPO.md) · [Visibilità dei repository GitHub](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/managing-repository-settings/setting-repository-visibility)
 

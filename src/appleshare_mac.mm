@@ -1,6 +1,7 @@
 #include "appleshare.h"
 
 #import <AppKit/AppKit.h>
+#import <PDFKit/PDFKit.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 #include <QCoreApplication>
@@ -9,7 +10,22 @@
 
 #include <cstdio>
 #include <functional>
+#include <optional>
 #include <utility>
+
+@interface QuadernoShareSelection : NSObject <NSSharingServicePickerDelegate>
+@property(nonatomic, copy) void (^chosen)(BOOL);
+@end
+
+@implementation QuadernoShareSelection
+- (void)sharingServicePicker:(NSSharingServicePicker *)picker didChooseSharingService:(NSSharingService *)service
+{
+    auto callback = self.chosen;
+    self.chosen = nil;
+    if (callback)
+        callback(service != nil);
+}
+@end
 
 namespace {
 using FileSelection = std::function<void(const QString &)>;
@@ -105,20 +121,25 @@ void chooseAppleBooksFiles(std::function<void(const QList<QUrl> &)> selected)
         [panel beginWithCompletionHandler:completed];
 }
 
-bool sharePdf(const QString &path)
+bool showSharePicker(const QString &path, std::function<void(bool)> chosen)
 {
     NSURL *url = [NSURL fileURLWithPath:path.toNSString()];
     NSWindow *window = activeWindow();
     NSView *view = window.contentView;
-    if (!view) {
-        [[NSWorkspace sharedWorkspace] activateFileViewerSelectingURLs:@[url]];
+    if (!view)
         return false;
-    }
 
     static NSSharingServicePicker *picker = nil;
+    static QuadernoShareSelection *selection = nil;
     if (@available(macOS 13.0, *))
         [picker close];
     picker = [[NSSharingServicePicker alloc] initWithItems:@[url]];
+    selection = nil;
+    if (chosen) {
+        selection = [[QuadernoShareSelection alloc] init];
+        selection.chosen = ^(BOOL result) { chosen(result); };
+        picker.delegate = selection;
+    }
 
     NSPoint point = [view convertPoint:window.mouseLocationOutsideOfEventStream fromView:nil];
     if (!NSPointInRect(point, view.bounds))
@@ -127,6 +148,26 @@ bool sharePdf(const QString &path)
                        ofView:view
                 preferredEdge:NSMinYEdge];
     return true;
+}
+
+std::optional<bool> printPdf(const QString &path)
+{
+    @autoreleasepool {
+        NSURL *file = [NSURL fileURLWithPath:path.toNSString()];
+        PDFDocument *document = [[PDFDocument alloc] initWithURL:file];
+        if (!document || !document.pageCount)
+            return std::nullopt;
+
+        NSPrintInfo *settings = [NSPrintInfo.sharedPrintInfo copy];
+        NSPrintOperation *operation = [document printOperationForPrintInfo:settings
+            scalingMode:kPDFPrintPageScaleToFit autoRotate:YES];
+        if (!operation)
+            return std::nullopt;
+        operation.jobTitle = file.lastPathComponent.stringByDeletingPathExtension;
+        operation.showsPrintPanel = YES;
+        operation.showsProgressPanel = YES;
+        return [operation runOperation] == YES;
+    }
 }
 
 void revealExport(const QString &path)
@@ -139,7 +180,10 @@ void openExport(const QString &path, const QString &destination, std::function<v
     if (destination == QStringLiteral("share") || destination == QStringLiteral("journal")) {
         // Showing the picker cannot prove that the user delivered the file.
         // The durable queue remains awaiting user confirmation, including cancel.
-        completed(sharePdf(path));
+        const bool opened = showSharePicker(path, {});
+        if (!opened)
+            revealExport(path);
+        completed(opened);
         return;
     }
     NSString *bundle = nil;

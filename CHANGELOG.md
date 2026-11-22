@@ -2,6 +2,27 @@
 
 **English** · [Italiano](CHANGELOG.it.md)
 
+## 0.2.23 development
+
+- Add an editable UML palette with classes, interfaces, objects, actors, use cases, components, packages, deployment nodes and lifelines. The shapes can be exchanged as draw.io files. Quaderno notebooks containing UML shapes use portable format 14.
+- Improve recognition of short handwritten labels close to small diagram shapes in PDFs and images. Fit labels to their shapes when rendering a diagram on the page.
+
+## 0.2.22 development
+
+- Unify sharing and exports on Paper Pro and Mac. The format picker offers annotated PDF for a page or the entire notebook, PNG for the current page, Markdown with optional attachments, editable draw.io, CSV, the native Quaderno file, and original PDF or EPUB when retained.
+- Use the native macOS share and print dialogs. Sharing Markdown with attachments bundles them into a ZIP. On Paper Pro, open wireless synchronization to transfer the notebook to a Mac for printing or save an annotated PDF.
+
+## 0.2.21 development
+
+- Improve recognition of small, sideways and vertically stacked handwritten labels in diagrams. For Marker strokes, the review can retry an individual label with a different reading orientation. For PDFs and images, the updated optional OCR helper also evaluates upright stacked letters in vertical crops.
+
+## 0.2.20 development
+
+- Improve how handwritten captions are associated with their shapes. Review and edit the suggested captions before accepting the diagram.
+- Add database, subprocess, display, manual input, preparation, delay, off-page connector and cloud to the editable palette and compatible draw.io import and export. Native notebooks with those shapes require portable format 13. Diagrams using the original palette keep the minimum format required by their contents.
+
+See [Diagrams](docs/en/DIAGRAMS.md).
+
 ## 0.2.19 development
 
 - Draw freehand outlines with the Marker when selecting the diagram, table or text in a mixed page. Quaderno closes the outlines when you lift the pen.

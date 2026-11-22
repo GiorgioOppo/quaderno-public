@@ -57,13 +57,23 @@ int formatVersion(const QVariant &value)
         && number == std::floor(number) ? int(number) : 0;
 }
 
+bool hasUmlNodes(const QJsonObject &diagram)
+{
+    const auto nodes = diagram.value(QStringLiteral("nodes")).toArray();
+    return std::any_of(nodes.cbegin(), nodes.cend(), [](const QJsonValue &node) {
+        // All UML identifiers share this prefix. Treat unknown UML shapes
+        // conservatively here and leave exact shape validation to Notebook.
+        return node.toObject().value(QStringLiteral("shape")).toString().startsWith(QStringLiteral("uml-"));
+    });
+}
+
 int requiredNotebookVersion(const QByteArray &payload)
 {
     const QJsonObject root = QJsonDocument::fromJson(payload).object();
     int required = formatVersion(root.value(QStringLiteral("version")).toVariant());
     if (!required) return 0;
     // Derive a lower bound from extended fields too. A stale envelope must not
-    // allow an older reader to drop a retained source or an anchored annotation.
+    // allow an older reader to receive content it cannot open.
     for (const QJsonValue &entry : root.value(QStringLiteral("books")).toArray()) {
         const QJsonObject book = entry.toObject();
         if (!book.value(QStringLiteral("sourceDocuments")).toObject().isEmpty()
@@ -74,12 +84,16 @@ int requiredNotebookVersion(const QByteArray &payload)
             if (layout.contains(QStringLiteral("source"))) required = qMax(required, 9);
             for (const QJsonValue &item : layout.value(QStringLiteral("items")).toArray()) {
                 const QJsonObject object = item.toObject();
+                const QJsonObject recovery = object.value(QStringLiteral("handwritingSource")).toObject();
                 if (object.contains(QStringLiteral("handwritingSource")) || object.contains(QStringLiteral("rotation"))
                     || object.contains(QStringLiteral("textScale"))) required = qMax(required, 9);
                 if (object.contains(QStringLiteral("styleScale"))
-                    || object.value(QStringLiteral("handwritingSource")).toObject().contains(QStringLiteral("baseDiagram")))
+                    || recovery.contains(QStringLiteral("baseDiagram")))
                     required = qMax(required, 10);
                 if (object.value(QStringLiteral("type")) == QStringLiteral("note")) required = qMax(required, 11);
+                if (required < NotebookFormat::umlDiagramShapesVersion && object.value(QStringLiteral("type")) == QStringLiteral("diagram")
+                    && (hasUmlNodes(object) || hasUmlNodes(recovery.value(QStringLiteral("baseDiagram")).toObject())))
+                    required = NotebookFormat::umlDiagramShapesVersion;
             }
         }
     }

@@ -36,6 +36,7 @@ public:
     Q_INVOKABLE QString applyTextPreferences(const QString &text) const;
 
     Q_INVOKABLE void recognize(const QVariantList &strokes, const QString &language = QStringLiteral("it"));
+    Q_INVOKABLE void recognizeDiagramLabel(const QVariantList &strokes, const QString &language, const QString &orientation);
     Q_INVOKABLE void cancel();
 
 signals:
@@ -45,6 +46,7 @@ signals:
 
 private:
     static QString helperPath();
+    void recognizeInk(const QVariantList &strokes, const QString &language, const QString &labelOrientation);
     void startProcess();
     void complete(const QString &text, const QString &error);
 

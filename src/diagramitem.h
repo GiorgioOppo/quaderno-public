@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QPainterPath>
 #include <QQuickPaintedItem>
 #include <QStringList>
 #include <QVariantMap>
@@ -7,6 +8,9 @@
 
 class QPainter;
 
+QPainterPath diagramNodeOutline(const QString &shape, const QRectF &bounds);
+bool diagramShapeRequiresNewFormat(const QString &shape);
+bool diagramShapeRequiresUmlFormat(const QString &shape);
 void drawDiagram(QPainter &painter, const QRectF &bounds, const QVariantMap &diagram);
 
 class DiagramItem : public QQuickPaintedItem

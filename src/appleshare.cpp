@@ -3,6 +3,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QPointer>
+#include <QProcess>
 #include <QFile>
 #include <QSaveFile>
 #include <QJsonDocument>
@@ -12,16 +13,20 @@
 #include <QStandardPaths>
 #include <QLockFile>
 #include <QSet>
+#include <QTemporaryDir>
 #include <QUuid>
 
 #ifdef Q_OS_MACOS
 #include <functional>
+#include <optional>
+#include <utility>
 
 namespace appleShareMac {
 using FileSelection = std::function<void(const QString &)>;
 void choosePdfDestination(const QString &fileName, FileSelection selected);
 void chooseNotebookFile(FileSelection selected);
-bool sharePdf(const QString &path);
+bool showSharePicker(const QString &path, std::function<void(bool)> chosen);
+std::optional<bool> printPdf(const QString &path);
 void openExport(const QString &path, const QString &destination, std::function<void(bool)> completed);
 void revealExport(const QString &path);
 }
@@ -94,6 +99,140 @@ void AppleShare::loadDeliveries()
 void AppleShare::sharePdf(Notebook *notebook)
 {
     prepareDelivery(notebook, QStringLiteral("share"));
+}
+
+void AppleShare::shareFile(Notebook *notebook, const QVariantMap &option)
+{
+#ifdef Q_OS_MACOS
+    if (!available() || m_busy || !notebook)
+        return;
+
+    const QString name = notebook->suggestedShareFile(option).fileName();
+    if (name.isEmpty()) {
+        setState(false, tr("Scegli un formato da condividere."));
+        return;
+    }
+    if (!m_shareDirectory || !m_shareDirectory->isValid())
+        m_shareDirectory = std::make_unique<QTemporaryDir>(QDir(QDir::tempPath()).filePath(QStringLiteral("Quaderno-share-XXXXXX")));
+    if (!m_shareDirectory->isValid()) {
+        setState(false, tr("Impossibile preparare la cartella di condivisione."));
+        return;
+    }
+
+    const auto job = std::make_shared<QTemporaryDir>(m_shareDirectory->filePath(QStringLiteral("Export-XXXXXX")));
+    if (!job->isValid()) {
+        setState(false, tr("Impossibile preparare la cartella di condivisione."));
+        return;
+    }
+    const QString contents = job->filePath(QStringLiteral("document"));
+    if (!QDir().mkdir(contents)) {
+        setState(false, tr("Impossibile preparare la cartella di condivisione."));
+        return;
+    }
+
+    setState(true);
+    const QString path = QDir(contents).filePath(name);
+    if (!notebook->exportShareFile(option, QUrl::fromLocalFile(path))) {
+        setState(false, notebook->error());
+        return;
+    }
+
+    const auto present = [this, job](const QString &file) {
+        if (appleShareMac::showSharePicker(file, [job](bool chosen) {
+            // Services can read the file after the picker closes. The parent
+            // temporary directory keeps chosen shares alive for this session.
+            if (chosen)
+                job->setAutoRemove(false);
+        })) {
+            setState(false, tr("Scegli una destinazione nel menu Condividi."));
+        } else {
+            setState(false, tr("Impossibile aprire il menu Condividi di macOS."));
+        }
+    };
+    const bool hasAssets = option.value(QStringLiteral("format")) == QStringLiteral("markdown-assets")
+        && !QDir(contents).entryList(QDir::Dirs | QDir::NoDotAndDotDot).isEmpty();
+    if (!hasAssets) {
+        present(path);
+        return;
+    }
+
+    const QString archive = job->filePath(QFileInfo(name).completeBaseName() + QStringLiteral(".zip"));
+    auto *compress = new QProcess(this);
+    m_shareCompression = compress;
+    compress->setStandardOutputFile(QProcess::nullDevice());
+    compress->setStandardErrorFile(QProcess::nullDevice());
+    connect(compress, &QProcess::finished, this, [this, compress, present, contents, archive](int code, QProcess::ExitStatus status) {
+        compress->deleteLater();
+        if (m_shareCompression != compress)
+            return;
+        m_shareCompression = nullptr;
+        if (status == QProcess::NormalExit && code == 0 && QFileInfo(archive).size() > 0) {
+            QDir(contents).removeRecursively();
+            present(archive);
+        } else {
+            setState(false, tr("Impossibile creare lo ZIP con gli allegati Markdown."));
+        }
+    });
+    connect(compress, &QProcess::errorOccurred, this, [this, compress](QProcess::ProcessError error) {
+        if (error != QProcess::FailedToStart)
+            return;
+        compress->deleteLater();
+        if (m_shareCompression == compress) {
+            m_shareCompression = nullptr;
+            setState(false, tr("Impossibile creare lo ZIP con gli allegati Markdown."));
+        }
+    });
+    compress->start(QStringLiteral("/usr/bin/ditto"), {QStringLiteral("-c"), QStringLiteral("-k"),
+        QStringLiteral("--norsrc"), QStringLiteral("--noextattr"), QStringLiteral("--noacl"), contents, archive});
+#else
+    Q_UNUSED(notebook)
+    Q_UNUSED(option)
+#endif
+}
+
+void AppleShare::cancelPendingFileShare()
+{
+#ifdef Q_OS_MACOS
+    if (QProcess *compress = std::exchange(m_shareCompression, nullptr)) {
+        compress->kill();
+        setState(false);
+    }
+#endif
+}
+
+void AppleShare::printPdf(Notebook *notebook, const QVariantMap &option)
+{
+#ifdef Q_OS_MACOS
+    if (!available() || m_busy || !notebook)
+        return;
+    const QString format = option.value(QStringLiteral("format")).toString();
+    const QString name = notebook->suggestedShareFile(option).fileName();
+    if ((format != QStringLiteral("pdf") && format != QStringLiteral("pdf-page")) || name.isEmpty()) {
+        setState(false, tr("Scegli il PDF della pagina o del quaderno da stampare."));
+        return;
+    }
+
+    const QTemporaryDir folder(QDir(QDir::tempPath()).filePath(QStringLiteral("Quaderno-print-XXXXXX")));
+    if (!folder.isValid()) {
+        setState(false, tr("Impossibile preparare il PDF per la stampa."));
+        return;
+    }
+
+    setState(true);
+    const QString path = folder.filePath(name);
+    if (!notebook->exportShareFile(option, QUrl::fromLocalFile(path))) {
+        setState(false, notebook->error());
+        return;
+    }
+    const QPointer<AppleShare> self(this);
+    const auto completed = appleShareMac::printPdf(path);
+    if (self)
+        self->setState(false, !completed ? tr("Impossibile aprire il PDF per la stampa.")
+            : *completed ? tr("Operazione di stampa completata.") : tr("Operazione di stampa interrotta."));
+#else
+    Q_UNUSED(notebook)
+    Q_UNUSED(option)
+#endif
 }
 
 bool AppleShare::saveDeliveries(const QVariantList &deliveries)

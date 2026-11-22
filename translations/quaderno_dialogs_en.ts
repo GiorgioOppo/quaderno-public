@@ -4,8 +4,8 @@
     <context>
         <name>AppleShareView</name>
         <message>
-            <source>Condividi quaderno</source>
-            <translation>Share notebook</translation>
+            <source>Condividi ed esporta</source>
+            <translation>Share and export</translation>
         </message>
         <message>
             <source>%1. %2</source>
@@ -19,34 +19,31 @@
             <source>%1 pagine</source>
             <translation>%1 pages</translation>
         </message>
-        <message>
-            <source>Condividi PDF</source>
-            <translation>Share PDF</translation>
-        </message>
-        <message>
-            <source>Scegli Note o un’altra destinazione nel menu di macOS.</source>
-            <translation>Choose Notes or another destination in the macOS share menu.</translation>
-        </message>
-        <message>
-            <source>Salva PDF</source>
-            <translation>Save PDF</translation>
-        </message>
-        <message>
-            <source>Salva tutte le pagine. In Libri, scegli File → Importa per aggiungere il PDF.</source>
-            <translation>Save all pages. In Books, choose File → Import to add the PDF.</translation>
-        </message>
-        <message>
-            <source>Continua sul Mac</source>
-            <translation>Continue on Mac</translation>
-        </message>
-        <message>
-            <source>Collega il Paper Pro via USB‑C. Nella libreria di Quaderno sul Mac scegli «Importa dal Paper Pro», poi apri il quaderno e condividi una copia PDF.</source>
-            <translation>Connect the Paper Pro via USB‑C. In the Quaderno library on your Mac, choose “Import from Paper Pro”, then open the notebook and share a PDF copy.</translation>
-        </message>
-        <message>
-            <source>Apri il quaderno in Quaderno per macOS per condividerlo con Note e Libri o esportarlo in PDF.</source>
-            <translation>Open the notebook in Quaderno for macOS to share it with Notes or Books, or to export a PDF.</translation>
-        </message>
+        <message><source>PDF · Intero quaderno</source><translation>PDF · Entire notebook</translation></message>
+        <message><source>PDF · Pagina corrente</source><translation>PDF · Current page</translation></message>
+        <message><source>Markdown (.md)</source><translation>Markdown (.md)</translation></message>
+        <message><source>Markdown con allegati</source><translation>Markdown with attachments</translation></message>
+        <message><source>draw.io · %1</source><translation>draw.io · %1</translation></message>
+        <message><source>CSV · %1</source><translation>CSV · %1</translation></message>
+        <message><source>Quaderno modificabile (.quaderno)</source><translation>Editable notebook (.quaderno)</translation></message>
+        <message><source>PNG · Pagina corrente</source><translation>PNG · Current page</translation></message>
+        <message><source>Originale · %1</source><translation>Original file · %1</translation></message>
+        <message><source>Il formato non è più disponibile per questa pagina.</source><translation>This format is no longer available for this page.</translation></message>
+        <message><source>Salva una copia</source><translation>Save a copy</translation></message>
+        <message><source>%1 (*.%2)</source><translation>%1 (*.%2)</translation></message>
+        <message><source>Copia salvata.</source><translation>Copy saved.</translation></message>
+        <message><source>Apple</source><translation>Apple</translation></message>
+        <message><source>Apri un quaderno per esportarlo.</source><translation>Open a notebook to export it.</translation></message>
+        <message><source>Formato della copia</source><translation>Export format</translation></message>
+        <message><source>Il salvataggio conserva gli allegati accanto al Markdown. Condividi li raccoglie in uno ZIP.</source><translation>Saving keeps attachments next to the Markdown file. Sharing bundles them into a ZIP.</translation></message>
+        <message><source>Conserva la cartella degli allegati accanto al file Markdown.</source><translation>Keep the attachment folder next to the Markdown file.</translation></message>
+        <message><source>Salva file…</source><translation>Save File…</translation></message>
+        <message><source>Condividi…</source><translation>Share…</translation></message>
+        <message><source>Stampa…</source><translation>Print…</translation></message>
+        <message><source>Stampa dal Mac</source><translation>Print from Mac</translation></message>
+        <message><source>Trasferisci quaderno</source><translation>Transfer Notebook</translation></message>
+        <message><source>Per stampare, sincronizza il quaderno e apri Condividi → Stampa sul Mac.</source><translation>Sync the notebook, then open Share → Print on your Mac.</translation></message>
+        <message><source>Salva il PDF e aprilo su un computer per stamparlo.</source><translation>Save the PDF and open it on a computer to print it.</translation></message>
         <message>
             <source>Chiudi</source>
             <translation>Close</translation>
@@ -66,7 +63,6 @@
         <message><source>Note</source><translation>Notes</translation></message>
     <message><source>Libri</source><translation>Books</translation></message>
     <message><source>Diario</source><translation>Journal</translation></message>
-    <message><source>Sincronizza il quaderno con Quaderno sul Mac tramite Wi‑Fi o Bluetooth, poi aprilo sul Mac e scegli la destinazione Apple.</source><translation>Sync the notebook with Quaderno on your Mac over Wi-Fi or Bluetooth, then open it on the Mac and choose the Apple destination.</translation></message>
     <message><source>Importazione confermata</source><translation>Import confirmed</translation></message>
     <message><source>Annullata; file conservato</source><translation>Cancelled; file kept</translation></message>
     <message><source>Da completare nell’app Apple</source><translation>Finish importing in the Apple app</translation></message>
@@ -1251,6 +1247,26 @@
     <message><source>Cerca per titolo o percorso</source><translation>Search by title or path</translation></message><message><source>Cancella ricerca</source><translation>Clear search</translation></message><message><source>Tutte</source><translation>All</translation></message><message><source>Conflitti (%1)</source><translation>Conflicts (%1)</translation></message><message><source>Modificate (%1)</source><translation>Changed (%1)</translation></message><message><source>Note mostrate: %1 / %2</source><translation>Notes shown: %1 / %2</translation></message><message><source>Nessuna nota corrisponde. Modifica la ricerca o scegli Tutte.</source><translation>No matching notes. Change your search or choose All.</translation></message><message><source>Nascondi tastiera</source><translation>Hide keyboard</translation></message></context>
     <context>
         <name>DiagramEditor</name>
+        <message><source>Forme di base</source><translation>Basic shapes</translation></message>
+        <message><source>Altre forme</source><translation>More shapes</translation></message>
+        <message><source>Database</source><translation>Database</translation></message>
+        <message><source>Sottoprocesso</source><translation>Subprocess</translation></message>
+        <message><source>Display</source><translation>Display</translation></message>
+        <message><source>Input manuale</source><translation>Manual input</translation></message>
+        <message><source>Preparazione</source><translation>Preparation</translation></message>
+        <message><source>Attesa</source><translation>Delay</translation></message>
+        <message><source>Fuori pagina</source><translation>Off-page</translation></message>
+        <message><source>Classe</source><translation>Class</translation></message>
+        <message><source>Interfaccia</source><translation>Interface</translation></message>
+        <message><source>Oggetto</source><translation>Object</translation></message>
+        <message><source>Attore</source><translation>Actor</translation></message>
+        <message><source>Caso d’uso</source><translation>Use case</translation></message>
+        <message><source>Componente</source><translation>Component</translation></message>
+        <message><source>Pacchetto</source><translation>Package</translation></message>
+        <message><source>Nodo</source><translation>Node</translation></message>
+        <message><source>Linea di vita</source><translation>Lifeline</translation></message>
+        <message><source>Usa una riga vuota per separare nome, attributi e operazioni.</source><translation>Use a blank line to separate the name, attributes, and operations.</translation></message>
+        <message><source>Nuvola</source><translation>Cloud</translation></message>
         <message>
             <source>Forme</source>
             <translation>Shapes</translation>
@@ -1980,6 +1996,12 @@
             <source>Riconosci di nuovo questa etichetta</source>
             <translation>Recognize this label again</translation>
         </message>
+        <message><source>Orientamento automatico</source><translation>Automatic orientation</translation></message>
+        <message><source>Orizzontale</source><translation>Horizontal</translation></message>
+        <message><source>Lettere in colonna</source><translation>Stacked letters</translation></message>
+        <message><source>Ruota a destra</source><translation>Rotate clockwise</translation></message>
+        <message><source>Ruota a sinistra</source><translation>Rotate counterclockwise</translation></message>
+        <message><source>Orientamento per il riconoscimento dell’etichetta</source><translation>Orientation for label recognition</translation></message>
         <message>
             <source>Ferma riconoscimento</source>
             <translation>Stop recognition</translation>
@@ -2421,7 +2443,7 @@
     <message><source>Pagina origine</source><translation>Source page</translation></message>
     <message><source>Rimuovi ultimo contorno</source><translation>Remove last outline</translation></message>
     <message><source>Titolo del quaderno</source><translation>Notebook title</translation></message>
-    <message><source>Rivedi forme e frecce</source><translation>Review shapes and arrows</translation></message>
+    <message><source>Rivedi forme ed etichette</source><translation>Review shapes and labels</translation></message>
     <message><source>Disegna il diagramma</source><translation>Draw the diagram</translation></message>
     <message><source>Una linea per riga. Separa le colonne con Tab o |.</source><translation>Use one line per row. Separate columns with Tab or |.</translation></message>
     <message><source>Rivedi o scrivi il testo della pagina.</source><translation>Review or enter the page text.</translation></message>

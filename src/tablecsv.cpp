@@ -196,14 +196,8 @@ QVariantList Notebook::tableCellValues(const QVariantMap &table) const
     return PageContent::resolvedTableCells(table);
 }
 
-bool Notebook::exportTableCsv(const QUrl &file, const QVariantMap &table)
+QByteArray Notebook::tableCsvData(const QVariantMap &table)
 {
-    const QFileInfo output(file.toLocalFile());
-    if (!file.isLocalFile() || output.suffix().compare(QStringLiteral("csv"), Qt::CaseInsensitive) != 0
-        || output.absoluteFilePath() == m_filePath
-        || (output.exists() && output.canonicalFilePath() == QFileInfo(m_filePath).canonicalFilePath()))
-        return fail(tr("Scegli un file .csv per salvare la tabella."));
-
     // The draft may not have an item ID or a position on the page yet.
     const auto typeKey = QStringLiteral("type");
     QVariantMap draft = table;
@@ -214,17 +208,17 @@ bool Notebook::exportTableCsv(const QUrl &file, const QVariantMap &table)
     draft.insert(QStringLiteral("height"), 1.0);
     const QVariantMap valid = PageContent::validatedItem(draft);
     if (valid.value(typeKey) != QStringLiteral("table"))
-        return fail(tr("La tabella non contiene celle valide da esportare."));
+        return {};
 
     const int rows = valid.value(QStringLiteral("rows")).toInt();
     const int columns = valid.value(QStringLiteral("cols")).toInt();
-    const QVariantList cells = tableCellValues(valid);
+    const QVariantList cells = PageContent::resolvedTableCells(valid);
     QString csv;
     for (int row = 0; row < rows; ++row) {
         for (int column = 0; column < columns; ++column) {
             QString value = cells.at(row * columns + column).toString();
             if (!value.isValidUtf16() || value.contains(QChar::Null))
-                return fail(tr("La tabella non contiene celle valide da esportare."));
+                return {};
             if (column > 0)
                 csv += u',';
             csv += u'"' + value.replace(u'"', QStringLiteral("\"\"")) + u'"';
@@ -232,7 +226,19 @@ bool Notebook::exportTableCsv(const QUrl &file, const QVariantMap &table)
         csv += QStringLiteral("\r\n");
     }
 
-    const QByteArray bytes = csv.toUtf8();
+    return csv.toUtf8();
+}
+
+bool Notebook::exportTableCsv(const QUrl &file, const QVariantMap &table)
+{
+    const QFileInfo output(file.toLocalFile());
+    if (!file.isLocalFile() || output.suffix().compare(QStringLiteral("csv"), Qt::CaseInsensitive) != 0
+        || output.absoluteFilePath() == m_filePath
+        || (output.exists() && output.canonicalFilePath() == QFileInfo(m_filePath).canonicalFilePath()))
+        return fail(tr("Scegli un file .csv per salvare la tabella."));
+
+    const QByteArray bytes = tableCsvData(table);
+    if (bytes.isEmpty()) return fail(tr("La tabella non contiene celle valide da esportare."));
     QSaveFile destination(output.absoluteFilePath());
     if (!destination.open(QIODevice::WriteOnly) || destination.write(bytes) != bytes.size() || !destination.commit())
         return fail(tr("Impossibile salvare il CSV. %1").arg(destination.errorString()));

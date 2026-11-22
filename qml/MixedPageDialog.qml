@@ -115,7 +115,8 @@ Dialog {
         if (!recognizer.available) return
         recognitionQueue = (draft.tableInk || []).map(row => ({part: "table", strokes: row.strokes}))
             .concat((draft.textInk || []).map(row => ({part: "text", strokes: row.strokes})))
-            .concat((draft.diagramInk || []).map(label => ({part: "diagram", strokes: label.strokes, nodeId: label.nodeId})))
+            .concat((draft.diagramInk || []).map(label => ({part: "diagram", strokes: label.strokes,
+                nodeId: label.nodeId, orientation: label.stacked ? "stacked" : label.vertical ? "clockwise" : "auto"})))
         if (recognitionQueue.length) {
             queueIndex = 0
             Qt.callLater(recognizeNext)
@@ -130,7 +131,11 @@ Dialog {
         }
         const languages = recognizer.availableLanguages
         const language = languages.indexOf(recognitionLanguage) >= 0 ? recognitionLanguage : languages[0]
-        recognizer.recognize(recognitionQueue[queueIndex].strokes, language)
+        const job = recognitionQueue[queueIndex]
+        if (job.part === "diagram")
+            recognizer.recognizeDiagramLabel(job.strokes, language, job.orientation)
+        else
+            recognizer.recognize(job.strokes, language)
     }
 
     function applyRecognition(value: string) {
@@ -144,8 +149,8 @@ Dialog {
         } else if (job.part === "table") {
             tableField.text += (tableField.text ? "\n" : "") + text.replace(/\s*\n\s*/g, " ")
         } else if (diagramDraft.nodes) {
-            const nodes = diagramDraft.nodes.map(node => node.id === job.nodeId
-                ? Object.assign({}, node, {text: ((node.text ? node.text + "\n" : "") + text).slice(0, 200)})
+            const nodes = diagramDraft.nodes.map(node => node.id === job.nodeId && !(node.text || "").trim()
+                ? Object.assign({}, node, {text: text.slice(0, 200)})
                 : node)
             diagramDraft = Object.assign({}, diagramDraft, {nodes})
         }
@@ -392,7 +397,7 @@ Dialog {
             PaperButton {
                 Layout.alignment: Qt.AlignRight
                 uiScale: editor.uiScale
-                text: editor.diagramDraft.nodes?.length ? qsTr("Rivedi forme e frecce") : qsTr("Disegna il diagramma")
+                text: editor.diagramDraft.nodes?.length ? qsTr("Rivedi forme ed etichette") : qsTr("Disegna il diagramma")
                 enabled: !editor.readingInk
                 onClicked: diagramEditor.openFor(editor.diagramDraft.nodes ? editor.diagramDraft : null)
             }

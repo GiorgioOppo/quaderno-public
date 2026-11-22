@@ -10,7 +10,7 @@ add_library(quaderno_test_core STATIC
     ../src/diagramrecognizer.cpp ../src/diagramrecognizer.h
     ../src/diagramexport.cpp ../src/diagramexport.h ../src/diagramimport.cpp
     ../src/screenorientation.cpp ../src/screenorientation.h
-    ../src/chartitem.cpp ../src/chartitem.h
+    ../src/chartitem.cpp ../src/chartitem.h ../src/chartrecognizer.cpp ../src/chartrecognizer.h
     ../src/pdfimport.cpp ../src/epubimport.cpp ../src/documentreader.cpp
     ../src/pinlock.cpp ../src/pinlock.h ../src/deviceinfo.cpp ../src/deviceinfo.h
     ../src/markerbattery.cpp ../src/markerbattery.h ../src/tabletpreferences.cpp ../src/tabletpreferences.h

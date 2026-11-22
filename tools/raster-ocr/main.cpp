@@ -12,15 +12,18 @@
 #include <QJsonObject>
 #include <QPainter>
 #include <QStringConverter>
+#include <QTransform>
 
 #include <onnxruntime_cxx_api.h>
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <string>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -28,6 +31,8 @@ constexpr qsizetype maximumRequestBytes = 8 * 1024 * 1024;
 constexpr qsizetype maximumImageBytes = 1024 * 1024;
 constexpr qsizetype maximumBase64Bytes = 4 * ((maximumImageBytes + 2) / 3);
 constexpr int maximumImages = 136;
+constexpr int maximumHalfTurns = 32;
+constexpr int maximumTinyLabels = 32;
 constexpr int maximumWidth = 1600;
 constexpr int maximumHeight = 2133;
 constexpr int maximumPixels = 2'000'000;
@@ -113,6 +118,152 @@ QImage grayscale(QImage image)
     return image.convertToFormat(QImage::Format_Grayscale8);
 }
 
+QImage lightlyThinInk(const QImage &gray)
+{
+    QImage result(gray.size(), QImage::Format_Grayscale8);
+    if (result.isNull())
+        return {};
+    for (int y = 0; y < gray.height(); ++y) {
+        auto *out = result.scanLine(y);
+        for (int x = 0; x < gray.width(); ++x) {
+            uchar brightest = 0;
+            for (int row = qMax(0, y - 1); row <= qMin(gray.height() - 1, y + 1); ++row) {
+                const auto *pixels = gray.constScanLine(row);
+                for (int column = qMax(0, x - 1); column <= qMin(gray.width() - 1, x + 1); ++column)
+                    brightest = qMax(brightest, pixels[column]);
+            }
+            out[x] = brightest;
+        }
+    }
+    return result;
+}
+
+QImage paddedLabel(const QImage &image, int margin, double widthScale = 1.)
+{
+    if (image.isNull())
+        return {};
+    const QSize body(qMax(1, qRound(image.width() * widthScale)), image.height());
+    QImage result(body + QSize(2 * margin, 2 * margin), QImage::Format_RGB32);
+    if (result.isNull())
+        return {};
+    result.fill(Qt::white);
+    QPainter painter(&result);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform);
+    painter.drawImage(QRect(QPoint(margin, margin), body), image);
+    return result;
+}
+
+QImage slantedLabel(const QImage &image, int degrees, int margin, double widthScale = 1.)
+{
+    const auto alpha = image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+    const auto gray = grayscale(alpha.transformed(QTransform().rotate(degrees), Qt::SmoothTransformation));
+    int left = gray.width(), right = -1, top = gray.height(), bottom = -1;
+    for (int y = 0; y < gray.height(); ++y) {
+        const auto *pixels = gray.constScanLine(y);
+        for (int x = 0; x < gray.width(); ++x) {
+            if (pixels[x] >= 180)
+                continue;
+            left = qMin(left, x);
+            right = qMax(right, x);
+            top = qMin(top, y);
+            bottom = y;
+        }
+    }
+    if (right < 0)
+        return {};
+    return paddedLabel(gray.copy(QRect(QPoint(left, top), QPoint(right, bottom))), margin, widthScale);
+}
+
+QImage stackedLine(const QImage &horizontal, qsizetype &glyphCount)
+{
+    // The caller always turns the page-space crop clockwise. Reverse that
+    // turn to collect the upright letters of a top-to-bottom caption.
+    const QImage column = grayscale(horizontal.transformed(QTransform().rotate(-90)));
+    QList<QRect> glyphs;
+    QRect current;
+    for (int y = 0; y < column.height(); ++y) {
+        const auto *pixels = column.constScanLine(y);
+        int left = column.width(), right = -1;
+        for (int x = 0; x < column.width(); ++x) {
+            if (pixels[x] >= 195)
+                continue;
+            left = qMin(left, x);
+            right = x;
+        }
+        if (right >= left) {
+            current |= QRect(left, y, right - left + 1, 1);
+        } else if (!current.isEmpty()) {
+            glyphs.append(current);
+            current = {};
+        }
+    }
+    if (!current.isEmpty())
+        glyphs.append(current);
+    // Isolated pixels are common in low-resolution scans.
+    glyphs.removeIf([](const QRect &glyph) { return glyph.size() == QSize(1, 1); });
+    if (glyphs.size() < 3 || glyphs.size() > 24)
+        return {};
+
+    QList<int> heights;
+    for (const auto &glyph : glyphs)
+        heights.append(glyph.height());
+    std::sort(heights.begin(), heights.end());
+    const int typicalHeight = heights.at(heights.size() / 2);
+    if (typicalHeight < 3 || heights.constLast() > 2 * typicalHeight + 2)
+        return {};
+
+    QList<int> spaces;
+    for (qsizetype index = 1; index < glyphs.size(); ++index)
+        spaces.append(glyphs.at(index).top() - glyphs.at(index - 1).bottom() - 1);
+    auto sortedSpaces = spaces;
+    std::sort(sortedSpaces.begin(), sortedSpaces.end());
+    const int typicalSpace = sortedSpaces.at(sortedSpaces.size() / 2);
+    const int wordSpace = qMax(typicalHeight, qRound(typicalSpace * 1.8));
+    const int gap = std::clamp(typicalHeight / 7, 1, 4);
+    const int margin = std::max(2, gap);
+    int lineWidth = 2 * margin, lineHeight = 0;
+    QList<QRect> placements;
+    for (qsizetype index = 0; index < glyphs.size(); ++index) {
+        const auto &glyph = glyphs.at(index);
+        if (index > 0)
+            lineWidth += spaces.at(index - 1) > wordSpace ? gap + typicalHeight / 3 : gap;
+        const double scale = std::clamp(typicalHeight / double(glyph.height()), .8, 1.5);
+        const QSize size(qMax(1, qRound(glyph.width() * scale)), qRound(glyph.height() * scale));
+        placements.append(QRect(QPoint(lineWidth - margin, 0), size));
+        lineWidth += size.width();
+        lineHeight = qMax(lineHeight, size.height());
+    }
+    if (lineWidth > maximumWidth || (lineHeight + 2 * margin) * lineWidth > maximumPixels)
+        return {};
+    QImage line(lineWidth, lineHeight + 2 * margin, QImage::Format_RGB32);
+    if (line.isNull())
+        return {};
+    line.fill(Qt::white);
+    QPainter painter(&line);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform);
+    for (qsizetype index = 0; index < glyphs.size(); ++index) {
+        auto placement = placements.at(index);
+        placement.moveTop(margin + lineHeight - placement.height());
+        painter.drawImage(placement, column, glyphs.at(index));
+    }
+    painter.end();
+    glyphCount = glyphs.size();
+    return line;
+}
+
+struct Recognition {
+    QString text;
+    double confidence = 0;
+    int glyphs = 0;
+};
+
+double orientationScore(const Recognition &result)
+{
+    // A half-turn can yield a short fragment whose few symbols have high
+    // individual confidence. Factor in the amount of recognized script.
+    return result.confidence * std::pow(qMax(1, result.glyphs), .25);
+}
+
 class Recognizer
 {
 public:
@@ -139,7 +290,7 @@ public:
         m_output = m_session.GetOutputNameAllocated(0, allocator).get();
     }
 
-    QString line(const QImage &image)
+    Recognition line(const QImage &image)
     {
         const int idealWidth = (image.width() * imageHeight + image.height() - 1) / image.height();
         const int renderedWidth = std::clamp(idealWidth, 1, maximumTensorWidth);
@@ -172,18 +323,60 @@ public:
         const auto *probabilities = result.front().GetTensorData<float>();
         QString text;
         int previous = 0;
+        float peak = 0;
+        double confidence = 0;
+        int glyphs = 0;
+        const auto finishToken = [&] {
+            const auto &token = m_dictionary.at(previous);
+            if (std::any_of(token.cbegin(), token.cend(), [](QChar ch) { return ch.isLetterOrNumber(); })) {
+                confidence += peak;
+                ++glyphs;
+            }
+        };
         for (int64_t step = 0; step < shape[1]; ++step) {
             const auto *scores = probabilities + step * classCount;
             const int index = static_cast<int>(std::max_element(scores, scores + classCount) - scores);
-            if (index != 0 && index != previous) {
+            if (index == previous) {
+                peak = std::max(peak, scores[index]);
+                continue;
+            }
+            finishToken();
+            previous = index;
+            peak = scores[index];
+            if (index != 0) {
                 const auto &token = m_dictionary.at(index);
-                if (text.size() + token.size() > maximumLineCharacters)
+                if (text.size() + token.size() > maximumLineCharacters) {
+                    previous = 0;
                     break;
+                }
                 text += token;
             }
-            previous = index;
         }
-        return text.trimmed();
+        finishToken();
+        return {text.trimmed(), glyphs ? confidence / glyphs : 0, glyphs};
+    }
+
+    Recognition tinyLabel(const QImage &image)
+    {
+        if (image.width() < 8 || image.width() > 320 || image.height() < 6 || image.height() > 64)
+            return line(image);
+        const auto gray = grayscale(image);
+        const auto base = paddedLabel(gray, 1);
+        auto best = line(base.isNull() ? image : base);
+        // Two bounded alternatives preserve short, crowded labels while
+        // accounting for slight changes in handwriting slant and weight.
+        const std::array alternatives{
+            slantedLabel(gray, -5, 3, .85),
+            slantedLabel(lightlyThinInk(gray), 4, 1),
+        };
+        for (const auto &variant : alternatives) {
+            if (variant.isNull())
+                continue;
+            auto result = line(variant);
+            if (orientationScore(result) > orientationScore(best))
+                best = std::move(result);
+        }
+        return best;
     }
 
 private:
@@ -221,18 +414,64 @@ int main(int argc, char *argv[])
         }
 
         const auto document = QJsonDocument::fromJson(readRequest());
-        const auto list = document.object().value(QStringLiteral("images"));
-        if (!list.isArray() || list.toArray().isEmpty() || list.toArray().size() > maximumImages)
+        const auto request = document.object();
+        const auto images = request.value(QStringLiteral("images")).toArray();
+        if (images.isEmpty() || images.size() > maximumImages)
             return EXIT_FAILURE;
+
+        enum class ImageHint { Supplied, Rotate, PreferStacked, TinyLabel };
+        std::array<ImageHint, maximumImages> hints{};
+        if (request.contains(QStringLiteral("tryHalfTurn"))) {
+            const auto turns = request.value(QStringLiteral("tryHalfTurn"));
+            if (!turns.isArray() || turns.toArray().size() > maximumHalfTurns)
+                return EXIT_FAILURE;
+            for (const auto &entry : turns.toArray()) {
+                const auto hint = entry.toObject();
+                const int index = entry.isObject() ? hint.value(QStringLiteral("index")).toInt(-1) : entry.toInt(-1);
+                if (index < 0 || index >= images.size() || hints.at(index) != ImageHint::Supplied)
+                    return EXIT_FAILURE;
+                hints.at(index) = hint.value(QStringLiteral("stacked")).toBool()
+                    ? ImageHint::PreferStacked : ImageHint::Rotate;
+            }
+        }
+        if (request.contains(QStringLiteral("tinyLabels"))) {
+            const auto labels = request.value(QStringLiteral("tinyLabels"));
+            if (!labels.isArray() || labels.toArray().size() > maximumTinyLabels)
+                return EXIT_FAILURE;
+            for (const auto &entry : labels.toArray()) {
+                const int index = entry.toInt(-1);
+                if (index < 0 || index >= images.size() || hints.at(index) != ImageHint::Supplied)
+                    return EXIT_FAILURE;
+                hints.at(index) = ImageHint::TinyLabel;
+            }
+        }
 
         Recognizer recognizer(directory);
         QJsonArray lines;
-        const auto images = list.toArray();
-        for (const auto &entry : images) {
-            const auto image = readPng(entry);
+        for (qsizetype index = 0; index < images.size(); ++index) {
+            const auto image = readPng(images.at(index));
             if (image.isNull())
                 return EXIT_FAILURE;
-            lines.append(recognizer.line(image));
+            const auto hint = hints.at(index);
+            auto recognized = hint == ImageHint::TinyLabel ? recognizer.tinyLabel(image) : recognizer.line(image);
+            if (hint == ImageHint::Rotate || hint == ImageHint::PreferStacked) {
+                auto alternative = recognizer.line(image.transformed(QTransform().rotate(180)));
+                if (orientationScore(alternative) > orientationScore(recognized))
+                    recognized = std::move(alternative);
+                qsizetype glyphs = 0;
+                const auto stacked = stackedLine(image, glyphs);
+                if (!stacked.isNull()) {
+                    alternative = recognizer.line(stacked);
+                    const auto missing = std::abs(alternative.glyphs - glyphs);
+                    const auto straightMissing = std::abs(recognized.glyphs - glyphs);
+                    const bool matchesBands = missing == 0 || (missing == 1 && missing < straightMissing);
+                    const bool supported = hint == ImageHint::PreferStacked
+                        && alternative.confidence >= .65;
+                    if (matchesBands && (supported || orientationScore(alternative) > orientationScore(recognized)))
+                        recognized = std::move(alternative);
+                }
+            }
+            lines.append(recognized.text);
         }
         return writeLines(lines) ? EXIT_SUCCESS : EXIT_FAILURE;
     } catch (const std::exception &) {

@@ -194,7 +194,7 @@ In the reading toolbar, choose **Highlight** and drag over a passage. Choose **U
 - Select the star to add or remove the current page's bookmark. Open **Bookmarks** to jump to a saved page.
 - Choose **Find text** at the bottom of the page to find words in the PDF’s embedded text. Select a result to open its page. Search uses the text available for extraction from the PDF. To search a PDF you imported in an earlier version of Quaderno, import the original file again.
 
-Imports run in the background with progress and cancellation, preserve the native source, and render only requested pages. There is no 150-page limit. Source limits are 48 MiB for PDF and 64 MiB for EPUB; an EPUB’s prepared PDF must fit within 48 MiB. Available library capacity and transfer limits still apply. Older raster imports keep their annotations; reimport the original as a separate copy to use the new reader. Choose **Save PDF** on Paper Pro or **Share → Save PDF** on Mac for an annotated PDF containing all pages, visible layers and page objects.
+Imports run in the background with progress and cancellation, preserve the native source, and render only requested pages. There is no 150-page limit. Source limits are 48 MiB for PDF and 64 MiB for EPUB. An EPUB’s prepared PDF must fit within 48 MiB. Available library capacity and transfer limits still apply. Older raster imports keep their annotations. Reimport the original as a separate copy to use the new reader. From **Share and export**, you can save an annotated PDF of the current page or the entire notebook. [Share, export and print](#share-export-and-print)
 
 Double-tap with a finger to zoom to 200% around the touched point; double-tap again to fit the whole page. The pen continues to annotate. Open the page counter for **Pages**, enter a page number and choose **Go**, then **Open**. **First** and **Last** select the ends of the document. Filter the overview by **All**, **Bookmarks** or **Annotated**; counts include annotations on hidden ink layers. The numeric keypad appears on Paper Pro when no hardware keyboard is connected.
 
@@ -266,16 +266,34 @@ You can unplug the cable after Quaderno starts. To reopen the app from the table
 
 If the connection drops, received chunks remain on the destination. Safely interrupted automatic work can retry with bounded waits and a fresh preview; **Resume transfer** also remains available. A previous approval is never reused, and an uncertain apply result needs review. Conflicting versions remain separate, and table formulas stay editable.
 
+## Share, export and print
+
+With a notebook open, select the **Share** icon to open **Share and export**. Choose the format and check the scope before saving or sharing. Item formats appear when the page contains or links to a compatible item.
+
+| Format | Contents |
+| --- | --- |
+| PDF | The current page or the entire notebook with its page backgrounds, visible ink layers, page items and notes. |
+| Markdown | Editable text in `.md`. The version with assets includes exportable attachments. Keep the Markdown file with its assets folder. |
+| draw.io | Editable shapes, labels and connectors for the selected diagram. |
+| CSV | Data for the selected chart or table. A table CSV contains the results of formulas. |
+| PNG | An image of the current page to attach to a message or document. |
+| Quaderno | An editable `.quaderno` copy of the entire notebook with its annotations. |
+| Original file | The original PDF or EPUB if stored in the notebook. Annotations added in Quaderno are in the annotated PDF. |
+
+On Mac, save the file or open the macOS share menu and choose a destination. When a Markdown file has attachments, sharing creates a ZIP that keeps their paths intact. To print, choose the PDF for the current page or the entire notebook, then select **Print…**. Press **⌘P** to print the entire notebook directly. The macOS print panel lets you choose the printer and print settings.
+
+On Paper Pro, save the annotated PDF or choose **Print from Mac** to open wireless sync. Use **Continue on Mac** to share the notebook and reopen the page, then open the print panel in Quaderno on Mac. To print from another app, transfer the saved PDF to the Mac and open it in Preview. [Wireless sync](#wireless-sync)
+
 ### Notes, Books, and iCloud on Mac
 
 To import a book, choose **Import from Apple Books** in Quaderno’s Mac library. **Open Apple Books** opens Books. Return to Quaderno and choose **Choose PDFs or EPUBs…** to select a local DRM-free copy. If a PDF from Books opens in Preview, use **File → Export** to save a copy. You can also select `.epub` packages that Finder shows as a single book. Apple Books handles access to its cloud library and protected Book Store titles. [PDFs in Books](https://support.apple.com/guide/books/ibkseed72068/mac) · [Export a PDF from Preview](https://support.apple.com/guide/preview/prvw0e8da223/mac)
 
 After importing, open the book in Quaderno. In **Wireless sync**, choose **Preview notebook transfer**, check the destination, and confirm the transfer. The size limit applies to the notebook prepared for transfer, including native sources, any older page images, and annotations. Updated apps transfer up to 64 MiB over either connection and resume missing parts after interruption. Wi-Fi is preferable for the first transfer of a large book. Older apps retain the 8 MiB Bluetooth limit. [Wireless sync](#wireless-sync)
 
-Drag a PDF or DRM-free EPUB from Finder into the Quaderno window to import it. You can also choose **Open With → Quaderno** in Finder. From an open notebook, choose **Share**, then drag **Current page** or **Entire notebook** to a Finder folder to export a PDF.
+Drag a PDF or DRM-free EPUB from Finder into the Quaderno window to import it. You can also choose **Open With → Quaderno** in Finder. From **Share and export → Files**, drag **Current page** or **Entire notebook** to a Finder folder to export a PDF.
 
-- To attach a notebook to **Notes**, choose **Share → Share PDF** and select **Notes** from the macOS share menu when available. Choose a new or existing note. You can also save the PDF and share it from Finder. [Share a file with Notes](https://support.apple.com/it-it/102223)
-- To add a notebook to **Books**, choose **Share → Save PDF**. In Books, choose **File → Import** and select the PDF. [Import PDFs into Books](https://support.apple.com/en-am/guide/books/ibkseed72068/mac)
+- To attach a notebook to **Notes**, choose PDF in **Share and export**, then select **Notes** from the macOS share menu when available. Choose a new or existing note. You can also save the PDF and share it from Finder. [Share a file with Notes](https://support.apple.com/it-it/102223)
+- To add a notebook to **Books**, save the PDF from **Share and export**. In Books, choose **File → Import** and select the PDF. [Import PDFs into Books](https://support.apple.com/en-am/guide/books/ibkseed72068/mac)
 - To keep a copy in **iCloud Drive**, select an iCloud Drive folder in the save dialog. Syncing copies in Notes or Books depends on your Apple iCloud settings. Edit those copies in the respective apps. [Notes with iCloud](https://support.apple.com/it-it/guide/icloud/-mm2d069f7097/icloud) · [Books with iCloud](https://support.apple.com/it-it/guide/icloud/mm3941ae3362/icloud)
 
 ## Settings

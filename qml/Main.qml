@@ -61,7 +61,7 @@ ApplicationWindow {
     readonly property var filteredBooks: organizer.filteredBooks(search.text)
     readonly property bool existingEditorPopupOpen: nameDialog.visible || appleShareView.visible
         || pageTemplateDialog.visible || pageItemDialog.visible || tableHandwritingDialog.visible || diagramHandwritingDialog.visible || pageOverview.visible
-        || penTools.visible || documentPicker.visible || pdfSavePicker.visible || pageSearch.visible
+        || penTools.visible || documentPicker.visible || pageSearch.visible
         || pageLayers.visible || pageTags.visible || chartDialog.visible || selectionDialog.visible || csvSavePicker.visible
         || inkTransform.visible || usbTransferDialog.visible || usbImportDialog.visible || tableChartDialog.visible
         || bookmarksDialog.visible || wirelessDialog.visible || markdownDialog.visible || markdownSavePicker.visible
@@ -508,12 +508,7 @@ ApplicationWindow {
 
     function shareBook() {
         inkPage.cancelDrawing()
-        if (appleShare.available) {
-            appleShareView.open()
-        } else {
-            pdfSavePicker.selectedFile = notebook.suggestedPdfName()
-            pdfSavePicker.open()
-        }
+        appleShareView.begin(false, selectedPageItem)
     }
 
     function nameBook(renaming: bool) {
@@ -879,6 +874,16 @@ ApplicationWindow {
     }
 
     Shortcut {
+        sequences: [StandardKey.Print]
+        enabled: window.editing && window.appleShare.available && !window.appleShare.busy
+            && !window.pinLock.locked && !window.standby.sleeping && !window.editorPopupOpen && !inkPage.drawing
+        onActivated: {
+            const pdf = window.notebook.shareOptions().find(option => option.format === "pdf")
+            if (pdf) window.appleShare.printPdf(window.notebook, pdf)
+        }
+    }
+
+    Shortcut {
         sequence: "Ctrl+0"
         enabled: window.editing && !window.showingSettings && !window.notebook.hasPageBackground
             && window.canvasZoom > 1 && !window.editorPopupOpen && !inkPage.drawing
@@ -971,7 +976,6 @@ ApplicationWindow {
                 pageOverview.close()
                 penTools.close()
                 documentPicker.close()
-                pdfSavePicker.close()
                 markdownSavePicker.close()
                 markdownEditor.close()
                 imagePicker.close()
@@ -1135,8 +1139,9 @@ ApplicationWindow {
                 }
 
                 TopButton {
+                    objectName: "shareBookButton"
                     visible: window.editing
-                    text: window.appleShare.available ? qsTr("Condividi") : qsTr("Salva PDF")
+                    text: qsTr("Condividi")
                     iconName: "share"
                     iconOnly: window.logicalWidth < 680 * window.uiScale
                     quiet: true
@@ -1272,7 +1277,7 @@ ApplicationWindow {
             onOpenWireless: wirelessDialog.begin()
             onOpenObsidianSync: obsidianSyncDialog.begin(organizer.destinationFolderId)
             onOpenMarkdown: markdownDialog.begin(window.editing, organizer.destinationFolderId)
-            onOpenApple: appleShareView.open()
+            onOpenApple: appleShareView.begin(true, "")
             onOpenAppleBooks: appleBooksDialog.open()
             onImportFiles: window.openDocumentPicker()
             onRefreshScreen: window.epaperRefresh.request()
@@ -2464,6 +2469,9 @@ ApplicationWindow {
         documentExchange: window.documentExchange
         uiScale: window.uiScale
         tabletMode: window.tabletMode
+        locked: window.pinLock.locked || window.standby.sleeping
+        canTransfer: window.wireless.available
+        onTransferRequested: wirelessDialog.begin()
     }
 
     MarkdownDialog {
@@ -3069,15 +3077,6 @@ ApplicationWindow {
                 }
             }
         }
-    }
-
-    FileDialog {
-        id: pdfSavePicker
-        title: qsTr("Salva PDF")
-        fileMode: FileDialog.SaveFile
-        defaultSuffix: "pdf"
-        nameFilters: [qsTr("PDF (*.pdf)")]
-        onAccepted: window.notebook.exportDocument(selectedFile)
     }
 
     FileDialog {

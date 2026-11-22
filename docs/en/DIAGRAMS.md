@@ -2,19 +2,17 @@
 
 **English** · [Italiano](../DIAGRAMMI.md)
 
-Quaderno’s **Diagrams** section collects editable flowcharts alongside Books, Writing, Charts and Tables. A diagram contains shapes, their labels and directed connections. It can share a notebook page with handwriting, images, text, charts and tables.
+Quaderno’s **Diagrams** section collects editable flowcharts and UML diagrams alongside Books, Writing, Charts and Tables. A diagram contains shapes, their labels and directed connections. It can share a notebook page with handwriting, images, text, charts and tables.
 
-This guide includes extending existing diagrams in **0.2.10 development**. Mac and ARM builds passed all seven affected automated suites and strict rendered desktop/tablet startup checks. The added cases cover full-diagram review, target choice, preserved labels and positions, retained ink, undo and recovery after reopening. On November 18, 2026, the user confirmed the extension on Paper Pro: the preview and applied result contain the complete updated diagram as one editable item, with previous labels preserved. The installed Mac app remains at 0.2.0.
-
-Earlier verification covers the 0.2.8 recognizer: its first installation passed automated/native checks, and the user confirmed automatic portrait-to-landscape rotation. A real freehand drawing exposed an overly strict recognition case; the revised tolerances below passed Mac and ARM geometry/UI and strict startup checks. The corrected build was installed on Paper Pro and passed strict native/AppLoad startup at 1620 × 2160 without QML errors. On November 18, 2026, the user confirmed that recognition, applying the result and opening the editor to modify it work on the tested flowchart on Paper Pro. The subsequent 0.2.9 synchronization update has already been verified and installed; these confirmations do not verify the 0.2.10 extension. See the [verification status](SETTINGS.md#verification-boundary) and [changelog](../../CHANGELOG.md).
+The **0.2.23 source preview** adds nine UML shapes to the diagram editor. [Changelog](../../CHANGELOG.md)
 
 ## Create and edit
 
 Open **Diagrams** to create a diagram notebook or find diagrams already present in other notebooks. An empty diagram workspace remains accessible before its first recognized shape. Opening a library entry shows its page; use the editing action to open its diagram editor.
 
-In the **0.2.14 development editor**, open **Shapes and connectors** to build a flowchart. On a wide screen the shape palette and inspector flank the canvas. On a narrow screen they sit above and below the drawing area.
+Open **Shapes and connectors** to build a flowchart. On a wide screen the shape palette and inspector flank the canvas. On a narrow screen they sit above and below the drawing area.
 
-1. Tap or drag a process box, start/end shape, decision, data shape or note from the palette. Drag a placed shape to move it and use its resize handle to change its size.
+1. Tap or drag a process, start/end, decision, data or note shape from the palette. Open **More shapes** for database, subprocess, display, manual input, preparation, delay, off-page connector and cloud. Drag a placed shape to move it and use its resize handle to change its size.
 2. Drag the connector handle from the first shape to the second or choose **Connect** and tap the two shapes in order.
 3. Select a shape or arrow to edit its label and properties in the inspector. Change shape type, duplicate a shape, reverse an arrow or choose straight or orthogonal routing.
 4. Use the lasso and arrangement tools to align and distribute shapes. Grid snapping, zoom and pan help position them. Use the editor's undo and redo while editing the draft.
@@ -22,6 +20,20 @@ In the **0.2.14 development editor**, open **Shapes and connectors** to build a 
 You can still sketch on the page and use **Recognize diagram**, or open a compatible draw.io file from the Diagram toolbar.
 
 Saving the editor updates the diagram object. Page-level undo and the editor’s draft history are separate mechanisms.
+
+## Create a UML diagram
+
+In **Shapes and connectors**, open **UML**. Tap or drag **Class**, **Interface**, **Object**, **Actor**, **Use case**, **Component**, **Package**, **Node** (deployment), or **Lifeline**. Select a shape to edit its label and use the editor’s connectors to link it to other shapes.
+
+In **Edit label**, leave a blank line between the name and attributes. For a class or interface, also leave a blank line before the operations. With the on-screen keyboard, select **New line** twice to insert a blank line.
+
+## Exchange diagrams with draw.io
+
+Import a `.drawio` or compatible XML file to edit supported shapes, labels and directed connections on its first page. The expanded palette maps supported cylinder stencils to database, predefined-process stencils to subprocess and hexagons to preparation. A manual-input stencil now has its own shape. Parallelograms still represent data and ovals represent start/end. Files created with the original palette retain their saved shape types. Review import notices for missing elements or simplified styling.
+
+The `.drawio` import and export support all nine UML symbols in the palette. To identify a use case on import, give it an explicit UML style in the file. Quaderno interprets a generic ellipse as a start or end shape. UML relationship decorations may be simplified during import.
+
+Export `.drawio` from the diagram menu to continue editing the supported shapes and connections in draw.io. To keep notebook pages, annotations and internal links, transfer the native `.quaderno` file.
 
 ## Recognize a hand-drawn diagram
 
@@ -53,9 +65,13 @@ Existing labels are read-only during this review and OCR does not overwrite them
 
 ## Labels and original ink
 
-Text recognition is separate from shape recognition and uses the handwriting engine already installed with Quaderno. The geometric analysis works offline without a new AI model or cloud account. Label OCR availability and languages depend on the installed handwriting helper and dictionaries.
+The **Recognize diagram** action groups native Marker strokes for the local handwriting engine. Write each label inside its outline, with space between the text and the border. Shape and handwriting recognition run on the device. Available languages depend on the installed helper and dictionaries.
 
-Strokes fully inside an identified shape are proposed as that shape’s label. A small nearby group can be proposed for a connection only when its association is unambiguous. Shapes and arrowheads are excluded from label OCR.
+Quaderno uses recognized outlines to associate contained strokes with shapes. It can also propose a small group near a connection when the association is unambiguous. Review the highlighted target before applying.
+
+Starting with 0.2.21, Quaderno enlarges small Marker writing for recognition and uses stroke order to infer the orientation of a sideways line. If a suggestion is wrong, select the label, choose **Horizontal**, **Stacked letters**, **Rotate clockwise** or **Rotate counterclockwise**, then select **Recognize this label again**. This works on a temporary copy of your strokes.
+
+For a **mixed page** with a PDF or image background on Paper Pro, the optional image OCR proposes captions for the shapes detected inside the selected area. The helper tries both reading directions for vertical crops and looks for upright letters written in a stack. Starting with 0.2.23, it also looks for small captions just above or below boxes and tries several readings for small horizontal crops. Incomplete strokes, overlapping shapes and captions between nodes may require manual correction. Open **Review shapes and labels** to compare the draft with the original page and edit the text on each shape before saving. [Mixed-page recognition](USER_GUIDE.md#recognize-a-mixed-page-on-paper-pro) · [Image OCR helper](../../tools/raster-ocr/README.md)
 
 Each label can be edited or excluded. If OCR fails, is unavailable, or is stopped, a blank label does not prevent the shapes from being applied: the untranscribed ink remains on the page. Excluded labels also retain their original ink. Manually entering a nonblank accepted label permits replacement of its assigned ink when stroke replacement is enabled.
 
@@ -80,7 +96,7 @@ Unrecognized strokes and rejected or empty label groups are never removed by the
 - **draw.io:** import supported `.drawio`/XML diagrams and export editable `.drawio` files. Unsupported external elements may be omitted or simplified; review import notices.
 - **Transfer and backup:** the portable `.quaderno` document and existing notebook transfer/backup flows retain the editable diagram model. Transferring files does not require a new diagram service.
 
-Update **both apps to 0.2.10 or later** before transferring extended diagrams that require **portable format 10**. This format preserves the diagram’s visual scale and the editable baseline used to recover additions. The minimum format is chosen from the contents: notebooks without these new metadata fields can retain an earlier version. The installed Mac 0.2.0 app has not been updated and cannot import format 10; version 0.2.9 also predates this support. See [data versions and recovery](DATA.md#library-format-versions).
+Use **0.2.23 or later on both devices** to transfer a notebook with UML shapes, which require **portable format 14**. The flowchart shapes added in 0.2.20 require **format 13**. Quaderno picks the minimum version required by the contents, including any shapes in the recovery baseline. [Data versions and recovery](DATA.md#library-format-versions)
 
 Apps older than 0.2.8 may also omit the dedicated workspace classification or the diagram’s stored original-handwriting metadata when importing and exporting. A newer app preserves an existing local workspace when an older peer omits the classification on an update, but that does not make a round trip through an older app fully lossless. Keep a current-version notebook backup before using an older peer. Copying a diagram into another notebook intentionally copies its editable geometry and labels without the original page’s recovery-ink source.
 

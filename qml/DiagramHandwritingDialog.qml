@@ -28,6 +28,13 @@ Dialog {
     property bool running: false
     property bool loadingEditor: false
     property bool keyboardOpen: false
+    readonly property var labelOrientations: [
+        {id: "auto", title: qsTr("Orientamento automatico")},
+        {id: "horizontal", title: qsTr("Orizzontale")},
+        {id: "stacked", title: qsTr("Lettere in colonna")},
+        {id: "clockwise", title: qsTr("Ruota a destra")},
+        {id: "counterclockwise", title: qsTr("Ruota a sinistra")}
+    ]
     readonly property bool processing: running || recognizer.busy
     readonly property var selectedLabel: selectedLabelIndex >= 0 && selectedLabelIndex < labelEntries.length
         ? labelEntries[selectedLabelIndex] : null
@@ -145,7 +152,7 @@ Dialog {
                 const preserved = existing
                 return {id: entry.item.id, kind: entry.kind, number: entry.number,
                     text: entry.item.text || "", included: true, hasInk: Boolean(group) && !preserved,
-                    preserved: preserved, existing: existing,
+                    preserved: preserved, existing: existing, orientation: "auto",
                     strokes: group && !preserved ? group.strokes : [], status: group && !preserved ? "pending" : "empty", error: ""}
             })
         selectedLabelIndex = labelEntries.length ? 0 : -1
@@ -198,7 +205,8 @@ Dialog {
             }
             recognitionIndex = index
             replaceEntry(index, {status: "recognizing", error: ""})
-            recognizer.recognize(label.strokes, recognitionLanguage === "auto" ? notebook.handwritingLanguage : recognitionLanguage)
+            recognizer.recognizeDiagramLabel(label.strokes,
+                recognitionLanguage === "auto" ? notebook.handwritingLanguage : recognitionLanguage, label.orientation)
             return
         }
         recognitionIndex = -1
@@ -443,6 +451,19 @@ Dialog {
                             ? qsTr("Accorcia l’etichetta: massimo %1 caratteri.").arg(editor.selectedLabel.kind === "edge" ? 120 : 200)
                             : editor.selectedLabel ? editor.selectedLabel.error : ""
                         color: "#942922"
+                    }
+                    ComboBox {
+                        objectName: "diagramRecognitionLabelOrientation"
+                        Layout.fillWidth: true
+                        model: editor.labelOrientations
+                        textRole: "title"
+                        valueRole: "id"
+                        currentIndex: editor.selectedLabel
+                            ? indexOfValue(editor.selectedLabel.orientation) : 0
+                        visible: editor.selectedLabel !== null && editor.selectedLabel.hasInk
+                        enabled: !editor.processing && editor.selectedLabel !== null && editor.selectedLabel.included
+                        Accessible.name: qsTr("Orientamento per il riconoscimento dell’etichetta")
+                        onActivated: editor.replaceEntry(editor.selectedLabelIndex, {orientation: currentValue})
                     }
                     Action {
                         text: qsTr("Riconosci di nuovo questa etichetta")

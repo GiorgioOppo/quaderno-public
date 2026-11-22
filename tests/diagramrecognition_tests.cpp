@@ -1,5 +1,6 @@
 #include "diagramrecognizer.h"
 #include "diagramexport.h"
+#include "diagramitem.h"
 #include "notebook.h"
 #include "pagecontent.h"
 #include "inkselection.h"
@@ -829,6 +830,133 @@ private slots:
         QVERIFY(result.value("unassignedIndexes").toList().isEmpty());
     }
 
+    void flowchartShapesHaveVisibleOutlinesAndRoundTripThroughDrawio()
+    {
+        const QStringList shapes{QStringLiteral("database"), QStringLiteral("subprocess"),
+            QStringLiteral("display"), QStringLiteral("manual-input"), QStringLiteral("preparation"),
+            QStringLiteral("delay"), QStringLiteral("off-page"), QStringLiteral("cloud")};
+        const QRectF specimen(20, 30, 140, 80);
+        QVariantList nodes;
+        for (qsizetype i = 0; i < shapes.size(); ++i) {
+            const auto &shape = shapes.at(i);
+            const auto path = diagramNodeOutline(shape, specimen);
+            QVERIFY2(!path.isEmpty() && path.contains(specimen.center()), qPrintable(shape));
+            QVERIFY2(specimen.adjusted(-.001, -.001, .001, .001).contains(path.boundingRect()), qPrintable(shape));
+            QVERIFY(diagramShapeRequiresNewFormat(shape));
+            nodes.append(QVariantMap{{"id", QStringLiteral("node-%1").arg(i)}, {"shape", shape},
+                {"text", shape}, {"x", .05 + (i % 4) * .24}, {"y", .10 + (i / 4) * .48},
+                {"width", .18}, {"height", .22}});
+        }
+        for (const auto &shape : {"process", "terminal", "decision", "data", "note"})
+            QVERIFY(!diagramShapeRequiresNewFormat(QString::fromLatin1(shape)));
+
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const auto url = QUrl::fromLocalFile(directory.filePath(QStringLiteral("flowchart.drawio")));
+        const QVariantMap diagram{{"type", "diagram"}, {"nodes", nodes},
+            {"edges", QVariantList{QVariantMap{{"id", "edge-1"}, {"from", "node-0"},
+                {"to", "node-7"}, {"text", "Archive"}}}}};
+        DiagramExport exporter;
+        const QString saveError = exporter.save(url, diagram, QStringLiteral("Flowchart shapes"));
+        QVERIFY2(saveError.isEmpty(), qPrintable(saveError));
+        const auto imported = exporter.load(url);
+        QVERIFY2(imported.value("error").toString().isEmpty(), qPrintable(imported.value("error").toString()));
+        const auto result = imported.value("diagram").toMap();
+        const auto importedNodes = result.value("nodes").toList();
+        QCOMPARE(importedNodes.size(), shapes.size());
+        for (qsizetype i = 0; i < shapes.size(); ++i) {
+            QCOMPARE(importedNodes.at(i).toMap().value("shape").toString(), shapes.at(i));
+            QCOMPARE(importedNodes.at(i).toMap().value("text").toString(), shapes.at(i));
+        }
+        const auto edges = result.value("edges").toList();
+        QCOMPARE(edges.size(), 1);
+        QCOMPARE(edges.first().toMap().value("text").toString(), QStringLiteral("Archive"));
+        QCOMPARE(edges.first().toMap().value("from"), importedNodes.first().toMap().value("id"));
+        QCOMPARE(edges.first().toMap().value("to"), importedNodes.last().toMap().value("id"));
+    }
+
+    void umlShapesAndEditableCompartmentsRoundTripThroughDrawio()
+    {
+        const QList<QPair<QString, QString>> specimens{
+            {QStringLiteral("uml-class"), QStringLiteral("Book\n\n-title: String\n-author: String\n\n+open()")},
+            {QStringLiteral("uml-interface"), QStringLiteral("Editable\n\n\n\n+save()\n+undo()")},
+            {QStringLiteral("uml-object"), QStringLiteral("copy: Book\n\ntitle = <First edition>")},
+            {QStringLiteral("uml-actor"), QStringLiteral("Reader")},
+            {QStringLiteral("uml-use-case"), QStringLiteral("Open book")},
+            {QStringLiteral("uml-component"), QStringLiteral("Library")},
+            {QStringLiteral("uml-package"), QStringLiteral("Model")},
+            {QStringLiteral("uml-deployment"), QStringLiteral("Paper Pro")},
+            {QStringLiteral("uml-lifeline"), QStringLiteral("Session")},
+            {QStringLiteral("uml-class"), QStringLiteral("Heading only")},
+            {QStringLiteral("uml-interface"), QString(200, u'I')},
+        };
+        QVariantList nodes;
+        for (qsizetype index = 0; index < specimens.size(); ++index) {
+            const auto &[shape, label] = specimens.at(index);
+            nodes.append(QVariantMap{{"id", QStringLiteral("node-%1").arg(index)}, {"shape", shape},
+                {"text", label}, {"x", .05 + (index % 4) * .24}, {"y", .04 + (index / 4) * .32},
+                {"width", .18}, {"height", .25}});
+        }
+        const QVariantMap diagram{{"type", "diagram"}, {"nodes", nodes},
+            {"edges", QVariantList{QVariantMap{{"id", "edge-1"}, {"from", "node-0"},
+                {"to", "node-4"}, {"text", "opens"}}}}};
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const auto url = QUrl::fromLocalFile(directory.filePath(QStringLiteral("uml.drawio")));
+        DiagramExport exporter;
+        const QString saveError = exporter.save(url, diagram, QStringLiteral("UML"));
+        QVERIFY2(saveError.isEmpty(), qPrintable(saveError));
+        const auto imported = exporter.load(url);
+        QVERIFY2(imported.value("error").toString().isEmpty(), qPrintable(imported.value("error").toString()));
+        QVERIFY2(imported.value("warnings").toString().isEmpty(), qPrintable(imported.value("warnings").toString()));
+        const auto result = imported.value("diagram").toMap();
+        const auto importedNodes = result.value("nodes").toList();
+        QCOMPARE(importedNodes.size(), specimens.size());
+        for (qsizetype index = 0; index < specimens.size(); ++index) {
+            QCOMPARE(importedNodes.at(index).toMap().value("shape").toString(), specimens.at(index).first);
+            QCOMPARE(importedNodes.at(index).toMap().value("text").toString(), specimens.at(index).second);
+        }
+        const auto edges = result.value("edges").toList();
+        QCOMPARE(edges.size(), 1);
+        QCOMPARE(edges.first().toMap().value("from"), importedNodes.at(0).toMap().value("id"));
+        QCOMPARE(edges.first().toMap().value("to"), importedNodes.at(4).toMap().value("id"));
+    }
+
+    void importsDrawioClassifierRowsWithoutReinterpretingGenericEllipses()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        QFile source(directory.filePath(QStringLiteral("external-uml.drawio")));
+        const QByteArray xml = R"XML(
+            <mxGraphModel pageWidth="500" pageHeight="400"><root>
+              <mxCell id="0"/><mxCell id="1" parent="0"/>
+              <mxCell id="container" value="&amp;laquo;interface&amp;raquo;&lt;br&gt;&lt;b&gt;Storage&lt;/b&gt;"
+                style="swimlane;html=1;horizontal=1;startSize=40;childLayout=stackLayout;horizontalStack=0;collapsible=0;"
+                vertex="1" parent="1"><mxGeometry as="geometry" x="10" y="10" width="160" height="160"/></mxCell>
+              <mxCell id="field" value="key: String" style="html=1;strokeColor=none;fillColor=none;"
+                vertex="1" parent="container"><mxGeometry as="geometry" y="40" width="160" height="24"/></mxCell>
+              <mxCell id="separator" style="line;strokeColor=#202020;"
+                vertex="1" parent="container"><mxGeometry as="geometry" y="64" width="160" height="0"/></mxCell>
+              <mxCell id="method" value="save()" style="text;html=1;"
+                vertex="1" parent="container"><mxGeometry as="geometry" y="64" width="160" height="24"/></mxCell>
+              <mxCell id="oval" value="Flowchart end" style="ellipse;whiteSpace=wrap;"
+                vertex="1" parent="1"><mxGeometry as="geometry" x="200" y="10" width="120" height="60"/></mxCell>
+            </root></mxGraphModel>
+        )XML";
+        QVERIFY(source.open(QIODevice::WriteOnly));
+        QCOMPARE(source.write(xml), xml.size());
+        source.close();
+        DiagramExport exporter;
+        const auto result = exporter.load(QUrl::fromLocalFile(source.fileName()));
+        QVERIFY2(result.value("error").toString().isEmpty(), qPrintable(result.value("error").toString()));
+        QVERIFY2(result.value("warnings").toString().isEmpty(), qPrintable(result.value("warnings").toString()));
+        const auto nodes = result.value("diagram").toMap().value("nodes").toList();
+        QCOMPARE(nodes.size(), 2);
+        QCOMPARE(nodes.at(0).toMap().value("shape").toString(), QStringLiteral("uml-interface"));
+        QCOMPARE(nodes.at(0).toMap().value("text").toString(), QStringLiteral("«interface»\nStorage\n\nkey: String\n\nsave()"));
+        QCOMPARE(nodes.at(1).toMap().value("shape").toString(), QStringLiteral("terminal"));
+    }
+
     void overshotOvalsAndShortPenTailsBecomeOneEditableTerminal_data()
     {
         QTest::addColumn<bool>("tail");
@@ -870,13 +998,18 @@ private slots:
         };
         const QVariantList ink{
             drawnPath({rotate({.25, .50}), rotate({.386, .594}), rotate({.25, .68})}),
-            drawnPath({rotate({.254, .678}), rotate({.12, .59}), rotate({.247, .502})})};
+            drawnPath({rotate({.254, .678}), rotate({.12, .59}), rotate({.247, .502})}),
+            drawnPath({{.345, .6075}, {.351, .613}})};
         const auto result = DiagramRecognition::recognize(ink);
         QVERIFY2(result.value("error").toString().isEmpty(), qPrintable(result.value("error").toString()));
         const auto nodes = result.value("diagram").toMap().value("nodes").toList();
         QCOMPARE(nodes.size(), 1);
         QCOMPARE(nodes.first().toMap().value("shape").toString(), QStringLiteral("decision"));
         QCOMPARE(indexSet(candidatesOfKind(result, "node").first().toMap().value("indexes").toList()), QSet<int>({0, 1}));
+        const auto labels = result.value("labelGroups").toList();
+        QCOMPARE(labels.size(), 1);
+        QCOMPARE(labels.first().toMap().value("id"), nodes.first().toMap().value("id"));
+        QCOMPARE(indexSet(labels.first().toMap().value("indexes").toList()), QSet<int>{2});
         QVERIFY(result.value("unassignedIndexes").toList().isEmpty());
     }
 

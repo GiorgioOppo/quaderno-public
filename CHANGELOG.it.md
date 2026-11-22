@@ -2,6 +2,27 @@
 
 [English](CHANGELOG.md) · **Italiano**
 
+## 0.2.23 in sviluppo
+
+- Aggiunge una palette UML modificabile con classi, interfacce, oggetti, attori, casi d’uso, componenti, pacchetti, nodi di distribuzione e linee di vita. Le forme si possono scambiare tramite file draw.io. I quaderni con forme UML usano il formato portabile 14.
+- Migliora il riconoscimento delle etichette manoscritte brevi vicino alle forme piccole nei diagrammi di PDF e immagini. Adatta il testo delle etichette alle forme quando mostra il diagramma sul foglio.
+
+## 0.2.22 in sviluppo
+
+- Riunisce condivisione ed esportazione su Paper Pro e Mac. Il menu propone PDF annotato per una pagina o tutto il quaderno, PNG della pagina corrente, Markdown con allegati facoltativi, draw.io modificabile, CSV, il file nativo Quaderno e il PDF o EPUB originale quando conservato.
+- Usa le finestre native di macOS per condividere e stampare. La condivisione del Markdown con allegati crea uno ZIP. Sul Paper Pro apri la sincronizzazione wireless per trasferire il quaderno al Mac e stamparlo oppure salva un PDF annotato.
+
+## 0.2.21 in sviluppo
+
+- Migliora il riconoscimento delle etichette piccole, ruotate o con lettere in colonna nei diagrammi. Per i tratti del Marker puoi riprovare una singola etichetta scegliendo l’orientamento. Per PDF e immagini, il motore OCR opzionale aggiornato valuta anche le lettere in colonna nei ritagli verticali.
+
+## 0.2.20 in sviluppo
+
+- Migliora l’associazione delle etichette manoscritte alle forme. Rivedi e correggi i testi proposti prima di applicare il diagramma.
+- Aggiunge database, sottoprocesso, schermo, input manuale, preparazione, attesa, connettore fuori pagina e nuvola alla palette modificabile e allo scambio con i file draw.io compatibili. I quaderni nativi con queste forme richiedono il formato portabile 13. Quelli con le forme della palette originale usano la versione minima richiesta dai contenuti.
+
+Vedi [Diagrammi](docs/DIAGRAMMI.md).
+
 ## 0.2.19 in sviluppo
 
 - Disegna con il Marker un contorno a mano libera attorno al diagramma, alla tabella o al testo di una pagina mista. Quaderno chiude il contorno quando sollevi la penna.

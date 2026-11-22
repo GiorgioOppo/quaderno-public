@@ -54,11 +54,11 @@ struct Row {
     int letters = 0;
 };
 
-Mask inkMask(const QImage &source)
+Mask inkMask(const QImage &source, int sideLimit = maximumSide)
 {
     QImage image = source;
-    if (std::max(image.width(), image.height()) > maximumSide)
-        image = image.scaled(maximumSide, maximumSide, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    if (std::max(image.width(), image.height()) > sideLimit)
+        image = image.scaled(sideLimit, sideLimit, Qt::KeepAspectRatio, Qt::SmoothTransformation);
     image = image.convertToFormat(QImage::Format_ARGB32);
     const int width = image.width();
     const int height = image.height();
@@ -415,6 +415,41 @@ QVariantList MixedPageTextInk::lines(const QImage &source)
         }
         const QRectF bounds(double(row.bounds.x()) / mask.width, double(row.bounds.y()) / mask.height,
                             double(row.bounds.width()) / mask.width, double(row.bounds.height()) / mask.height);
+        if (!strokes.isEmpty())
+            result.append(QVariantMap{{QStringLiteral("strokes"), strokes}, {QStringLiteral("bounds"), bounds}});
+    }
+    return result;
+}
+
+QVariantList MixedPageTextInk::diagramComponents(const QImage &source)
+{
+    if (source.isNull())
+        return {};
+    constexpr int diagramSideLimit = 1800;
+    constexpr qsizetype componentLimit = 2400;
+    constexpr qsizetype strokeLimit = 4000;
+    auto mask = inkMask(source, diagramSideLimit);
+    if (mask.width < 3 || mask.height < 3)
+        return {};
+    const int ruleLength = std::max(36, std::min(mask.width, mask.height) / 16);
+    const auto rules = removeRules(mask, ruleLength);
+    thin(mask);
+    auto graph = strokeGraph(mask);
+    auto components = letterComponents(mask, graph, rules, ruleLength);
+    QVariantList result;
+    qsizetype strokeCount = 0;
+    for (auto &component : components) {
+        if (result.size() >= componentLimit || strokeCount >= strokeLimit)
+            break;
+        const auto &box = component.bounds;
+        if (component.pixels.size() < 2 || box.width() > qMax(28, mask.width / 18)
+            || box.height() > qMax(28, mask.height / 24))
+            continue;
+        const QRectF bounds(double(box.x()) / mask.width, double(box.y()) / mask.height,
+                            double(box.width()) / mask.width, double(box.height()) / mask.height);
+        QVariantList strokes;
+        appendStrokes(mask, graph, component.pixels, strokes);
+        strokeCount += strokes.size();
         if (!strokes.isEmpty())
             result.append(QVariantMap{{QStringLiteral("strokes"), strokes}, {QStringLiteral("bounds"), bounds}});
     }

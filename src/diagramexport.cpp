@@ -6,6 +6,7 @@
 #include <QFileInfo>
 #include <QHash>
 #include <QPointF>
+#include <QRectF>
 #include <QRegularExpression>
 #include <QSaveFile>
 #include <QSet>
@@ -17,6 +18,8 @@
 namespace {
 constexpr qreal pageWidth = 800;
 constexpr qreal pageHeight = 1067;
+const QString compartmentBreak = QStringLiteral("\n\n");
+const QString interfaceStereotype = QStringLiteral("«interface»");
 
 QString drawioStyle(const QString &shape)
 {
@@ -26,20 +29,92 @@ QString drawioStyle(const QString &shape)
         {QStringLiteral("decision"), QStringLiteral("shape=rhombus;perimeter=rhombusPerimeter;")},
         {QStringLiteral("data"), QStringLiteral("shape=parallelogram;perimeter=parallelogramPerimeter;")},
         {QStringLiteral("note"), QStringLiteral("shape=rectangle;dashed=1;")},
+        {QStringLiteral("database"), QStringLiteral("shape=mxgraph.flowchart.database;")},
+        {QStringLiteral("subprocess"), QStringLiteral("shape=process;size=0.13;")},
+        {QStringLiteral("display"), QStringLiteral("shape=mxgraph.flowchart.display;")},
+        {QStringLiteral("manual-input"), QStringLiteral("shape=manualInput;boundedLbl=1;size=26;")},
+        {QStringLiteral("preparation"), QStringLiteral("shape=hexagon;perimeter=hexagonPerimeter2;size=0.22;")},
+        {QStringLiteral("delay"), QStringLiteral("shape=mxgraph.flowchart.delay;")},
+        {QStringLiteral("off-page"), QStringLiteral("shape=offPageConnector;size=0.31;")},
+        {QStringLiteral("cloud"), QStringLiteral("shape=cloud;")},
+        {QStringLiteral("uml-actor"), QStringLiteral("shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;")},
+        {QStringLiteral("uml-use-case"), QStringLiteral("shape=ellipse;perimeter=ellipsePerimeter;quadernoUml=uml-use-case;")},
+        {QStringLiteral("uml-component"), QStringLiteral("shape=module;jettyWidth=10;jettyHeight=4;")},
+        {QStringLiteral("uml-package"), QStringLiteral("shape=folder;tabWidth=40;tabHeight=18;tabPosition=left;boundedLbl=1;")},
+        {QStringLiteral("uml-deployment"), QStringLiteral("shape=cube;size=10;direction=south;boundedLbl=1;")},
+        {QStringLiteral("uml-lifeline"), QStringLiteral("shape=umlLifeline;perimeter=lifelinePerimeter;size=30;")},
     };
-    return shapes.value(shape) + QStringLiteral("whiteSpace=wrap;html=0;align=center;verticalAlign=middle;"
-                                                "fillColor=#ffffff;strokeColor=#202020;fontColor=#202020;fontSize=16;");
+    const QString verticalAlign = shape == QStringLiteral("uml-actor") ? QString{} : QStringLiteral("verticalAlign=middle;");
+    return shapes.value(shape) + verticalAlign + QStringLiteral("whiteSpace=wrap;html=0;align=center;"
+                                                               "fillColor=#ffffff;strokeColor=#202020;fontColor=#202020;fontSize=16;");
 }
 
-void geometry(QXmlStreamWriter &xml, const QVariantMap &node, qreal width, qreal height)
+void geometry(QXmlStreamWriter &xml, const QRectF &rect)
 {
     xml.writeStartElement(QStringLiteral("mxGeometry"));
     xml.writeAttribute(QStringLiteral("as"), QStringLiteral("geometry"));
-    xml.writeAttribute(QStringLiteral("x"), QString::number(node.value(QStringLiteral("x")).toReal() * width, 'g', 15));
-    xml.writeAttribute(QStringLiteral("y"), QString::number(node.value(QStringLiteral("y")).toReal() * height, 'g', 15));
-    xml.writeAttribute(QStringLiteral("width"), QString::number(node.value(QStringLiteral("width")).toReal() * width, 'g', 15));
-    xml.writeAttribute(QStringLiteral("height"), QString::number(node.value(QStringLiteral("height")).toReal() * height, 'g', 15));
+    xml.writeAttribute(QStringLiteral("x"), QString::number(rect.x(), 'g', 15));
+    xml.writeAttribute(QStringLiteral("y"), QString::number(rect.y(), 'g', 15));
+    xml.writeAttribute(QStringLiteral("width"), QString::number(rect.width(), 'g', 15));
+    xml.writeAttribute(QStringLiteral("height"), QString::number(rect.height(), 'g', 15));
     xml.writeEndElement();
+}
+
+void vertex(QXmlStreamWriter &xml, const QString &id, const QString &parent, const QString &label,
+            const QString &style, const QRectF &rect)
+{
+    xml.writeStartElement(QStringLiteral("mxCell"));
+    xml.writeAttribute(QStringLiteral("id"), id);
+    xml.writeAttribute(QStringLiteral("vertex"), QStringLiteral("1"));
+    xml.writeAttribute(QStringLiteral("parent"), parent);
+    if (parent != QStringLiteral("1"))
+        xml.writeAttribute(QStringLiteral("connectable"), QStringLiteral("0"));
+    xml.writeAttribute(QStringLiteral("value"), label);
+    xml.writeAttribute(QStringLiteral("style"), style);
+    geometry(xml, rect);
+    xml.writeEndElement();
+}
+
+void classifier(QXmlStreamWriter &xml, const QString &id, const QString &shape, const QString &label, const QRectF &rect)
+{
+    const bool isObject = shape == QStringLiteral("uml-object");
+    const bool isInterface = shape == QStringLiteral("uml-interface");
+    const qsizetype compartmentCount = isObject ? 2 : 3;
+    auto parts = label.split(compartmentBreak);
+    while (parts.size() > compartmentCount) {
+        const QString tail = parts.takeLast();
+        parts.last() += compartmentBreak + tail;
+    }
+    QString heading = parts.first();
+    const qreal headerHeight = rect.height() * (isInterface ? 0.38 : 0.28);
+    QString style = QStringLiteral("swimlane;quadernoUml=%1;horizontal=1;startSize=%2;collapsible=0;"
+                                   "childLayout=stackLayout;horizontalStack=0;resizeParent=1;resizeLast=0;"
+                                   "spacing=2;fontStyle=%3;").arg(shape, QString::number(headerHeight),
+                                       isObject ? QStringLiteral("4") : QStringLiteral("1"));
+    if (isInterface && !heading.startsWith(interfaceStereotype, Qt::CaseInsensitive)
+        && !heading.startsWith(QStringLiteral("<<interface>>"), Qt::CaseInsensitive)) {
+        heading.prepend(interfaceStereotype + u'\n');
+        style += QStringLiteral("quadernoUmlStereotype=1;");
+    }
+    vertex(xml, id, QStringLiteral("1"), heading, style + drawioStyle(shape), rect);
+
+    const qreal dividerHeight = isObject ? 0 : qMin(4.0, rect.height() * 0.05);
+    const qreal sectionHeight = (rect.height() - headerHeight - dividerHeight) / (compartmentCount - 1);
+    for (qsizetype part = 1; part < compartmentCount; ++part) {
+        qreal y = headerHeight + (part - 1) * sectionHeight;
+        if (part > 1) {
+            vertex(xml, id + QStringLiteral("-divider"), id, {},
+                   QStringLiteral("shape=line;strokeColor=#202020;resizeWidth=1;"),
+                   {0, y, rect.width(), dividerHeight});
+            y += dividerHeight;
+        }
+        QString sectionStyle = QStringLiteral("text;html=0;strokeColor=none;fillColor=none;align=left;spacingLeft=5;"
+                                              "verticalAlign=top;resizeWidth=1;whiteSpace=wrap;overflow=hidden;");
+        if (part >= parts.size())
+            sectionStyle += QStringLiteral("quadernoEmptySection=1;");
+        vertex(xml, id + QStringLiteral("-section-%1").arg(part), id, parts.value(part), sectionStyle,
+               {0, y, rect.width(), sectionHeight});
+    }
 }
 }
 
@@ -118,16 +193,15 @@ QString DiagramExport::write(QIODevice &output, const QVariantMap &diagram, cons
         const auto id = QStringLiteral("node-%1").arg(identifiers.size() + 1);
         const QString sourceId = node.value(QStringLiteral("id")).toString();
         identifiers.insert(sourceId, id);
-        centers.insert(sourceId, {(node.value(QStringLiteral("x")).toReal() + node.value(QStringLiteral("width")).toReal() / 2) * width,
-                                  (node.value(QStringLiteral("y")).toReal() + node.value(QStringLiteral("height")).toReal() / 2) * height});
-        xml.writeStartElement(QStringLiteral("mxCell"));
-        xml.writeAttribute(QStringLiteral("id"), id);
-        xml.writeAttribute(QStringLiteral("vertex"), QStringLiteral("1"));
-        xml.writeAttribute(QStringLiteral("parent"), QStringLiteral("1"));
-        xml.writeAttribute(QStringLiteral("value"), node.value(QStringLiteral("text")).toString());
-        xml.writeAttribute(QStringLiteral("style"), drawioStyle(node.value(QStringLiteral("shape")).toString()));
-        geometry(xml, node, width, height);
-        xml.writeEndElement();
+        const QRectF rect(node.value(QStringLiteral("x")).toReal() * width, node.value(QStringLiteral("y")).toReal() * height,
+                          node.value(QStringLiteral("width")).toReal() * width, node.value(QStringLiteral("height")).toReal() * height);
+        centers.insert(sourceId, rect.center());
+        const QString shape = node.value(QStringLiteral("shape")).toString();
+        const QString label = node.value(QStringLiteral("text")).toString();
+        if (shape == QStringLiteral("uml-class") || shape == QStringLiteral("uml-interface") || shape == QStringLiteral("uml-object"))
+            classifier(xml, id, shape, label, rect);
+        else
+            vertex(xml, id, QStringLiteral("1"), label, drawioStyle(shape), rect);
     }
     QSet<QPair<QString, QString>> connections;
     for (const QVariant &entry : edges) {

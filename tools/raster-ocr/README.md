@@ -19,6 +19,10 @@ The output contains the helper, `quaderno-raster-ocr.onnx`, `quaderno-raster-ocr
 
 Send a JSON object with an `images` array of standard base64 PNG strings in reading order. The helper accepts up to 136 crops with a combined encoded request limit of 8 MiB. Each PNG is limited to 1 MiB, 1600 × 2133 pixels and two million pixels. The helper outputs a JSON object with a `lines` string array in the same order. Empty strings represent individual crops that produced no text. A malformed request or an unavailable model results in a nonzero exit code.
 
+The optional `tryHalfTurn` array accepts up to 32 distinct zero-based crop indices. For those crops, the helper compares the supplied orientation with a 180° turn. It also tries rearranging individually upright letters written from top to bottom when it can separate at least three plausible glyphs. Quaderno uses this for vertical diagram labels that it has already turned clockwise. An object such as `{"index": 0, "stacked": true}` supplies an upright layout hint for the same index. The helper gives a well-supported reflowed reading priority when the hint matches the recognized glyphs. Earlier helpers read the supplied orientation and ignore the optional field.
+
+`tinyLabels` optionally marks up to 32 distinct horizontal crop indices. These crops contain tightly framed grayscale ink from small diagram labels. The helper compares the original crop with two adjusted views and returns a single suggestion. The same index can appear in only one of the two hint arrays.
+
 ## Third-party sources
 
 - Microsoft publishes the native Linux ARM64 ONNX Runtime shared library and C++ headers in the 1.32.0 CPU NuGet package under the MIT license. The build includes the package license and third-party notices. [Pinned runtime package](https://api.nuget.org/v3-flatcontainer/microsoft.ml.onnxruntime/1.32.0/microsoft.ml.onnxruntime.1.32.0.nupkg)
