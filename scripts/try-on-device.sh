@@ -17,6 +17,7 @@ quaderno executable into the same directory under /home/root.
   sh try-on-device.sh          Start the demo for up to ten minutes.
   sh try-on-device.sh --check  Check the executable and tablet runtime.
   sh try-on-device.sh --stop   End the demo and return to reMarkable.
+  sh try-on-device.sh --persistent  Run from AppLoad until the user exits.
 
 You can also exit from the demo on the tablet. If USB SSH disconnects,
 the demo keeps running. After reconnecting you can check the log with
@@ -24,7 +25,7 @@ journalctl -u quaderno-demo.service.
 EOF
         exit 0
         ;;
-    ''|--check|--stop) ;;
+    ''|--check|--stop|--persistent) ;;
     *) die "Use --help for usage." ;;
 esac
 [ "$#" -le 1 ] || die "Use --help for usage."
@@ -86,6 +87,12 @@ if [ "${1:-}" = --check ]; then
         if [ ! -x "$handwriting" ] || [ ! -s "$dictionary" ] || ! timeout 10 "$handwriting" --check; then
             die "Cannot start the offline handwriting engine or read its Italian dictionary."
         fi
+        english_dictionary="$app_dir/quaderno-handwriting-en.dct"
+        if [ -e "$english_dictionary" ]; then
+            [ -s "$english_dictionary" ] && timeout 10 "$handwriting" --check --language en ||
+                die "Cannot load the offline English handwriting dictionary."
+            printf '%s\n' 'Offline English handwriting engine detected.'
+        fi
         printf '%s\n' 'Offline Italian handwriting engine detected.'
     fi
     printf '%s\n' 'Paper Pro executable, libraries and e-paper plugins detected.'
@@ -106,11 +113,18 @@ prepare_display='set -eu
 systemctl is-active --quiet xochitl.service
 marker="/home/root/.quaderno-restore-${INVOCATION_ID:?}"
 (umask 077; set -C; : > "$marker")
-# Prevent autosleep from starting another display engine during the demo.
-# The kernel takes nanoseconds. Thirteen minutes includes startup and cleanup.
-if [ -w /sys/power/wake_lock ] && [ -w /sys/power/wake_unlock ]; then
+# Keep stock autosleep from taking ownership of the display. The application
+# provides its own idle screen and keeps the current document on wake.
+if [ -r /sys/power/autosleep ] && [ -w /sys/power/autosleep ]; then
+    previous=$(cat /sys/power/autosleep)
+    case "$previous" in off|mem|standby) ;; *) exit 1 ;; esac
+    printf "%s\n" "$previous" > "$marker.autosleep"
+    echo off > /sys/power/autosleep
+elif [ -w /sys/power/wake_lock ] && [ -w /sys/power/wake_unlock ]; then
     echo wake-lock > "$marker"
-    echo "quaderno-demo-display 780000000000" > /sys/power/wake_lock
+    echo quaderno-demo-display > /sys/power/wake_lock
+else
+    exit 1
 fi
 systemctl stop xochitl.service
 [ "$(systemctl show --property=ActiveState --value xochitl.service)" = inactive ]'
@@ -128,16 +142,26 @@ if [ -f "$marker" ]; then
     if [ -s "$marker" ] && [ -w /sys/power/wake_unlock ]; then
         echo quaderno-demo-display > /sys/power/wake_unlock || status=$?
     fi
+    if [ -f "$marker.autosleep" ] && [ -w /sys/power/autosleep ]; then
+        previous=$(cat "$marker.autosleep")
+        case "$previous" in
+            off|mem|standby) echo "$previous" > /sys/power/autosleep || status=$? ;;
+            *) status=1 ;;
+        esac
+        rm -f "$marker.autosleep"
+    fi
     rm -f "$marker"
     exit "$status"
 fi'
 
 printf 'Starting the demo. To exit via SSH, run systemctl stop %s\n' "$unit"
+runtime=10min
+if [ "${1:-}" = --persistent ]; then runtime=infinity; fi
 # The fixed unit name reserves the display for one demo invocation at a time.
 if ! systemd-run --unit="$unit" --description='Quaderno Paper Pro demo' \
     --wait --collect --service-type=exec \
     --setenv=HOME=/home/root --setenv=QT_QUICK_BACKEND=epaper \
-    --property=RuntimeMaxSec=10min \
+    --property="RuntimeMaxSec=$runtime" \
     --property=TimeoutStartSec=60s --property=TimeoutStopSec=60s \
     --property="ExecStartPre=:/bin/sh -c '$prepare_display'" \
     --property="ExecStopPost=:/bin/sh -c '$restore_display'" \

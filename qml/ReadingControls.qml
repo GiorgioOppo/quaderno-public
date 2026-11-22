@@ -2,8 +2,9 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-RowLayout {
+GridLayout {
     id: controls
+    objectName: "readingControls"
 
     required property real uiScale
     property bool tabletMode: false
@@ -13,13 +14,18 @@ RowLayout {
 
     signal toggleBookmark()
     signal bookmarksRequested()
+    signal settingsRequested()
     signal zoomRequested(real zoom, bool fitWidth)
 
     readonly property bool compact: width < 600 * uiScale
+    readonly property bool twoRows: width < 370 * uiScale
     readonly property real minimumZoom: 1
     readonly property real maximumZoom: 3
     readonly property real step: 0.25
-    spacing: 4 * uiScale
+    Layout.minimumWidth: 0
+    columns: twoRows ? 4 : 8
+    columnSpacing: 4 * uiScale
+    rowSpacing: 2 * uiScale
 
     function changeZoom(delta: real) {
         zoomRequested(Math.min(maximumZoom, Math.max(minimumZoom, zoom + delta)), fitWidth)
@@ -66,7 +72,15 @@ RowLayout {
         onClicked: controls.zoomRequested(1, !controls.fitWidth)
     }
 
-    Item { Layout.fillWidth: true }
+    ViewButton {
+        objectName: "readingPreferencesButton"
+        text: qsTr("Preferenze di lettura")
+        iconName: "settings"
+        iconOnly: true
+        onClicked: controls.settingsRequested()
+    }
+
+    Item { visible: !controls.twoRows; Layout.fillWidth: true }
 
     ViewButton {
         text: controls.bookmark ? qsTr("Rimuovi segnalibro") : qsTr("Aggiungi segnalibro")
@@ -77,6 +91,7 @@ RowLayout {
     }
 
     ViewButton {
+        objectName: "readingBookmarksButton"
         text: qsTr("Segnalibri")
         iconName: "notebook"
         iconOnly: controls.compact

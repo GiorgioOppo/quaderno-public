@@ -9,6 +9,7 @@
 #include <QUuid>
 
 #include <utility>
+#include <limits>
 
 namespace {
 constexpr int maxPins = 20;
@@ -16,6 +17,8 @@ constexpr int maxBaselines = 256;
 constexpr int transferTimeout = 15 * 60 * 1000;
 constexpr int reviewTimeout = 5 * 60 * 1000;
 constexpr int resumeTimeout = 2 * 60 * 1000;
+constexpr int automaticDelay = 1700;
+constexpr int maxAutomaticRetries = 3;
 constexpr qsizetype mebibyte = 1024 * 1024;
 constexpr qsizetype bluetoothPayloadLimit = 8 * mebibyte;
 
@@ -27,11 +30,6 @@ const QString cancelType = QStringLiteral("cancel");
 const QString resumeType = QStringLiteral("resume");
 const QString resumeReplyType = QStringLiteral("resumeReply");
 const QString resumeCancelType = QStringLiteral("resumeCancel");
-
-QSettings syncSettings()
-{
-    return QSettings(QSettings::IniFormat, QSettings::UserScope, QStringLiteral("Quaderno"), QStringLiteral("Quaderno"));
-}
 
 bool hexString(const QString &value, qsizetype size)
 {
@@ -62,8 +60,33 @@ QString displayText(const QVariant &value)
 }
 }
 
-BleSync::BleSync(Notebook *notebook, QObject *parent) : QObject(parent), m_notebook(notebook)
+QSettings BleSync::syncSettings() const
 {
+    if (!m_stateDirectory.isEmpty())
+        return QSettings(m_stateDirectory + QStringLiteral("/preferences.ini"), QSettings::IniFormat);
+    return QSettings(QSettings::IniFormat, QSettings::UserScope, QStringLiteral("Quaderno"), QStringLiteral("Quaderno"));
+}
+
+BleSync::BleSync(Notebook *notebook, QObject *parent, QString stateDirectory)
+    : QObject(parent), m_notebook(notebook), m_delta([this](const QString &id) {
+        return m_notebook && m_notebook->hasBookId(id) ? m_notebook->exportBookForTransfer(id) : QByteArray{};
+    }, this, stateDirectory.isEmpty() ? QString{} : stateDirectory + QStringLiteral("/objects")),
+      m_stateDirectory(std::move(stateDirectory))
+{
+    m_retryClock.start();
+    connect(&m_delta, &DeltaTransfer::sendMessage, this, &BleSync::sendMessage);
+    connect(&m_delta, &DeltaTransfer::previewReady, this, [this](const QVariantMap &metadata, const QByteArray &payload) {
+        receivePreview(metadata.value(QStringLiteral("request")).toString(), metadata, payload, true);
+    });
+    connect(&m_delta, &DeltaTransfer::failed, this, [this](const QString &request, const QString &error) {
+        if (request == m_request)
+            finishOutgoing(error);
+    });
+    connect(&m_delta, &DeltaTransfer::progressChanged, this, [this] {
+        if (m_stage == Stage::Preview)
+            m_outgoingTimer.start(transferTimeout);
+        emit changed();
+    });
     m_outgoingTimer.setSingleShot(true);
     m_incomingTimer.setSingleShot(true);
     m_autoTimer.setSingleShot(true);
@@ -73,6 +96,7 @@ BleSync::BleSync(Notebook *notebook, QObject *parent) : QObject(parent), m_noteb
     connect(&m_outgoingTimer, &QTimer::timeout, this, [this] {
         const QString request = m_request;
         const bool wasApplying = applying();
+        if (m_stage == Stage::Preview) queueAutomaticRetry();
         finishOutgoing(wasApplying ? tr("Il trasferimento è scaduto. Controlla l’altro dispositivo prima di riprovare.")
                                    : tr("L’anteprima del trasferimento è scaduta."));
         if (m_connected && !wasApplying)
@@ -100,12 +124,23 @@ void BleSync::setPeerIdentity(const QString &id)
 {
     if (id == m_peer || (!id.isEmpty() && !hexString(id, 32)))
         return;
+    const QStringList previousPins = m_pins;
     setConnected(false);
     m_peer = id;
     m_pins.clear();
     m_baselines.clear();
     m_lastSuccess.clear();
+    m_applyReceipts.clear();
+    m_conflictCopies.clear();
+    m_uncertainAutomaticBooks.clear();
+    m_automaticQueue.clear();
+    m_batchRevisions.clear();
+    m_pendingTransferBook.clear();
+    m_pendingTransferRevision.clear();
+    m_pendingTransferAutomatic = false;
+    m_pendingTransferApplying = false;
     m_bookIssues.clear();
+    m_autoAttempts.clear();
     m_autoSync = false;
     m_status.clear();
     m_resumeStatus.clear();
@@ -119,6 +154,53 @@ void BleSync::setPeerIdentity(const QString &id)
         }
         const auto stored = settings.value(QStringLiteral("baselines")).toMap();
         const auto dates = settings.value(QStringLiteral("lastSuccess")).toMap();
+        for (const QString &book : settings.value(QStringLiteral("uncertainAutomaticBooks")).toStringList())
+            if (validBook(book) && !m_uncertainAutomaticBooks.contains(book) && m_uncertainAutomaticBooks.size() < maxBaselines)
+                m_uncertainAutomaticBooks.append(book);
+        const auto copied = settings.value(QStringLiteral("conflictCopies")).toMap();
+        for (auto it = copied.cbegin(); it != copied.cend() && m_conflictCopies.size() < maxBaselines; ++it)
+            if (validBook(it.key()) && hexString(it.value().toString(), 64)) m_conflictCopies.insert(it.key(), it.value());
+        const QString pending = settings.value(QStringLiteral("pendingTransferBook")).toString();
+        const QString pendingRevision = settings.value(QStringLiteral("pendingTransferRevision")).toString();
+        if (validBook(pending)) {
+            m_pendingTransferBook = pending;
+            m_pendingTransferAutomatic = settings.value(QStringLiteral("pendingTransferAutomatic"), false).toBool();
+            const bool checkpointKnown = settings.contains(QStringLiteral("pendingTransferApplying"))
+                && hexString(pendingRevision, 64);
+            m_pendingTransferApplying = !checkpointKnown
+                || settings.value(QStringLiteral("pendingTransferApplying"), false).toBool();
+            // A crash may occur after the receiver commits but before its reply.
+            // Legacy checkpoints lack a phase/revision. Treat those as unknown,
+            // including manual transfers: automatic catch-up must not repeat them.
+            if (m_pendingTransferApplying
+                && !m_uncertainAutomaticBooks.contains(pending)
+                && m_uncertainAutomaticBooks.size() < maxBaselines)
+                m_uncertainAutomaticBooks.append(pending);
+        }
+        const auto batch = settings.value(QStringLiteral("automaticBatchRevisions")).toMap();
+        for (const QString &book : settings.value(QStringLiteral("automaticQueue")).toStringList()) {
+            const QString revision = batch.value(book).toString();
+            if (!m_pins.contains(book) || m_automaticQueue.contains(book)
+                || m_uncertainAutomaticBooks.contains(book) || !hexString(revision, 64)) continue;
+            m_automaticQueue.append(book);
+            m_batchRevisions.insert(book, revision);
+        }
+        // The active preview is removed from the queue while it runs. Restore
+        // only its exact saved revision; changed content needs a new trigger.
+        if (hexString(pendingRevision, 64)) m_pendingTransferRevision = pendingRevision;
+        if (m_pendingTransferAutomatic && !m_pendingTransferApplying && m_pins.contains(pending)
+            && !m_uncertainAutomaticBooks.contains(pending) && hexString(pendingRevision, 64)
+            && !m_automaticQueue.contains(pending)) {
+            m_automaticQueue.prepend(pending);
+            m_batchRevisions.insert(pending, pendingRevision);
+        }
+        const auto receipts = settings.value(QStringLiteral("applyReceipts")).toMap();
+        for (auto receipt = receipts.cbegin(); receipt != receipts.cend() && m_applyReceipts.size() < 64; ++receipt) {
+            const auto stored = receipt.value().toMap();
+            if (hexString(receipt.key(), 32) && hexString(stored.value(QStringLiteral("token")).toString(), 64)
+                && !stored.value(QStringLiteral("result")).toMap().isEmpty())
+                m_applyReceipts.insert(receipt.key(), stored);
+        }
         for (auto entry = stored.cbegin(); entry != stored.cend() && m_baselines.size() < maxBaselines; ++entry) {
             if (validBook(entry.key()) && hexString(entry.value().toString(), 64)) {
                 m_baselines.insert(entry.key(), entry.value());
@@ -130,6 +212,9 @@ void BleSync::setPeerIdentity(const QString &id)
     }
     updateBookStatus();
     emit resumeChanged();
+    // Automation reads this list while synchronously updating transfer gates.
+    // A policy/status notification must not invalidate that input binding.
+    if (previousPins != m_pins) emit pinnedBooksChanged();
     emit changed();
 }
 
@@ -143,9 +228,14 @@ void BleSync::forgetPeer()
 {
     if (m_peer.isEmpty())
         return;
-    auto settings = syncSettings();
-    settings.remove(QStringLiteral("nearbySync/") + m_peer);
+    const QString forgotten = m_peer;
+    m_delta.forgetPeer(forgotten);
+    // Disconnecting persists interrupted work. Remove the group only after
+    // that cleanup, otherwise it could recreate a forgotten peer's queue.
     setPeerIdentity({});
+    auto settings = syncSettings();
+    settings.remove(QStringLiteral("nearbySync/") + forgotten);
+    settings.sync();
 }
 
 void BleSync::setConnected(bool connected)
@@ -153,8 +243,16 @@ void BleSync::setConnected(bool connected)
     if (m_connected == connected || (connected && m_peer.isEmpty()))
         return;
     const bool wasApplying = applying();
+    if (!connected && m_automatic) {
+        if (!wasApplying && m_triggeredAutomaticSync && m_pins.contains(m_bookId) && !m_automaticQueue.contains(m_bookId)) {
+            m_automaticQueue.prepend(m_bookId);
+            m_batchRevisions.insert(m_bookId, m_revision);
+        }
+    }
     m_connected = connected;
-    m_autoAttempts.clear();
+    // A successful reconnect must permit a fresh preview, but must not erase
+    // a retry budget or its backoff while the radio repeatedly disconnects.
+    if (!connected && m_automatic && !wasApplying) queueAutomaticRetry();
     resetIncoming();
     m_autoTimer.stop();
     if (!connected && resumeBusy())
@@ -162,6 +260,20 @@ void BleSync::setConnected(bool connected)
     clearResumeOffer();
     finishOutgoing(!connected && wasApplying
         ? tr("Connessione interrotta durante l’invio. Controlla l’altro dispositivo prima di riprovare.") : QString{});
+    m_delta.setConnected(connected, m_peer);
+    if (connected && !m_pendingTransferBook.isEmpty())
+        QTimer::singleShot(1900, this, [this] {
+            if (!m_pendingTransferAutomatic) retryPendingTransfer();
+        });
+}
+
+void BleSync::retryPendingTransfer()
+{
+    if (!m_connected || !m_notebook || m_editorBusy || m_stage != Stage::Idle || m_pendingTransferBook.isEmpty())
+        return;
+    // Reconstruct a new preview from the current content. A previous approval is
+    // never replayed after a connection loss or an application restart.
+    preview(m_pendingTransferBook);
 }
 
 void BleSync::preview(const QString &bookId)
@@ -183,29 +295,31 @@ void BleSync::beginPreview(const QString &bookId, const QString &revision, bool 
         return;
     }
     m_payload = m_notebook->exportBookForTransfer(bookId);
-    if (m_payload.isEmpty() || m_payload.size() > m_payloadLimit) {
+    if (m_payload.isEmpty() || m_payload.size() > SyncPackage::defaultMaximumBytes) {
         const QString error = m_notebook->error();
         if (!error.isEmpty())
             finishOutgoing(error);
-        else if (m_payloadLimit == bluetoothPayloadLimit)
-            finishOutgoing(tr("Il quaderno supera il limite Bluetooth di %1 MiB. Passa al Wi-Fi locale per inviarlo.")
-                           .arg(bluetoothPayloadLimit / mebibyte));
         else
-            finishOutgoing(tr("Il quaderno supera il limite di %1 MiB per questa connessione.")
-                           .arg(m_payloadLimit / mebibyte));
+            finishOutgoing(tr("Il quaderno supera il limite di trasferimento di 64 MiB."));
         return;
     }
     m_stage = Stage::Preview;
     m_request = QUuid::createUuid().toString(QUuid::Id128);
     m_automatic = automatic;
+    m_pendingTransferBook = bookId;
+    m_pendingTransferRevision = revision;
+    m_pendingTransferAutomatic = automatic;
+    m_pendingTransferApplying = false;
+    savePreferences();
     m_status = tr("Controllo della versione sull’altro dispositivo…");
     m_outgoingTimer.start(transferTimeout);
     updateBookStatus();
     emit changed();
     if (m_stage == Stage::Preview) {
         const QByteArray payload = m_payload;
-        emit sendMessage({{QStringLiteral("type"), previewType}, {QStringLiteral("request"), m_request},
-                          {QStringLiteral("bookId"), bookId}, {QStringLiteral("base"), m_baselines.value(bookId).toString()}}, payload);
+        m_delta.sendPreview({{QStringLiteral("type"), previewType}, {QStringLiteral("request"), m_request},
+                            {QStringLiteral("bookId"), bookId}, {QStringLiteral("base"), m_baselines.value(bookId).toString()}},
+                           payload, m_payloadLimit);
     }
 }
 
@@ -213,13 +327,22 @@ void BleSync::apply()
 {
     if (!m_connected || m_stage != Stage::Review || !m_notebook)
         return;
+    if (m_automatic && (!m_autoSync || !m_automaticAllowed || m_editorBusy || !m_pins.contains(m_bookId)))
+        return;
     if (m_notebook->exportBookForTransfer(m_bookId) != m_payload) {
         const QString request = m_request;
         finishOutgoing(tr("Il quaderno è cambiato. Controlla una nuova anteprima."));
         emit sendMessage({{QStringLiteral("type"), cancelType}, {QStringLiteral("request"), request}}, {});
         return;
     }
-    m_stage = Stage::Apply;
+    m_pendingTransferApplying = true;
+    if (!savePreferences()) {
+        m_pendingTransferApplying = false;
+        m_status = tr("Impossibile salvare lo stato del trasferimento. Libera spazio o controlla i permessi, poi riprova dall’anteprima.");
+        emit changed();
+        return;
+    }
+    m_stage = Stage::Apply; // The uncertain-commit checkpoint is durable before sending.
     m_status = tr("Invio del quaderno…");
     m_outgoingTimer.start(transferTimeout);
     updateBookStatus();
@@ -235,6 +358,11 @@ void BleSync::cancel()
     if (applying())
         return;
     const QString request = m_request;
+    m_pendingTransferBook.clear();
+    m_pendingTransferRevision.clear();
+    m_pendingTransferAutomatic = false;
+    m_pendingTransferApplying = false;
+    savePreferences();
     finishOutgoing({});
     if (m_connected && !request.isEmpty())
         emit sendMessage({{QStringLiteral("type"), cancelType}, {QStringLiteral("request"), request}}, {});
@@ -256,9 +384,14 @@ void BleSync::setPinned(const QString &bookId, bool pinned)
     } else {
         m_pins.removeAll(bookId);
         m_autoAttempts.remove(bookId);
+        m_automaticQueue.removeAll(bookId);
+        m_batchRevisions.remove(bookId);
+        if (m_automatic && m_bookId == bookId && !applying()) cancel();
     }
     savePreferences();
+    emit pinnedBooksChanged();
     emit changed();
+    updateAutomaticState();
     scheduleAutoSync();
 }
 
@@ -267,19 +400,104 @@ void BleSync::setAutoSync(bool enabled)
     if (m_peer.isEmpty() || m_autoSync == enabled)
         return;
     m_autoSync = enabled;
-    savePreferences();
+    if (enabled) m_autoAttempts.clear();
     if (!enabled) {
         m_autoTimer.stop();
+        m_automaticQueue.clear();
+        m_batchRevisions.clear();
         if (m_automatic && !applying())
             cancel();
+    }
+    savePreferences();
+    emit changed();
+    updateAutomaticState();
+    scheduleAutoSync();
+}
+
+void BleSync::setAutomaticAllowed(bool allowed)
+{
+    if (m_automaticAllowed == allowed) return;
+    m_automaticAllowed = allowed;
+    if (!allowed) {
+        m_autoTimer.stop();
+        pauseAutomaticPreview();
     }
     emit changed();
     scheduleAutoSync();
 }
 
+void BleSync::setTriggeredAutomaticSync(bool triggered)
+{
+    if (m_triggeredAutomaticSync == triggered) return;
+    m_triggeredAutomaticSync = triggered;
+    m_autoTimer.stop();
+    pauseAutomaticPreview();
+    if (!triggered) {
+        m_automaticQueue.clear();
+        m_batchRevisions.clear();
+    }
+    savePreferences();
+    emit changed();
+    updateAutomaticState();
+    scheduleAutoSync();
+}
+
+void BleSync::setConflictPolicy(const QString &policy)
+{
+    if ((policy != QStringLiteral("ask") && policy != QStringLiteral("keepBoth")) || m_conflictPolicy == policy) return;
+    m_conflictPolicy = policy;
+    emit changed();
+}
+
+bool BleSync::requestAutomaticSync()
+{
+    if (!m_autoSync || !m_automaticAllowed || !m_connected || !m_notebook || m_editorBusy || m_stage != Stage::Idle)
+        return false;
+    // Requests merge into one bounded batch. Only a new opening/interval trigger
+    // refreshes its snapshot; subsequent edits do not become continuous sync.
+    if (m_triggeredAutomaticSync) {
+        for (const QString &bookId : m_pins) {
+            const QString revision = m_notebook->bookTransferRevision(bookId);
+            if (revision.isEmpty() || m_uncertainAutomaticBooks.contains(bookId)
+                || revision == m_baselines.value(bookId).toString()
+                || revision == m_conflictCopies.value(bookId).toString()) continue;
+            const auto attempt = m_autoAttempts.constFind(bookId);
+            // Startup/reconnect/interval triggers are not explicit permission
+            // to restart an exhausted same-revision retry budget.
+            if (attempt != m_autoAttempts.cend() && attempt->revision == revision && !attempt->retry) continue;
+            if (!m_automaticQueue.contains(bookId)) m_automaticQueue.append(bookId);
+            m_batchRevisions.insert(bookId, revision);
+            if (attempt != m_autoAttempts.cend() && attempt->revision != revision)
+                m_autoAttempts.remove(bookId);
+        }
+    }
+    savePreferences();
+    updateAutomaticState();
+    scheduleAutoSync();
+    return true;
+}
+
+void BleSync::pauseAutomaticPreview()
+{
+    if (!m_automatic || applying()) return;
+    const QString bookId = m_bookId;
+    const QString revision = m_revision;
+    if (m_triggeredAutomaticSync && m_pins.contains(bookId) && !m_automaticQueue.contains(bookId)) {
+        m_automaticQueue.prepend(bookId);
+        m_batchRevisions.insert(bookId, revision);
+    }
+    AutoAttempt &attempt = m_autoAttempts[bookId];
+    if (attempt.revision != revision) attempt = {revision};
+    attempt.retry = true;
+    attempt.retryAt = qMax(attempt.retryAt, m_retryClock.elapsed());
+    cancel();
+}
+
 void BleSync::receiveMessage(const QVariantMap &message, const QByteArray &payload)
 {
     if (!m_connected || !m_notebook)
+        return;
+    if (m_delta.receiveMessage(message, payload))
         return;
     const QString request = message.value(QStringLiteral("request")).toString();
     const QString type = message.value(QStringLiteral("type")).toString();
@@ -290,8 +508,11 @@ void BleSync::receiveMessage(const QVariantMap &message, const QByteArray &paylo
     } else if (payload.isEmpty()) {
         if (type == applyType)
             receiveApply(request, message);
-        else if (type == cancelType && request == m_incomingRequest)
-            resetIncoming();
+        else if (type == cancelType) {
+            m_delta.cancelIncoming(request);
+            if (request == m_incomingRequest)
+                resetIncoming();
+        }
         else if (type == resumeType)
             receiveResume(request, message);
         else if (type == resumeReplyType)
@@ -303,11 +524,12 @@ void BleSync::receiveMessage(const QVariantMap &message, const QByteArray &paylo
     }
 }
 
-void BleSync::receivePreview(const QString &request, const QVariantMap &message, const QByteArray &payload)
+void BleSync::receivePreview(const QString &request, const QVariantMap &message, const QByteArray &payload, bool incremental)
 {
     const QString bookId = message.value(QStringLiteral("bookId")).toString();
     const QString base = message.value(QStringLiteral("base")).toString();
-    if (payload.isEmpty() || payload.size() > m_payloadLimit || !validBook(bookId) || (!base.isEmpty() && !hexString(base, 64))) {
+    if (payload.isEmpty() || payload.size() > (incremental ? SyncPackage::defaultMaximumBytes : m_payloadLimit)
+        || !validBook(bookId) || (!base.isEmpty() && !hexString(base, 64))) {
         sendReply(previewReplyType, request, problem(tr("La richiesta di sincronizzazione non è valida.")));
         return;
     }
@@ -336,6 +558,11 @@ void BleSync::receivePreview(const QString &request, const QVariantMap &message,
 void BleSync::receiveApply(const QString &request, const QVariantMap &message)
 {
     const QString token = message.value(QStringLiteral("token")).toString();
+    const QVariantMap receipt = m_applyReceipts.value(request).toMap();
+    if (hexString(token, 64) && receipt.value(QStringLiteral("token")).toString() == token) {
+        sendReply(applyReplyType, request, receipt.value(QStringLiteral("result")).toMap());
+        return;
+    }
     if (request != m_incomingRequest || !hexString(token, 64) || token != m_incomingToken) {
         sendReply(applyReplyType, request, problem(tr("L’anteprima è scaduta. Controlla di nuovo prima di inviare.")));
         return;
@@ -352,6 +579,10 @@ void BleSync::receiveApply(const QString &request, const QVariantMap &message)
     const QString bookId = m_incomingBook;
     resetIncoming();
     if (!result.contains(QStringLiteral("error"))) {
+        while (m_applyReceipts.size() >= 64)
+            m_applyReceipts.erase(m_applyReceipts.begin());
+        m_applyReceipts.insert(request, QVariantMap{{QStringLiteral("token"), token}, {QStringLiteral("result"), result}});
+        savePreferences();
         if (action == QStringLiteral("conflict"))
             setBookIssue(bookId, m_notebook->bookTransferRevision(bookId), QStringLiteral("conflict"), {});
         else
@@ -365,14 +596,13 @@ void BleSync::receiveReply(const QString &type, const QVariantMap &message)
     const bool isPreview = type == previewReplyType;
     if ((isPreview && m_stage != Stage::Preview) || (!isPreview && !applying()))
         return;
+    if (isPreview)
+        m_delta.cancelOutgoing(m_request);
     const QString error = displayText(message.value(QStringLiteral("error")));
     if (!error.isEmpty()) {
-        if (m_automatic && !isPreview && message.value(QStringLiteral("errorCode")).toString() == QStringLiteral("stale")) {
-            auto attempt = m_autoAttempts.find(m_bookId);
-            if (attempt != m_autoAttempts.end() && attempt->retries < 2) {
-                ++attempt->retries;
-                attempt->retry = true;
-            }
+        if (!isPreview && message.value(QStringLiteral("errorCode")).toString() == QStringLiteral("stale")) {
+            m_pendingTransferApplying = false; // Explicitly rejected before commit.
+            queueAutomaticRetry();
         }
         finishOutgoing(error);
         return;
@@ -414,8 +644,9 @@ void BleSync::receiveReply(const QString &type, const QVariantMap &message)
     if (action == QStringLiteral("conflict"))
         setBookIssue(m_bookId, m_revision, QStringLiteral("conflict"), {});
     updateBookStatus();
-    if (m_automatic && m_autoSync && m_pins.contains(m_bookId)
-        && (action == QStringLiteral("replace") || action == QStringLiteral("unchanged"))) {
+    if (m_automatic && m_autoSync && m_automaticAllowed && !m_editorBusy && m_pins.contains(m_bookId)
+        && (action == QStringLiteral("replace") || action == QStringLiteral("unchanged")
+            || (action == QStringLiteral("conflict") && m_conflictPolicy == QStringLiteral("keepBoth")))) {
         apply();
     } else {
         emit changed();
@@ -436,6 +667,7 @@ void BleSync::sendReply(const QString &type, const QString &request, QVariantMap
 
 void BleSync::resetOutgoing()
 {
+    m_delta.cancelOutgoing(m_request);
     m_outgoingTimer.stop();
     m_stage = Stage::Idle;
     m_automatic = false;
@@ -463,9 +695,33 @@ void BleSync::finishOutgoing(const QString &status, bool completed, bool conflic
     const QString bookId = m_bookId;
     const QString revision = m_revision;
     const bool followWithResume = resumeBusy() && m_outgoingResume.request.isEmpty() && m_outgoingResume.bookId == bookId;
+    if (m_automatic && m_triggeredAutomaticSync && !completed && m_autoAttempts.value(bookId).retry
+        && m_pins.contains(bookId) && !m_automaticQueue.contains(bookId)) {
+        m_automaticQueue.prepend(bookId);
+        m_batchRevisions.insert(bookId, revision);
+    }
+    // A lost apply acknowledgement may already have created a conflict copy.
+    // Require a manual review instead of silently issuing a second copy request.
+    if (applying() && m_pendingTransferApplying && !completed
+        && validBook(bookId) && !m_uncertainAutomaticBooks.contains(bookId)
+        && m_uncertainAutomaticBooks.size() < maxBaselines) {
+        m_uncertainAutomaticBooks.append(bookId);
+        savePreferences();
+    }
+    if (completed) m_uncertainAutomaticBooks.removeAll(bookId);
+    if (completed && conflict && validBook(bookId) && hexString(revision, 64)
+        && (m_conflictCopies.contains(bookId) || m_conflictCopies.size() < maxBaselines))
+        m_conflictCopies.insert(bookId, revision);
     resetOutgoing();
     m_status = status;
     m_completed = completed;
+    if (completed) {
+        m_pendingTransferBook.clear();
+        m_pendingTransferRevision.clear();
+        m_pendingTransferAutomatic = false;
+        m_pendingTransferApplying = false;
+    }
+    savePreferences();
     if (!status.isEmpty() && (conflict || !completed))
         setBookIssue(bookId, revision, conflict ? QStringLiteral("conflict") : QStringLiteral("error"), status);
     updateBookStatus();
@@ -483,8 +739,22 @@ void BleSync::finishOutgoing(const QString &status, bool completed, bool conflic
 
 void BleSync::scheduleAutoSync()
 {
-    if (m_connected && m_autoSync && !m_editorBusy && m_notebook && m_stage == Stage::Idle && !m_pins.isEmpty())
-        m_autoTimer.start(1700);
+    if (m_connected && m_autoSync && m_automaticAllowed && !m_editorBusy && m_notebook && m_stage == Stage::Idle
+        && !m_pins.isEmpty() && (!m_triggeredAutomaticSync || !m_automaticQueue.isEmpty())) {
+        int delay = automaticDelay;
+        bool onlyRetries = true;
+        qint64 earliestRetry = std::numeric_limits<qint64>::max();
+        const auto candidates = m_triggeredAutomaticSync ? m_automaticQueue : m_pins;
+        for (const QString &book : candidates) {
+            const auto attempt = m_autoAttempts.constFind(book);
+            if (attempt == m_autoAttempts.cend() || !attempt->retry) onlyRetries = false;
+            else earliestRetry = qMin(earliestRetry, attempt->retryAt);
+        }
+        if (onlyRetries && earliestRetry != std::numeric_limits<qint64>::max())
+            delay = int(qBound(qint64{0}, earliestRetry - m_retryClock.elapsed(), qint64{8000}));
+        m_autoTimer.start(delay);
+    } else
+        m_autoTimer.stop();
 }
 
 void BleSync::setEditorBusy(bool busy)
@@ -492,43 +762,110 @@ void BleSync::setEditorBusy(bool busy)
     if (m_editorBusy == busy)
         return;
     m_editorBusy = busy;
-    if (busy)
+    if (busy) {
         m_autoTimer.stop();
-    else
+        pauseAutomaticPreview();
+    } else
         scheduleAutoSync();
     if (!m_resumeOffer.isEmpty())
         emit resumeChanged();
+    emit changed();
 }
 
 void BleSync::runAutoSync()
 {
-    if (!m_connected || !m_autoSync || m_editorBusy || !m_notebook || m_stage != Stage::Idle)
+    if (!m_connected || !m_autoSync || !m_automaticAllowed || m_editorBusy || !m_notebook || m_stage != Stage::Idle)
         return;
-    for (const QString &bookId : m_pins) {
+    const QStringList candidates = m_triggeredAutomaticSync ? m_automaticQueue : m_pins;
+    for (const QString &bookId : candidates) {
         const QString revision = m_notebook->bookTransferRevision(bookId);
-        if (revision.isEmpty() || revision == m_baselines.value(bookId).toString())
+        if (!m_pins.contains(bookId) || revision.isEmpty() || m_uncertainAutomaticBooks.contains(bookId)
+            || revision == m_baselines.value(bookId).toString()
+            || revision == m_conflictCopies.value(bookId).toString()
+            || (m_triggeredAutomaticSync && revision != m_batchRevisions.value(bookId))) {
+            m_automaticQueue.removeAll(bookId);
+            m_batchRevisions.remove(bookId);
+            m_autoAttempts.remove(bookId);
             continue;
+        }
         AutoAttempt &attempt = m_autoAttempts[bookId];
         if (attempt.revision != revision)
             attempt = {revision};
-        else if (!attempt.retry)
+        else if (!attempt.retry) {
+            m_automaticQueue.removeAll(bookId);
+            m_batchRevisions.remove(bookId);
             continue;
+        } else if (attempt.retryAt > m_retryClock.elapsed()) {
+            continue;
+        }
+        m_automaticQueue.removeAll(bookId);
         attempt.retry = false;
         beginPreview(bookId, revision, true);
         return;
     }
+    savePreferences();
+    updateAutomaticState();
+    if (automaticRetryPending()) scheduleAutoSync();
 }
 
-void BleSync::savePreferences() const
+bool BleSync::queueAutomaticRetry()
+{
+    if (!m_automatic || !m_pins.contains(m_bookId)) return false;
+    auto attempt = m_autoAttempts.find(m_bookId);
+    if (attempt == m_autoAttempts.end() || attempt->retries >= maxAutomaticRetries) return false;
+    attempt->retryAt = m_retryClock.elapsed() + (2000 << attempt->retries);
+    ++attempt->retries;
+    attempt->retry = true;
+    return true;
+}
+
+int BleSync::pendingAutomaticCount() const
+{
+    return m_automaticQueue.size() + (m_automatic && !m_automaticQueue.contains(m_bookId) ? 1 : 0);
+}
+
+bool BleSync::automaticRetryPending() const
+{
+    if (!m_autoSync) return false;
+    for (auto it = m_autoAttempts.cbegin(); it != m_autoAttempts.cend(); ++it)
+        if (it->retry && m_pins.contains(it.key())
+            && (!m_triggeredAutomaticSync || m_automaticQueue.contains(it.key()))) return true;
+    return false;
+}
+
+void BleSync::updateAutomaticState()
+{
+    const int count = pendingAutomaticCount();
+    const bool retry = automaticRetryPending();
+    if (count == m_notifiedAutomaticCount && retry == m_notifiedAutomaticRetry) return;
+    m_notifiedAutomaticCount = count;
+    m_notifiedAutomaticRetry = retry;
+    emit automaticStateChanged();
+}
+
+bool BleSync::savePreferences() const
 {
     if (m_peer.isEmpty())
-        return;
+        return false;
     auto settings = syncSettings();
     settings.beginGroup(QStringLiteral("nearbySync/") + m_peer);
     settings.setValue(QStringLiteral("automatic"), m_autoSync);
     settings.setValue(QStringLiteral("pinnedBooks"), m_pins);
     settings.setValue(QStringLiteral("baselines"), m_baselines);
     settings.setValue(QStringLiteral("lastSuccess"), m_lastSuccess);
+    settings.setValue(QStringLiteral("pendingTransferBook"), m_pendingTransferBook);
+    settings.setValue(QStringLiteral("pendingTransferRevision"), m_pendingTransferRevision);
+    settings.setValue(QStringLiteral("pendingTransferAutomatic"), m_pendingTransferAutomatic);
+    settings.setValue(QStringLiteral("pendingTransferApplying"), m_pendingTransferApplying);
+    settings.setValue(QStringLiteral("automaticQueue"), m_automaticQueue);
+    QVariantMap batch;
+    for (auto it = m_batchRevisions.cbegin(); it != m_batchRevisions.cend(); ++it) batch.insert(it.key(), it.value());
+    settings.setValue(QStringLiteral("automaticBatchRevisions"), batch);
+    settings.setValue(QStringLiteral("applyReceipts"), m_applyReceipts);
+    settings.setValue(QStringLiteral("conflictCopies"), m_conflictCopies);
+    settings.setValue(QStringLiteral("uncertainAutomaticBooks"), m_uncertainAutomaticBooks);
+    settings.sync();
+    return settings.status() == QSettings::NoError;
 }
 
 void BleSync::acknowledge(const QString &bookId, const QString &revision)
@@ -585,6 +922,7 @@ void BleSync::noteBookChanges()
 void BleSync::updateBookStatus()
 {
     m_bookStatusTimer.stop();
+    updateAutomaticState();
     ++m_bookStatusVersion;
     emit bookStatusChanged();
 }

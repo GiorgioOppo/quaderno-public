@@ -5,6 +5,7 @@ import Quaderno
 
 Control {
     id: settings
+    objectName: "settingsView"
 
     required property real uiScale
     required property bool tabletMode
@@ -16,19 +17,42 @@ Control {
     required property WirelessSync wireless
     required property EpaperRefresh epaperRefresh
     property var bluetooth: null
+    property var preferences: null
+    property var screenOrientation: null
+    property var maintenance: null
+    property var cloudAccounts: null
+    signal openCloudAccount(string provider)
+    property var standby: null
+    property var externalKeyboard: null
+    property var obsidianSync: null
 
     signal openBluetooth()
+    signal openWireless()
+    signal openObsidianSync()
+    signal openMarkdown()
+    signal openApple()
+    signal openAppleBooks()
+    signal importFiles()
+    signal refreshScreen()
+    signal sleepNow()
 
-    property int category: 0
+    property int category: 9
+    property bool searchActive: false
     property string sshActionStatus: ""
+    property int bluetoothFilter: 0
+    readonly property var visibleBluetoothDevices: {
+        const devices = bluetooth?.powered ? bluetooth.devices : []
+        return devices.filter(device => bluetoothFilter === 1 ? device.kind === "keyboard"
+                              : bluetoothFilter === 2 ? device.paired : true)
+    }
     readonly property bool dialogOpen: wifiDialog.visible || pinDialog.visible
                                        || bluetoothPairing.visible || bluetoothForget.visible
     readonly property int bluetoothCategory: 4
     readonly property bool hasBluetoothFinder: tabletMode && Boolean(bluetooth?.available)
     readonly property bool bluetoothPageActive: hasBluetoothFinder && visible && !pinLock.locked
                                                 && category === bluetoothCategory
-    readonly property color ink: "#1c1c1e"
-    readonly property color muted: "#515159"
+    readonly property color ink: preferences?.highContrast ? "#000000" : "#1c1c1e"
+    readonly property color muted: preferences?.highContrast ? "#202020" : "#515159"
     readonly property color accent: "#0059bd"
     readonly property color line: "#d1d1d6"
     readonly property color canvas: "#f2f2f7"
@@ -37,6 +61,26 @@ Control {
     readonly property color warning: "#942922"
     readonly property real hairline: Math.max(1, Math.round(uiScale))
     readonly property real inset: Math.max(16 * uiScale, (width - 740 * uiScale) / 2)
+    readonly property var categoryEntries: [
+        {id: 9, title: qsTr("Generali"), keywords: qsTr("controlli rapidi stato")},
+        {id: 0, title: qsTr("Wi-Fi"), keywords: qsTr("rete internet connessione")},
+        {id: 4, title: qsTr("Bluetooth"), keywords: qsTr("tastiere accessori abbinamento")},
+        {id: 5, title: qsTr("Schermo"), keywords: qsTr("rotazione orientamento dimensione refresh orologio gesture")},
+        {id: 10, title: qsTr("Penna e riconoscimento"), keywords: qsTr("pressione palmo lazo OCR forme correzioni diagrammi riconoscimento automatico")},
+        {id: 11, title: qsTr("Archiviazione e backup"), keywords: qsTr("cache spazio copie sicurezza conservazione")},
+        {id: 7, title: qsTr("Penna e batteria"), keywords: qsTr("ricarica carica luce sospensione riposo")},
+        {id: 6, title: qsTr("Account e servizi"), keywords: "Apple iCloud Obsidian Google Drive Dropbox OneDrive cloud sync"},
+        {id: 2, title: qsTr("Sicurezza"), keywords: qsTr("PIN accesso blocco password")},
+        {id: 8, title: qsTr("Lingua e tastiera"), keywords: "Italiano English QWERTY"},
+        {id: 1, title: "USB-C", keywords: "USB SSH trasferimento"},
+        {id: 3, title: qsTr("Informazioni"), keywords: qsTr("dispositivo versione firmware")}
+    ]
+    readonly property var matchingCategories: {
+        const terms = normalizedSearch(settingsSearch.text).trim().split(/\s+/).filter(term => term.length > 0)
+        return categoryEntries.filter(entry => terms.every(term => normalizedSearch(entry.title + " " + entry.keywords).includes(term)))
+    }
+    // Content wraps to the viewport; it must never size the viewport itself.
+    implicitWidth: 0
     padding: 0
     background: Rectangle {
         visible: !settings.tabletMode
@@ -52,7 +96,21 @@ Control {
         sshActionStatus = ""
     }
 
+    function selectCategory(value: int) {
+        category = value
+        settingsSearch.clear()
+        searchActive = false
+        settings.forceActiveFocus()
+        scroll.contentItem.contentY = 0
+    }
+
+    function normalizedSearch(value: string): string {
+        return value.toLocaleLowerCase().replace(/[-\u2010-\u2015]/g, "")
+    }
+
     function closeDialogs() {
+        searchActive = false
+        settingsSearch.clear()
         wifiDialog.close()
         pinDialog.close()
         bluetoothForget.close()
@@ -86,6 +144,13 @@ Control {
         function onChanged() { settings.updateBluetoothPrompt() }
     }
 
+    Timer {
+        interval: 5000
+        repeat: true
+        running: settings.visible && !settings.pinLock.locked && !Boolean(settings.standby?.sleeping)
+        onTriggered: settings.deviceInfo.refresh()
+    }
+
     component Action: Button {
         id: action
 
@@ -98,6 +163,7 @@ Control {
         rightPadding: leftPadding
         topPadding: 8 * settings.uiScale
         bottomPadding: topPadding
+        implicitWidth: Math.ceil(implicitContentWidth + leftPadding + rightPadding) + settings.hairline
         implicitHeight: Math.max(44 * settings.uiScale, implicitContentHeight + topPadding + bottomPadding)
         font.pixelSize: 14 * settings.uiScale
         font.weight: Font.DemiBold
@@ -237,95 +303,61 @@ Control {
     contentItem: ColumnLayout {
         spacing: 0
 
-        Control {
+        ColumnLayout {
             Layout.fillWidth: true
             Layout.leftMargin: settings.inset
             Layout.rightMargin: Layout.leftMargin
-            Layout.topMargin: 16 * settings.uiScale
-            Layout.bottomMargin: 12 * settings.uiScale
-            padding: 4 * settings.uiScale
-
-            background: Rectangle {
-                color: settings.grouped
-                border.color: settings.line
-                border.width: settings.hairline
-                radius: 13 * settings.uiScale
-            }
-
-            contentItem: RowLayout {
-                spacing: 3 * settings.uiScale
-
-                ButtonGroup { id: categories }
-
-                Repeater {
-                    model: {
-                        const entries = [qsTr("Rete"), qsTr("USB‑C"), qsTr("Sicurezza"), qsTr("Dispositivo")]
-                        if (settings.hasBluetoothFinder)
-                            entries.push(qsTr("Bluetooth"))
-                        return entries
-                    }
-
-                    Action {
-                        required property string modelData
-                        required property int index
-                        Layout.fillWidth: true
-                        Layout.preferredWidth: 1
-                        Layout.minimumWidth: 0
-                        text: modelData
-                        checkable: true
-                        checked: settings.category === index
-                        ButtonGroup.group: categories
-                        segmented: true
-                        filled: checked
-
-                        onClicked: {
-                            settings.category = index
-                            scroll.contentItem.contentY = 0
-                        }
-                    }
-                }
-            }
-        }
-
-        Card {
-            Layout.fillWidth: true
-            Layout.leftMargin: settings.inset
-            Layout.rightMargin: Layout.leftMargin
-            Layout.bottomMargin: 12 * settings.uiScale
-            topPadding: 7 * settings.uiScale
-            bottomPadding: topPadding
-
+            Layout.topMargin: 12 * settings.uiScale
+            Layout.bottomMargin: 10 * settings.uiScale
+            spacing: 8 * settings.uiScale
             RowLayout {
                 Layout.fillWidth: true
+                Field {
+                    id: settingsSearch
+                    objectName: "settingsSearch"
+                    placeholderText: qsTr("Cerca impostazioni")
+                    Accessible.name: placeholderText
+                    selectByMouse: true
+                    onPressed: settings.searchActive = true
+                    onAccepted: settings.searchActive = false
+                }
+                Action {
+                    text: qsTr("Chiudi")
+                    visible: settingsSearch.text.length > 0 || settings.searchActive
+                    onClicked: { settingsSearch.clear(); settings.searchActive = false; settings.forceActiveFocus() }
+                }
+            }
+            Flow {
+                Layout.fillWidth: true
                 spacing: 5 * settings.uiScale
-
-                Paragraph {
-                    color: settings.ink
-                    font.weight: Font.DemiBold
-                    text: qsTr("Lingua dell’app")
-                }
-                Action {
-                    text: "Italiano"
-                    filled: AppLanguage.current === "it"
-                    onClicked: {
-                        AppLanguage.select("it")
-                        settings.open()
+                Repeater {
+                    model: settings.matchingCategories
+                    Action {
+                        required property var modelData
+                        objectName: "settingsCategory_" + modelData.id
+                        text: modelData.title
+                        filled: settings.category === modelData.id
+                        onClicked: settings.selectCategory(modelData.id)
                     }
                 }
-                Action {
-                    text: "English"
-                    filled: AppLanguage.current === "en"
-                    onClicked: {
-                        AppLanguage.select("en")
-                        settings.open()
-                    }
-                }
+            }
+            Paragraph {
+                visible: settings.matchingCategories.length === 0
+                text: qsTr("Nessuna impostazione trovata. Prova con schermo, penna, account o Wi-Fi.")
+            }
+            TouchKeyboard {
+                visible: settings.searchActive && settings.showTouchKeyboard
+                Layout.fillWidth: true
+                uiScale: settings.uiScale
+                target: settingsSearch
             }
         }
 
         ScrollView {
             id: scroll
             Layout.fillWidth: true
+            Layout.minimumWidth: 0
+            Layout.preferredWidth: 0
             Layout.fillHeight: true
             clip: true
             contentWidth: availableWidth
@@ -335,6 +367,49 @@ Control {
             ColumnLayout {
                 width: scroll.availableWidth
                 spacing: 0
+
+                TabletSettingsPanel {
+                    visible: [0, 5, 6, 7, 8, 9, 10, 11].includes(settings.category) && settings.preferences !== null && settings.standby !== null
+                    Layout.fillWidth: true
+                    Layout.leftMargin: settings.inset
+                    Layout.rightMargin: Layout.leftMargin
+                    Layout.bottomMargin: 16 * settings.uiScale
+                    uiScale: settings.uiScale
+                    tabletMode: settings.tabletMode
+                    category: settings.category
+                    preferences: settings.preferences
+                    screenOrientation: settings.screenOrientation
+                    maintenance: settings.maintenance
+                    showTouchKeyboard: settings.showTouchKeyboard
+                    standby: settings.standby
+                    deviceInfo: settings.deviceInfo
+                    epaperRefresh: settings.epaperRefresh
+                    externalKeyboard: settings.externalKeyboard
+                    wifi: settings.wifi
+                    onNavigate: category => settings.selectCategory(category)
+                    onRefreshScreen: settings.refreshScreen()
+                    onSleepNow: settings.sleepNow()
+                }
+                AccountsPanel {
+                    visible: settings.category === 6
+                    Layout.fillWidth: true
+                    Layout.leftMargin: settings.inset
+                    Layout.rightMargin: Layout.leftMargin
+                    Layout.bottomMargin: 16 * settings.uiScale
+                    uiScale: settings.uiScale
+                    tabletMode: settings.tabletMode
+                    pinLocked: settings.pinLock.locked
+                    obsidianSync: settings.obsidianSync
+                    cloudAccounts: settings.cloudAccounts
+                    onOpenCloudAccount: provider => settings.openCloudAccount(provider)
+                    wireless: settings.wireless
+                    onOpenObsidianSync: settings.openObsidianSync()
+                    onOpenMarkdown: settings.openMarkdown()
+                    onOpenApple: settings.openApple()
+                    onOpenAppleBooks: settings.openAppleBooks()
+                    onImportFiles: settings.importFiles()
+                    onOpenWireless: settings.openWireless()
+                }
 
                 ColumnLayout {
                     visible: settings.category === 0
@@ -432,17 +507,19 @@ Control {
                         }
                     }
 
-                    Card {
-                        visible: !settings.hasBluetoothFinder
-                        Heading { text: qsTr("Bluetooth") }
-                        Paragraph {
-                            text: settings.wireless.bluetoothStatus || settings.deviceInfo.bluetoothStatus
-                        }
-                        Action {
-                            visible: settings.wireless.available
-                            text: qsTr("Apri sincronizzazione Bluetooth")
-                            onClicked: settings.openBluetooth()
-                        }
+                }
+
+                Card {
+                    visible: settings.category === settings.bluetoothCategory && !settings.hasBluetoothFinder
+                    Layout.leftMargin: settings.inset
+                    Layout.rightMargin: Layout.leftMargin
+                    Layout.bottomMargin: 16 * settings.uiScale
+                    Heading { text: qsTr("Bluetooth") }
+                    Paragraph { text: settings.wireless.bluetoothStatus || settings.deviceInfo.bluetoothStatus }
+                    Action {
+                        visible: settings.wireless.available
+                        text: qsTr("Apri sincronizzazione Bluetooth")
+                        onClicked: settings.openBluetooth()
                     }
                 }
 
@@ -493,8 +570,34 @@ Control {
                             }
                         }
 
+                        Flow {
+                            visible: Boolean(settings.bluetooth?.powered)
+                            Layout.fillWidth: true
+                            spacing: 6 * settings.uiScale
+                            Repeater {
+                                model: [qsTr("Tutti"), qsTr("Tastiere"), qsTr("Abbinati")]
+                                Action {
+                                    required property string modelData
+                                    required property int index
+                                    text: modelData
+                                    checkable: true
+                                    checked: settings.bluetoothFilter === index
+                                    filled: checked
+                                    onClicked: settings.bluetoothFilter = index
+                                }
+                            }
+                        }
+                        Paragraph {
+                            visible: Boolean(settings.bluetooth?.powered)
+                            text: settings.visibleBluetoothDevices.length > 0
+                                  ? qsTr("Dispositivi mostrati: %1 / %2").arg(settings.visibleBluetoothDevices.length).arg(settings.bluetooth.devices.length)
+                                  : settings.bluetooth?.scanning ? qsTr("Ricerca in corso. Tieni l’accessorio vicino al tablet.")
+                                  : settings.bluetoothFilter === 2 ? qsTr("Nessun dispositivo abbinato. Scegli Tutti per abbinare un accessorio.")
+                                  : settings.bluetoothFilter === 1 ? qsTr("Nessuna tastiera trovata. Attiva la modalità di abbinamento e cerca di nuovo; se il tipo non è riconosciuto, controlla Tutti.")
+                                  : qsTr("Nessun dispositivo trovato. Attiva la modalità di abbinamento e avvia la ricerca.")
+                        }
                         Repeater {
-                            model: settings.bluetooth?.powered ? settings.bluetooth.devices : []
+                            model: settings.visibleBluetoothDevices
 
                             ColumnLayout {
                                 id: deviceRow
@@ -743,91 +846,6 @@ Control {
                         }
                     }
 
-                    Card {
-                        visible: settings.tabletMode
-                        Heading { text: qsTr("Tastiera a schermo") }
-                        Flow {
-                            Layout.fillWidth: true
-                            spacing: 6 * settings.uiScale
-
-                            Action {
-                                text: "Italiano"
-                                filled: AppLanguage.keyboardLayout === "it"
-                                onClicked: AppLanguage.selectKeyboardLayout("it")
-                            }
-                            Action {
-                                text: "English (US)"
-                                filled: AppLanguage.keyboardLayout === "en"
-                                onClicked: AppLanguage.selectKeyboardLayout("en")
-                            }
-                        }
-                    }
-
-                    Card {
-                        visible: settings.epaperRefresh.available
-                        Heading { text: qsTr("Schermo") }
-                        Switch {
-                            Layout.fillWidth: true
-                            Layout.minimumHeight: 44 * settings.uiScale
-                            font.pixelSize: 16 * settings.uiScale
-                            text: qsTr("Aggiornamento automatico")
-                            checked: settings.epaperRefresh.automaticEnabled
-                            onToggled: settings.epaperRefresh.automaticEnabled = checked
-                        }
-                        Paragraph {
-                            text: qsTr("Interviene se la nuova pagina tarda a comparire. Per pulire tutto il pannello, usa Aggiorna schermo.")
-                        }
-                    }
-
-                    Card {
-                        Heading { text: qsTr("Batteria") }
-                        Paragraph {
-                            text: settings.deviceInfo.batteryPercent >= 0
-                                  ? qsTr("%1% · %2").arg(settings.deviceInfo.batteryPercent).arg(settings.deviceInfo.batteryStatus)
-                                  : settings.deviceInfo.batteryStatus
-                        }
-                    }
-
-                    Card {
-                        Heading { text: qsTr("Luce di lettura") }
-                        Paragraph { text: settings.deviceInfo.frontlightStatus }
-                        RowLayout {
-                            visible: settings.deviceInfo.frontlightAvailable
-                            spacing: 6 * settings.uiScale
-
-                            Action {
-                                text: "−"
-                                Accessible.name: qsTr("Riduci la luce")
-                                Layout.minimumWidth: 46 * settings.uiScale
-                                enabled: settings.deviceInfo.frontlightLevel > 0
-                                onClicked: settings.deviceInfo.setFrontlightLevel(settings.deviceInfo.frontlightLevel - 1)
-                            }
-                            Paragraph {
-                                Layout.fillWidth: false
-                                Layout.minimumWidth: 72 * settings.uiScale
-                                horizontalAlignment: Text.AlignHCenter
-                                text: settings.deviceInfo.frontlightLevel >= 0
-                                      ? qsTr("%1 / 5").arg(settings.deviceInfo.frontlightLevel)
-                                      : qsTr("Personalizzata")
-                            }
-                            Action {
-                                text: "+"
-                                Accessible.name: qsTr("Aumenta la luce")
-                                Layout.minimumWidth: 46 * settings.uiScale
-                                enabled: settings.deviceInfo.frontlightLevel < 5
-                                onClicked: settings.deviceInfo.setFrontlightLevel(settings.deviceInfo.frontlightLevel + 1)
-                            }
-                        }
-                        Paragraph {
-                            visible: settings.deviceInfo.frontlightAvailable
-                            text: qsTr("La regolazione vale per la sessione corrente.")
-                        }
-                        Paragraph {
-                            visible: settings.deviceInfo.error.length > 0
-                            color: settings.warning
-                            text: settings.deviceInfo.error
-                        }
-                    }
                 }
             }
         }

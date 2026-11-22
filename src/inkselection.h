@@ -2,10 +2,15 @@
 
 #include <QQuickPaintedItem>
 #include <QRectF>
+#include <QPolygonF>
 #include <QVariantList>
 #include <QtQml/qqmlregistration.h>
 
 namespace InkSelectionGeometry {
+bool intersectsStroke(const QPolygonF &polygon, const QList<QPointF> &points, bool contained);
+QPolygonF itemOutline(const QVariantMap &item);
+QRectF boundsOf(const QVariantList &strokes, const QVariantList &items = {});
+QVariantList transformedItems(const QVariantList &items, QPointF pivot, QPointF offset, qreal scale, qreal angle);
 QVariantList transformed(const QVariantList &strokes, QPointF pivot, QPointF offset, qreal scale, qreal angle);
 }
 
@@ -67,4 +72,18 @@ private:
     qreal m_angle = 0;
     bool m_selectionSupported = false;
     bool m_quarterTurnsOnly = false;
+};
+
+class SelectionContentItem : public QQuickPaintedItem
+{
+    Q_OBJECT
+    QML_ELEMENT
+    Q_PROPERTY(QVariantMap content MEMBER m_content NOTIFY contentChanged)
+public:
+    explicit SelectionContentItem(QQuickItem *parent = nullptr);
+    void paint(QPainter *painter) override;
+signals:
+    void contentChanged();
+private:
+    QVariantMap m_content;
 };

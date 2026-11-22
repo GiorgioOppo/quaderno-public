@@ -22,25 +22,25 @@
 namespace {
 constexpr qint64 maxPdfSize = 48 * 1024 * 1024;
 constexpr qint64 maxRenderedSize = 30 * 1024 * 1024;
-constexpr int maxPages = 150;
+constexpr int maxPages = 100000;
 constexpr int maxImageDimension = 1200;
 constexpr qsizetype maxTextPerPage = 20'000;
 constexpr qsizetype maxTextPerDocument = 750'000;
 
-QSize rasterSize(double width, double height)
+QSize rasterSize(double width, double height, int maximumEdge = maxImageDimension)
 {
     if (!std::isfinite(width) || !std::isfinite(height) || width <= 0 || height <= 0)
         return {};
     const double longEdge = qMax(width, height);
-    return {qMax(1, qRound((width / longEdge) * maxImageDimension)),
-            qMax(1, qRound((height / longEdge) * maxImageDimension))};
+    return {qMax(1, qRound((width / longEdge) * maximumEdge)),
+            qMax(1, qRound((height / longEdge) * maximumEdge))};
 }
 
 bool checkPageCount(qsizetype count, QString &error)
 {
     if (count >= 1 && count <= maxPages)
         return true;
-    error = count > maxPages ? QCoreApplication::translate("PdfImport", "Il PDF supera il limite di 150 pagine.")
+    error = count > maxPages ? QCoreApplication::translate("PdfImport", "Il PDF supera il limite di 100000 pagine.")
                              : QCoreApplication::translate("PdfImport", "Il PDF non contiene pagine leggibili.");
     return false;
 }
@@ -78,7 +78,7 @@ void storeText(ImportedPdf &pdf, QString text, qsizetype &remaining)
 }
 
 #ifdef Q_OS_MACOS
-QImage drawPage(CGPDFPageRef page, CGColorSpaceRef colorSpace)
+QImage drawPage(CGPDFPageRef page, CGColorSpaceRef colorSpace, int maximumEdge = maxImageDimension)
 {
     if (!page)
         return {};
@@ -88,7 +88,7 @@ QImage drawPage(CGPDFPageRef page, CGColorSpaceRef colorSpace)
     const bool quarterTurn = CGPDFPageGetRotationAngle(page) % 180 != 0;
     const double width = quarterTurn ? crop.size.height : crop.size.width;
     const double height = quarterTurn ? crop.size.width : crop.size.height;
-    const QSize size = rasterSize(width, height);
+    const QSize size = rasterSize(width, height, maximumEdge);
     if (size.isEmpty())
         return {};
 
@@ -167,6 +167,7 @@ ImportedPdf pdfImportMac::renderDocument(CGPDFDocumentRef document, QString &err
 }
 namespace {
 #else
+QMutex pdfiumMutex;
 // Types match the PDFium public C API. Ferrari supplies libpdfium at runtime.
 using PdfDocument = struct fpdf_document_t__ *;
 using PdfPage = struct fpdf_page_t__ *;
@@ -250,11 +251,11 @@ struct Pdfium {
     int (*getText)(PdfText, double, double, double, double, unsigned short *, int);
 };
 
-QImage drawPage(const Pdfium &pdfium, PdfPage page)
+QImage drawPage(const Pdfium &pdfium, PdfPage page, int maximumEdge = maxImageDimension)
 {
     if (!page)
         return {};
-    const QSize size = rasterSize(pdfium.pageWidth(page), pdfium.pageHeight(page));
+    const QSize size = rasterSize(pdfium.pageWidth(page), pdfium.pageHeight(page), maximumEdge);
     if (size.isEmpty())
         return {};
 
@@ -300,8 +301,7 @@ QString readPageText(const Pdfium &pdfium, PdfPage page, qsizetype limit)
 
 ImportedPdf rasterize(const QByteArray &data, QString &error, bool withText)
 {
-    static QMutex mutex;
-    const QMutexLocker lock(&mutex);
+    const QMutexLocker lock(&pdfiumMutex);
     QLibrary library(QStringLiteral("pdfium"));
     const Pdfium pdfium(library);
     if (!pdfium.valid()) {
@@ -404,4 +404,96 @@ void paintPdfBackground(QPainter &painter, QSizeF pageSize, const QImage &image)
     painter.setRenderHint(QPainter::SmoothPixmapTransform);
     painter.drawImage(QRectF(topLeft, fitted), image);
     painter.restore();
+}
+
+PdfIndex inspectPdfData(const QByteArray &data, QString &error,
+                        const DocumentCancellation &cancel, const DocumentProgress &progress)
+{
+    error.clear();
+    if (data.isEmpty() || data.size() > maxPdfSize) {
+        error = QCoreApplication::translate("PdfImport", "Scegli un PDF leggibile da meno di 48 MB.");
+        return {};
+    }
+#ifdef Q_OS_MACOS
+    return pdfImportMac::inspectData(data, error, cancel, progress);
+#else
+    const QMutexLocker lock(&pdfiumMutex);
+    QLibrary library(QStringLiteral("pdfium"));
+    const Pdfium pdfium(library);
+    if (!pdfium.valid()) {
+        error = QCoreApplication::translate("PdfImport", "Il lettore PDF non è disponibile su questo dispositivo.");
+        return {};
+    }
+    const std::unique_ptr<fpdf_document_t__, decltype(pdfium.closeDocument)> document(
+        pdfium.loadDocument(data.constData(), data.size(), nullptr), pdfium.closeDocument);
+    if (!document) {
+        error = QCoreApplication::translate("PdfImport", "Impossibile leggere il PDF. Verifica che non richieda una password.");
+        return {};
+    }
+    const int count = pdfium.pageCount(document.get());
+    if (!checkPageCount(count, error))
+        return {};
+    PdfIndex result;
+    result.pageCount = count;
+    result.pageText.reserve(count);
+    qsizetype remaining = pdfium.canExtract(document.get()) ? maxTextPerDocument : 0;
+    for (int index = 0; index < count; ++index) {
+        if (cancel && cancel->load())
+            return {};
+        QString text;
+        if (remaining) {
+            const std::unique_ptr<fpdf_page_t__, decltype(pdfium.closePage)> page(
+                pdfium.loadPage(document.get(), index), pdfium.closePage);
+            if (page)
+                text = readPageText(pdfium, page.get(), qMin(remaining, maxTextPerPage)).simplified();
+            text.truncate(qMin(remaining, maxTextPerPage));
+            remaining -= text.size();
+        }
+        result.pageText.append(text);
+        if (progress && (index % 16 == 0 || index + 1 == count))
+            progress(index + 1, count);
+    }
+    return result;
+#endif
+}
+
+QImage renderPdfPage(const QByteArray &data, int page, int maximumEdge, QString &error)
+{
+    error.clear();
+    if (data.isEmpty() || data.size() > maxPdfSize || page < 0) {
+        error = QCoreApplication::translate("PdfImport", "Sorgente PDF non valida.");
+        return {};
+    }
+    maximumEdge = qBound(64, maximumEdge, 4096);
+#ifdef Q_OS_MACOS
+    const std::unique_ptr<CGDataProvider, decltype(&CGDataProviderRelease)> provider(
+        CGDataProviderCreateWithData(nullptr, data.constData(), data.size(), nullptr), CGDataProviderRelease);
+    const std::unique_ptr<CGPDFDocument, decltype(&CGPDFDocumentRelease)> document(
+        provider ? CGPDFDocumentCreateWithProvider(provider.get()) : nullptr, CGPDFDocumentRelease);
+    if (!document || !CGPDFDocumentIsUnlocked(document.get())
+        || page >= static_cast<int>(CGPDFDocumentGetNumberOfPages(document.get()))) {
+        error = QCoreApplication::translate("PdfImport", "Impossibile leggere la pagina PDF richiesta.");
+        return {};
+    }
+    const std::unique_ptr<CGColorSpace, decltype(&CGColorSpaceRelease)> colorSpace(
+        CGColorSpaceCreateDeviceRGB(), CGColorSpaceRelease);
+    return colorSpace ? drawPage(CGPDFDocumentGetPage(document.get(), page + 1), colorSpace.get(), maximumEdge) : QImage{};
+#else
+    const QMutexLocker lock(&pdfiumMutex);
+    QLibrary library(QStringLiteral("pdfium"));
+    const Pdfium pdfium(library);
+    if (!pdfium.valid()) {
+        error = QCoreApplication::translate("PdfImport", "Il lettore PDF non è disponibile su questo dispositivo.");
+        return {};
+    }
+    const std::unique_ptr<fpdf_document_t__, decltype(pdfium.closeDocument)> document(
+        pdfium.loadDocument(data.constData(), data.size(), nullptr), pdfium.closeDocument);
+    if (!document || page >= pdfium.pageCount(document.get())) {
+        error = QCoreApplication::translate("PdfImport", "Impossibile leggere la pagina PDF richiesta.");
+        return {};
+    }
+    const std::unique_ptr<fpdf_page_t__, decltype(pdfium.closePage)> reference(
+        pdfium.loadPage(document.get(), page), pdfium.closePage);
+    return drawPage(pdfium, reference.get(), maximumEdge);
+#endif
 }

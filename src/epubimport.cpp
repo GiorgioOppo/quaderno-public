@@ -9,6 +9,13 @@
 #include <QFont>
 #include <QHash>
 #include <QImage>
+#include <QImageReader>
+#include <QPageSize>
+#include <QPageLayout>
+#include <QPdfWriter>
+#include <QDirIterator>
+#include <QtEndian>
+#include <zlib.h>
 #include <QLibrary>
 #include <QPainter>
 #include <QScopeGuard>
@@ -19,6 +26,7 @@
 #include <QXmlStreamReader>
 
 #include <array>
+#include <cmath>
 #include <memory>
 #include <sys/types.h>
 #include <utility>
@@ -40,7 +48,7 @@ constexpr qsizetype maxMarkupBytes = 1 * MiB;
 constexpr qsizetype maxTotalMarkupBytes = 16 * MiB;
 constexpr qsizetype maxImageBytes = 30 * MiB;
 constexpr int maxEntries = 5000;
-constexpr int maxPages = 150;
+constexpr int maxPages = 100000;
 constexpr int archiveOk = 0;
 constexpr int archiveEof = 1;
 
@@ -79,7 +87,7 @@ public:
     }
 
     bool extract(const QByteArray &zip, const QSet<QString> &wanted, QHash<QString, QByteArray> &files,
-                 QString &error) const
+                 QString &error, qsizetype entryLimit = maxMarkupBytes, qsizetype totalLimit = maxTotalMarkupBytes) const
     {
         const std::unique_ptr<archive, decltype(free)> reader(create(), free);
         if (!reader || useZip(reader.get()) != archiveOk
@@ -114,7 +122,7 @@ public:
                 error = QCoreApplication::translate("EpubImport", "L’EPUB contiene riferimenti duplicati.");
                 return false;
             }
-            if (length(entry) > maxMarkupBytes) {
+            if (length(entry) > entryLimit) {
                 error = QCoreApplication::translate("EpubImport", "Una sezione dell’EPUB supera il limite di importazione.");
                 return false;
             }
@@ -123,7 +131,7 @@ public:
             ssize_t size = 0;
             while ((size = read(reader.get(), buffer.data(), buffer.size())) > 0) {
                 total += size;
-                if (data.size() + size > maxMarkupBytes || total > maxTotalMarkupBytes) {
+                if (data.size() + size > entryLimit || total > totalLimit) {
                     error = QCoreApplication::translate("EpubImport", "Il testo dell’EPUB supera il limite di importazione.");
                     return false;
                 }
@@ -311,7 +319,7 @@ bool readingOrder(const QByteArray &package, const QString &packageFile, QList<Q
     if (xml.hasError() || spine.isEmpty())
         return false;
     if (spine.size() > maxPages) {
-        error = QCoreApplication::translate("EpubImport", "L’EPUB supera il limite di 150 pagine importate.");
+        error = QCoreApplication::translate("EpubImport", "L’EPUB supera il limite di 100000 pagine importate.");
         return false;
     }
 
@@ -349,17 +357,18 @@ class NamedEntities : public QXmlStreamEntityResolver
     QHash<QString, QString> replacements;
 };
 
-bool safeChapterHtml(const QByteArray &xhtml, QString &html)
+bool safeChapterHtml(const QByteArray &xhtml, QString &html, const QString &base = {},
+                     const QHash<QString, QImage> &images = {})
 {
     static const QSet<QString> tags = {
         QStringLiteral("p"), QStringLiteral("div"), QStringLiteral("blockquote"), QStringLiteral("pre"),
         QStringLiteral("h1"), QStringLiteral("h2"), QStringLiteral("h3"), QStringLiteral("h4"),
         QStringLiteral("h5"), QStringLiteral("h6"), QStringLiteral("ol"), QStringLiteral("ul"),
-        QStringLiteral("li"), QStringLiteral("b"), QStringLiteral("strong"), QStringLiteral("i"),
+        QStringLiteral("li"), QStringLiteral("table"), QStringLiteral("tr"), QStringLiteral("td"), QStringLiteral("th"), QStringLiteral("b"), QStringLiteral("strong"), QStringLiteral("i"),
         QStringLiteral("em"), QStringLiteral("u"), QStringLiteral("s"), QStringLiteral("sub"), QStringLiteral("sup")
     };
     static const QSet<QString> omitted = {
-        QStringLiteral("script"), QStringLiteral("style"), QStringLiteral("svg"), QStringLiteral("math"),
+        QStringLiteral("script"), QStringLiteral("style"), QStringLiteral("math"),
         QStringLiteral("audio"), QStringLiteral("video"), QStringLiteral("iframe"), QStringLiteral("object")
     };
 
@@ -390,8 +399,23 @@ bool safeChapterHtml(const QByteArray &xhtml, QString &html)
                     html += u'<' + tag + u'>';
                 } else if (tag == QStringLiteral("br") || tag == QStringLiteral("hr")) {
                     html += u'<' + tag + QStringLiteral("/>");
-                } else if (tag == QStringLiteral("img")) {
-                    html += xml.attributes().value(u"alt").toString().toHtmlEscaped();
+                } else if (tag == QStringLiteral("img") || tag == QStringLiteral("image")) {
+                    QString reference = xml.attributes().value(u"src").toString();
+                    if (reference.isEmpty())
+                        reference = xml.attributes().value(u"href").toString();
+                    if (reference.isEmpty())
+                        reference = xml.attributes().value(QStringLiteral("http://www.w3.org/1999/xlink"), QStringLiteral("href")).toString();
+                    const QString path = archivePath(base, reference);
+                    const QImage image = images.value(path);
+                    if (!image.isNull()) {
+                        const QSize size = image.size().scaled(QSize(760, 1000), Qt::KeepAspectRatio);
+                        const QString resource = QStringLiteral("quaderno:/") + QString::fromLatin1(QUrl::toPercentEncoding(path, "/"));
+                        html += QStringLiteral("<img src=\"%1\" width=\"%2\" height=\"%3\"/>")
+                            .arg(resource.toHtmlEscaped()).arg(size.width()).arg(size.height());
+                    } else {
+                        const QString alt = xml.attributes().value(u"alt").toString();
+                        html += alt.isEmpty() ? QStringLiteral("[Immagine non disponibile]") : alt.toHtmlEscaped();
+                    }
                 }
             }
             break;
@@ -425,134 +449,264 @@ class OfflineTextDocument : public QTextDocument
     QVariant loadResource(int, const QUrl &) override { return {}; }
 };
 
-bool renderChapter(const QString &html, QList<QByteArray> &pages, qsizetype &total, QString &error)
+QSet<QString> chapterImages(const QByteArray &xhtml, const QString &base)
 {
-    constexpr QSize pageSize(900, 1200);
-    constexpr QRect content(70, 74, 760, 1052);
-    OfflineTextDocument text;
-    QFont font;
-    font.setStyleHint(QFont::Serif);
-    font.setPixelSize(29);
-    text.setDefaultFont(font);
-    text.setDocumentMargin(0);
-    text.setDefaultStyleSheet(QStringLiteral("body { color: #252528; } p { margin-bottom: 13px; }"));
-    text.setHtml(html);
-    if (text.toPlainText().trimmed().isEmpty())
-        return true;
-    text.setPageSize(content.size());
-    const int count = text.pageCount();
-    if (count > maxPages - pages.size()) {
-        error = QCoreApplication::translate("EpubImport", "L’EPUB supera il limite di 150 pagine importate.");
-        return false;
+    QSet<QString> paths;
+    QXmlStreamReader xml(xhtml);
+    NamedEntities entities;
+    xml.setEntityResolver(&entities);
+    while (!xml.atEnd()) {
+        if (xml.readNext() != QXmlStreamReader::StartElement)
+            continue;
+        if (xml.name() != u"img" && xml.name() != u"image")
+            continue;
+        QString reference = xml.attributes().value(u"src").toString();
+        if (reference.isEmpty())
+            reference = xml.attributes().value(u"href").toString();
+        if (reference.isEmpty())
+            reference = xml.attributes().value(QStringLiteral("http://www.w3.org/1999/xlink"), QStringLiteral("href")).toString();
+        const QString path = archivePath(base, reference);
+        if (!path.isEmpty())
+            paths.insert(path);
     }
+    return paths;
+}
 
-    for (int page = 0; page < count; ++page) {
-        QImage image(pageSize, QImage::Format_RGB32);
-        image.fill(Qt::white);
-        const int top = page * content.height();
-        QPainter painter(&image);
-        painter.setClipRect(content);
-        painter.translate(content.x(), content.y() - top);
-        QAbstractTextDocumentLayout::PaintContext context;
-        context.clip = QRectF(0, top, content.width(), content.height());
-        text.documentLayout()->draw(&painter, context);
-        painter.end();
-
-        QByteArray data;
-        QBuffer output(&data);
-        output.open(QIODevice::WriteOnly);
-        if (!image.save(&output, "JPEG", 85)) {
-            error = QCoreApplication::translate("EpubImport", "Impossibile preparare una pagina EPUB.");
-            return false;
-        }
-        total += data.size();
-        if (total > maxImageBytes) {
-            error = QCoreApplication::translate("EpubImport", "Le pagine EPUB superano il limite di 30 MB.");
-            return false;
-        }
-        pages.append(std::move(data));
-    }
-    return true;
+void append16(QByteArray &bytes, quint16 value)
+{
+    const quint16 little = qToLittleEndian(value);
+    bytes.append(reinterpret_cast<const char *>(&little), sizeof little);
+}
+void append32(QByteArray &bytes, quint32 value)
+{
+    const quint32 little = qToLittleEndian(value);
+    bytes.append(reinterpret_cast<const char *>(&little), sizeof little);
 }
 }
 
-QList<QByteArray> renderEpubPages(const QString &path, QString &error)
+QByteArray epubSourceBytes(const QString &path, QString &error)
 {
-    error.clear();
     const QFileInfo info(path);
-    QByteArray zip;
-    ZipReader reader;
-#ifdef Q_OS_UNIX
-    const bool package = info.isDir();
-    const int root = package ? ::open(QFile::encodeName(path).constData(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW) : -1;
-    const auto closeRoot = qScopeGuard([root] { if (root >= 0) ::close(root); });
-    if (package && root < 0) {
-        error = QCoreApplication::translate("EpubImport", "Impossibile leggere l’archivio EPUB.");
-        return {};
-    }
-    if (!package)
-#endif
-    {
+    if (info.isFile()) {
         QFile input(path);
-        if (!info.isFile() || !input.open(QIODevice::ReadOnly) || input.size() <= 0 || input.size() > maxArchiveBytes) {
+        if (!input.open(QIODevice::ReadOnly) || input.size() < 1 || input.size() > maxArchiveBytes) {
             error = QCoreApplication::translate("EpubImport", "Scegli un file EPUB leggibile da meno di 64 MB.");
             return {};
         }
-        zip = input.read(maxArchiveBytes + 1);
-        if (zip.isEmpty() || zip.size() > maxArchiveBytes || input.error() != QFileDevice::NoError) {
+        const QByteArray data = input.read(maxArchiveBytes + 1);
+        if (data.isEmpty() || data.size() > maxArchiveBytes || input.error() != QFileDevice::NoError) {
             error = QCoreApplication::translate("EpubImport", "Impossibile leggere il file EPUB.");
             return {};
         }
-        if (!reader.available()) {
-            error = QCoreApplication::translate("EpubImport", "La libreria di sistema per leggere gli EPUB non è disponibile.");
+        return data;
+    }
+    if (!info.isDir() || info.isSymLink()) {
+        error = QCoreApplication::translate("EpubImport", "Scegli un file EPUB leggibile.");
+        return {};
+    }
+    // Apple Books can supply an unpacked EPUB. Retain all regular files in a
+    // standards-compatible stored ZIP, without following links outside it.
+    const QDir root(info.canonicalFilePath());
+    QStringList names;
+    QDirIterator entries(root.path(), QDir::Files | QDir::Dirs | QDir::Hidden | QDir::NoDotAndDotDot,
+                         QDirIterator::Subdirectories);
+    while (entries.hasNext()) {
+        entries.next();
+        const auto entry = entries.fileInfo();
+        if (entry.isSymLink() || (!entry.isDir() && !entry.isFile())) {
+            error = QCoreApplication::translate("EpubImport", "Il pacchetto EPUB contiene un collegamento non supportato.");
+            return {};
+        }
+        if (entry.isFile())
+            names.append(root.relativeFilePath(entry.absoluteFilePath()));
+        if (names.size() > maxEntries) {
+            error = QCoreApplication::translate("EpubImport", "L’EPUB contiene troppi file.");
             return {};
         }
     }
+    names.sort();
+    names.removeAll(QStringLiteral("mimetype"));
+    names.prepend(QStringLiteral("mimetype"));
+    QByteArray result;
+    QByteArray central;
+    for (const QString &name : std::as_const(names)) {
+        QFile input(root.filePath(name));
+        if (!input.open(QIODevice::ReadOnly) || input.size() < 0 || input.size() > maxArchiveBytes) {
+            error = QCoreApplication::translate("EpubImport", "Impossibile leggere il pacchetto EPUB.");
+            return {};
+        }
+        const QByteArray data = input.read(maxArchiveBytes + 1);
+        const QByteArray encodedName = name.toUtf8();
+        if (data.size() > maxArchiveBytes || input.error() != QFileDevice::NoError || encodedName.size() > 65535
+            || result.size() + central.size() + data.size() + encodedName.size() * 2 + 100 > maxArchiveBytes) {
+            error = QCoreApplication::translate("EpubImport", "Il pacchetto EPUB supera il limite di 64 MB.");
+            return {};
+        }
+        const quint32 offset = result.size();
+        const quint32 checksum = crc32(0, reinterpret_cast<const Bytef *>(data.constData()), data.size());
+        append32(result, 0x04034b50); append16(result, 20); append16(result, 0x0800);
+        append16(result, 0); append16(result, 0); append16(result, 0);
+        append32(result, checksum); append32(result, data.size()); append32(result, data.size());
+        append16(result, encodedName.size()); append16(result, 0);
+        result += encodedName; result += data;
+        append32(central, 0x02014b50); append16(central, 20); append16(central, 20); append16(central, 0x0800);
+        append16(central, 0); append16(central, 0); append16(central, 0);
+        append32(central, checksum); append32(central, data.size()); append32(central, data.size());
+        append16(central, encodedName.size()); append16(central, 0); append16(central, 0);
+        append16(central, 0); append16(central, 0); append32(central, 0); append32(central, offset);
+        central += encodedName;
+    }
+    const quint32 centralOffset = result.size();
+    result += central;
+    append32(result, 0x06054b50); append16(result, 0); append16(result, 0);
+    append16(result, names.size()); append16(result, names.size());
+    append32(result, central.size()); append32(result, centralOffset); append16(result, 0);
+    return result;
+}
 
+QByteArray convertEpubToPdf(const QByteArray &source, QString &error,
+                            const DocumentCancellation &cancel, const DocumentProgress &progress)
+{
+    error.clear();
+    if (source.isEmpty() || source.size() > maxArchiveBytes) {
+        error = QCoreApplication::translate("EpubImport", "Scegli un file EPUB leggibile da meno di 64 MB.");
+        return {};
+    }
+    ZipReader reader;
+    if (!reader.available()) {
+        error = QCoreApplication::translate("EpubImport", "La libreria di sistema per leggere gli EPUB non è disponibile.");
+        return {};
+    }
     QHash<QString, QByteArray> files;
-    const auto extract = [&](const QSet<QString> &wanted) {
-        files.clear();
-#ifdef Q_OS_UNIX
-        if (root >= 0)
-            return extractPackage(root, wanted, files, error);
-#endif
-        return reader.extract(zip, wanted, files, error);
-    };
-    if (!extract({containerPath, encryptionPath, rightsPath, fairPlayPath}))
+    if (!reader.extract(source, {containerPath, encryptionPath, rightsPath, fairPlayPath}, files, error))
         return {};
     if (files.contains(rightsPath) || files.contains(fairPlayPath) || hasDrm(files.value(encryptionPath))) {
         error = QCoreApplication::translate("EpubImport", "L’EPUB è protetto. Scegli un file senza DRM.");
         return {};
     }
-
     const QString packageFile = packagePath(files.value(containerPath));
-    if (packageFile.isEmpty()) {
-        error = QCoreApplication::translate("EpubImport", "Impossibile trovare il contenuto dell’EPUB.");
+    files.clear();
+    if (packageFile.isEmpty() || !reader.extract(source, {packageFile}, files, error)) {
+        if (error.isEmpty())
+            error = QCoreApplication::translate("EpubImport", "Impossibile trovare il contenuto dell’EPUB.");
         return {};
     }
-    if (!extract({packageFile}))
-        return {};
     QList<QString> chapters;
     if (!readingOrder(files.value(packageFile), packageFile, chapters, error)) {
         if (error.isEmpty())
             error = QCoreApplication::translate("EpubImport", "L’indice dell’EPUB non è leggibile.");
         return {};
     }
-
-    if (!extract(QSet<QString>(chapters.cbegin(), chapters.cend())))
+    files.clear();
+    if (!reader.extract(source, QSet<QString>(chapters.cbegin(), chapters.cend()), files, error))
         return {};
-    QList<QByteArray> pages;
-    qsizetype total = 0;
-    for (const QString &chapter : std::as_const(chapters)) {
-        QString html;
-        if (!safeChapterHtml(files.value(chapter), html)) {
-            error = QCoreApplication::translate("EpubImport", "Una sezione XHTML dell’EPUB non è leggibile.");
+
+    QByteArray pdf;
+    QBuffer output(&pdf);
+    output.open(QIODevice::WriteOnly);
+    int pages = 0;
+    {
+        QPdfWriter writer(&output);
+        writer.setResolution(72);
+        writer.setPageSize(QPageSize(QSizeF(900, 1200), QPageSize::Point));
+        writer.setPageMargins(QMarginsF(0, 0, 0, 0), QPageLayout::Point);
+        QPainter painter(&writer);
+        if (!painter.isActive()) {
+            error = QCoreApplication::translate("EpubImport", "Impossibile preparare il documento EPUB.");
             return {};
         }
-        if (!renderChapter(html, pages, total, error))
-            return {};
+        constexpr QRect content(70, 74, 760, 1052);
+        for (qsizetype chapterIndex = 0; chapterIndex < chapters.size(); ++chapterIndex) {
+            if (cancel && cancel->load())
+                return {};
+            const QString chapter = chapters.at(chapterIndex);
+            const QString base = chapter.left(chapter.lastIndexOf(u'/') + 1);
+            const QByteArray markup = files.value(chapter);
+            const QSet<QString> references = chapterImages(markup, base);
+            QHash<QString, QByteArray> imageFiles;
+            if (!references.isEmpty() && !reader.extract(source, references, imageFiles, error, maxImageBytes, maxImageBytes))
+                return {};
+            QHash<QString, QImage> images;
+            for (auto it = imageFiles.cbegin(); it != imageFiles.cend(); ++it) {
+                if (cancel && cancel->load())
+                    return {};
+                QBuffer input;
+                input.setData(it.value());
+                input.open(QIODevice::ReadOnly);
+                QImageReader decoder(&input);
+                const QSize size = decoder.size();
+                if (!size.isValid() || size.width() > 50000 || size.height() > 50000)
+                    continue;
+                decoder.setAutoTransform(true);
+                const int imageEdge = qBound(128, int(std::sqrt((32.0 * MiB) / (4.0 * qMax(1, references.size())))), 2048);
+                decoder.setScaledSize(size.scaled(QSize(imageEdge, imageEdge), Qt::KeepAspectRatio));
+                const QImage image = decoder.read();
+                if (!image.isNull())
+                    images.insert(it.key(), image);
+            }
+            QString html;
+            if (!safeChapterHtml(markup, html, base, images)) {
+                error = QCoreApplication::translate("EpubImport", "Una sezione XHTML dell’EPUB non è leggibile.");
+                return {};
+            }
+            if (html.trimmed().isEmpty())
+                continue;
+            OfflineTextDocument text;
+            QFont font;
+            font.setStyleHint(QFont::Serif);
+            font.setPixelSize(29);
+            text.setDefaultFont(font);
+            text.setDocumentMargin(0);
+            text.setDefaultStyleSheet(QStringLiteral("body { color: #252528; } p { margin-bottom: 13px; }"));
+            for (auto it = images.cbegin(); it != images.cend(); ++it) {
+                const QUrl resource(QStringLiteral("quaderno:/") + QString::fromLatin1(QUrl::toPercentEncoding(it.key(), "/")));
+                text.addResource(QTextDocument::ImageResource, resource, it.value());
+            }
+            text.setHtml(html);
+            text.setPageSize(content.size());
+            const int count = text.pageCount();
+            if (count < 1 || count > maxPages - pages) {
+                error = QCoreApplication::translate("EpubImport", "L’EPUB supera il limite di 100000 pagine importate.");
+                return {};
+            }
+            for (int page = 0; page < count; ++page) {
+                if (cancel && cancel->load())
+                    return {};
+                if (pages++ && !writer.newPage()) {
+                    error = QCoreApplication::translate("EpubImport", "Impossibile preparare una pagina EPUB.");
+                    return {};
+                }
+                painter.save();
+                painter.fillRect(QRect(0, 0, 900, 1200), Qt::white);
+                painter.setClipRect(content);
+                painter.translate(content.x(), content.y() - page * content.height());
+                QAbstractTextDocumentLayout::PaintContext context;
+                context.palette.setColor(QPalette::Text, QColor(37, 37, 40));
+                context.clip = QRectF(0, page * content.height(), content.width(), content.height());
+                text.documentLayout()->draw(&painter, context);
+                painter.restore();
+                if (pdf.size() > 48 * MiB) {
+                    error = QCoreApplication::translate("EpubImport", "Il documento EPUB preparato supera il limite di 48 MB.");
+                    return {};
+                }
+            }
+            if (progress)
+                progress(chapterIndex + 1, chapters.size());
+        }
+        painter.end();
     }
-    if (pages.isEmpty())
-        error = QCoreApplication::translate("EpubImport", "L’EPUB non contiene testo importabile.");
-    return pages;
+    if (pages == 0 || pdf.size() > 48 * MiB) {
+        error = QCoreApplication::translate("EpubImport", "L’EPUB non contiene pagine importabili o supera il limite di dimensione.");
+        return {};
+    }
+    return pdf;
+}
+
+QList<QByteArray> renderEpubPages(const QString &path, QString &error)
+{
+    const QByteArray source = epubSourceBytes(path, error);
+    if (source.isEmpty())
+        return {};
+    const QByteArray pdf = convertEpubToPdf(source, error);
+    return pdf.isEmpty() ? QList<QByteArray>{} : renderPdfData(pdf, error);
 }

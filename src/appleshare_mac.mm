@@ -50,7 +50,8 @@ void chooseNotebookFile(FileSelection selected)
 {
     NSOpenPanel *panel = [NSOpenPanel openPanel];
     panel.title = QCoreApplication::translate("AppleShareMac", "Importa quaderni").toNSString();
-    panel.allowedContentTypes = @[UTTypeJSON];
+    UTType *quaderno = [UTType typeWithFilenameExtension:@"quaderno"];
+    panel.allowedContentTypes = quaderno ? @[UTTypeJSON, quaderno] : @[UTTypeJSON];
     panel.canChooseFiles = YES;
     panel.canChooseDirectories = NO;
     panel.allowsMultipleSelection = NO;
@@ -126,6 +127,47 @@ bool sharePdf(const QString &path)
                        ofView:view
                 preferredEdge:NSMinYEdge];
     return true;
+}
+
+void revealExport(const QString &path)
+{
+    [NSWorkspace.sharedWorkspace activateFileViewerSelectingURLs:@[[NSURL fileURLWithPath:path.toNSString()]]];
+}
+
+void openExport(const QString &path, const QString &destination, std::function<void(bool)> completed)
+{
+    if (destination == QStringLiteral("share") || destination == QStringLiteral("journal")) {
+        // Showing the picker cannot prove that the user delivered the file.
+        // The durable queue remains awaiting user confirmation, including cancel.
+        completed(sharePdf(path));
+        return;
+    }
+    NSString *bundle = nil;
+    if (destination == QStringLiteral("notes")) bundle = @"com.apple.Notes";
+    else if (destination == QStringLiteral("books")) bundle = @"com.apple.iBooksX";
+    else if (destination == QStringLiteral("numbers")) bundle = @"com.apple.iWork.Numbers";
+    else if (destination == QStringLiteral("keynote")) bundle = @"com.apple.iWork.Keynote";
+    if (!bundle) { completed(false); return; }
+    NSWorkspace *workspace = NSWorkspace.sharedWorkspace;
+    NSURL *application = [workspace URLForApplicationWithBundleIdentifier:bundle];
+    if (!application) { completed(false); return; }
+    NSURL *file = [NSURL fileURLWithPath:path.toNSString()];
+    const bool manualImport = destination == QStringLiteral("notes") || destination == QStringLiteral("keynote");
+    if (manualImport) {
+        [workspace activateFileViewerSelectingURLs:@[file]];
+        [workspace openApplicationAtURL:application configuration:[NSWorkspaceOpenConfiguration configuration]
+                      completionHandler:^(NSRunningApplication *app, NSError *error) {
+            const bool opened = app != nil && error == nil;
+            dispatch_async(dispatch_get_main_queue(), ^{ completed(opened); });
+        }];
+    } else {
+        [workspace openURLs:@[file] withApplicationAtURL:application
+              configuration:[NSWorkspaceOpenConfiguration configuration]
+          completionHandler:^(NSRunningApplication *app, NSError *error) {
+            const bool opened = app != nil && error == nil;
+            dispatch_async(dispatch_get_main_queue(), ^{ completed(opened); });
+        }];
+    }
 }
 }
 

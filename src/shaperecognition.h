@@ -9,4 +9,4 @@ struct RecognizedShape {
     QList<InkPoint> anchors;
 };
 
-std::optional<RecognizedShape> recognizeInkShape(const QList<InkPoint> &points, QSizeF pageSize);
+std::optional<RecognizedShape> recognizeInkShape(const QList<InkPoint> &points, QSizeF pageSize, qreal tolerance = 1);

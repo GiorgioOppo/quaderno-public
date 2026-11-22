@@ -5,6 +5,7 @@ import Quaderno
 
 ColumnLayout {
     id: organizer
+    objectName: "libraryOrganizer"
 
     required property Notebook notebook
     required property real uiScale
@@ -16,7 +17,22 @@ ColumnLayout {
     property string viewMode: "files"
     property string folderId: ""
     property string selectedTag: ""
-    property bool sortByTitle: false
+    property string sortMode: "library"
+    property string formatFilter: "all"
+    readonly property var sortChoices: [
+        {key: "library", label: qsTr("Ordine della libreria")},
+        {key: "title", label: qsTr("Nome da A a Z")},
+        {key: "titleDescending", label: qsTr("Nome da Z a A")},
+        {key: "pagesAscending", label: qsTr("Meno pagine prima")},
+        {key: "pagesDescending", label: qsTr("Più pagine prima")}
+    ]
+    readonly property var formatChoices: section === "books" ? [
+        {key: "all", label: qsTr("Tutti i formati")}, {key: "pdf", label: "PDF"}, {key: "epub", label: "EPUB"},
+        {key: "legacy", label: qsTr("Documenti importati in precedenza")}, {key: "mixed", label: qsTr("Formati misti")}
+    ] : [{key: "all", label: qsTr("Tutti i formati")}, {key: "markdown", label: "Markdown"},
+         {key: "notebook", label: qsTr("Quaderni") }]
+    onSectionChanged: formatFilter = "all"
+    onViewModeChanged: formatFilter = "all"
 
     readonly property string destinationFolderId: viewMode === "files" ? folderId : ""
     readonly property bool dialogOpen: actions.visible
@@ -30,12 +46,13 @@ ColumnLayout {
     readonly property var childFolders: viewMode === "files"
         ? notebook.folders.filter(folder => folder.parentId === folderId) : []
     readonly property var tags: notebook.knownTags
-    readonly property bool showsItems: section === "charts" || section === "tables"
+    readonly property bool showsItems: section === "charts" || section === "tables" || section === "diagrams"
     readonly property var sections: [
         { key: "books", label: qsTr("Libri"), icon: "notebook" },
         { key: "writing", label: qsTr("Scrittura"), icon: "pen" },
         { key: "charts", label: qsTr("Grafici"), icon: "chart" },
-        { key: "tables", label: qsTr("Tabelle"), icon: "table" }
+        { key: "tables", label: qsTr("Tabelle"), icon: "table" },
+        { key: "diagrams", label: qsTr("Diagrammi"), icon: "diagram" }
     ]
 
     spacing: (sidebar ? 12 : 7) * uiScale
@@ -51,12 +68,16 @@ ColumnLayout {
             if (Boolean(book.trashed) !== (viewMode === "trash"))
                 return false
             if (viewMode !== "trash") {
-                if (showsItems && book.type !== (section === "charts" ? "chart" : "table"))
+                if (showsItems && book.type !== (section === "charts" ? "chart" : section === "tables" ? "table" : "diagram"))
+                    return false
+                if (section === "writing" && book.workspace === "diagrams")
                     return false
                 if (!showsItems && Boolean(book.document) !== (section === "books"))
                     return false
             }
             if (viewMode === "favorites" && !book.favorite)
+                return false
+            if (!showsItems && formatFilter !== "all" && book.format !== formatFilter)
                 return false
             if (viewMode === "tags" && !book.tags.some(value => value.toLocaleLowerCase() === tag)
                                     && !book.pageTags.some(value => value.toLocaleLowerCase() === tag))
@@ -75,7 +96,12 @@ ColumnLayout {
                 || book.tags.some(value => value.toLocaleLowerCase().includes(text))
                 || book.pageTags.some(value => value.toLocaleLowerCase().includes(text))
         })
-        return sortByTitle ? results.sort((a, b) => a.title.localeCompare(b.title)) : results
+        if (sortMode === "title" || sortMode === "titleDescending")
+            return results.sort((a, b) => a.title.localeCompare(b.title) * (sortMode === "title" ? 1 : -1))
+        if (!showsItems && (sortMode === "pagesAscending" || sortMode === "pagesDescending"))
+            return results.sort((a, b) => ((a.pageCount - b.pageCount) * (sortMode === "pagesAscending" ? 1 : -1))
+                || a.title.localeCompare(b.title))
+        return results
     }
 
     function folderPath(id: string): string {
@@ -159,7 +185,7 @@ ColumnLayout {
 
     GridLayout {
         Layout.fillWidth: true
-        columns: organizer.sidebar ? 1 : (organizer.width < 480 * organizer.uiScale ? 2 : 4)
+        columns: organizer.sidebar ? 1 : (organizer.width < 480 * organizer.uiScale ? 2 : 5)
         columnSpacing: 4 * organizer.uiScale
         rowSpacing: 3 * organizer.uiScale
 
@@ -168,6 +194,7 @@ ColumnLayout {
 
             ModeButton {
                 required property var modelData
+                objectName: "librarySection_" + modelData.key
                 Layout.fillWidth: true
                 Layout.preferredWidth: 1
                 text: modelData.label
@@ -228,6 +255,22 @@ ColumnLayout {
                 iconOnly: true
                 onClicked: organizer.openLibraryActions("sort")
             }
+        }
+    }
+
+    RowLayout {
+        visible: organizer.formatFilter !== "all" && !organizer.showsItems
+        Layout.fillWidth: true
+        OrganizerLabel {
+            text: organizer.formatChoices.find(choice => choice.key === organizer.formatFilter)?.label || ""
+            wrapMode: Text.WordWrap
+            color: organizer.blue
+        }
+        ModeButton {
+            text: qsTr("Rimuovi filtro formato")
+            iconName: "close"
+            iconOnly: true
+            onClicked: organizer.formatFilter = "all"
         }
     }
 
@@ -362,7 +405,7 @@ ColumnLayout {
             moveBook: qsTr("Sposta quaderno"),
             bookTags: qsTr("Tag del quaderno"),
             pickTag: qsTr("Filtra per tag"),
-            sort: qsTr("Ordina quaderni"),
+            sort: qsTr("Ordina e filtra"),
             purgeBook: qsTr("Elimina definitivamente"),
             removeFolder: qsTr("Elimina cartella")
         })[step] || ""
@@ -538,23 +581,32 @@ ColumnLayout {
                     onClicked: actions.openStep("removeFolder")
                 }
 
-                Choice {
-                    visible: actions.step === "sort"
-                    text: qsTr("Ordine della libreria")
-                    filled: !organizer.sortByTitle
-                    onClicked: {
-                        organizer.sortByTitle = false
-                        actions.close()
+                Repeater {
+                    model: actions.step === "sort" ? organizer.sortChoices.filter(choice =>
+                        !organizer.showsItems || !choice.key.startsWith("pages")) : []
+                    Choice {
+                        required property var modelData
+                        text: modelData.label
+                        filled: organizer.sortMode === modelData.key
+                        onClicked: organizer.sortMode = modelData.key
                     }
                 }
 
-                Choice {
-                    visible: actions.step === "sort"
-                    text: qsTr("Nome da A a Z")
-                    filled: organizer.sortByTitle
-                    onClicked: {
-                        organizer.sortByTitle = true
-                        actions.close()
+                OrganizerLabel {
+                    visible: actions.step === "sort" && !organizer.showsItems && organizer.viewMode !== "trash"
+                    text: qsTr("Formato")
+                    font.weight: Font.DemiBold
+                    topPadding: 8 * organizer.uiScale
+                }
+
+                Repeater {
+                    model: actions.step === "sort" && !organizer.showsItems && organizer.viewMode !== "trash"
+                           ? organizer.formatChoices : []
+                    Choice {
+                        required property var modelData
+                        text: modelData.label
+                        filled: organizer.formatFilter === modelData.key
+                        onClicked: organizer.formatFilter = modelData.key
                     }
                 }
 

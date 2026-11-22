@@ -77,8 +77,14 @@ check_aarch64 "$package_dir/quaderno"
 
 install -m 0755 "$repo/scripts/install-paper-pro.sh" "$repo/scripts/try-on-device.sh" \
     "$repo/scripts/install-appload-quaderno.sh" "$repo/scripts/appload-quaderno-entry.sh" \
-    "$repo/scripts/obsidian-sync-paper-pro.sh" "$repo/scripts/obsidian-sync-device.sh" "$package_dir/"
+    "$repo/scripts/obsidian-sync-paper-pro.sh" "$repo/scripts/obsidian-sync-device.sh" \
+    "$repo/scripts/cloud-auth-paper-pro.py" "$package_dir/"
 install -m 0644 "$repo/scripts/quaderno-appload.png" "$package_dir/"
+mkdir -p "$package_dir/docs/en"
+install -m 0644 "$repo/docs/CLOUD_ACCOUNTS.md" "$repo/docs/DIAGRAMMI.md" "$repo/docs/IMPOSTAZIONI.md" \
+    "$repo/docs/PROTOCOLLO_SYNC.md" "$repo/docs/DATI.md" "$repo/docs/NOTE_LIBRI.md" "$package_dir/docs/"
+install -m 0644 "$repo/docs/en/CLOUD_ACCOUNTS.md" "$repo/docs/en/DIAGRAMS.md" "$repo/docs/en/SETTINGS.md" \
+    "$repo/docs/en/SYNC_PROTOCOL.md" "$repo/docs/en/DATA.md" "$repo/docs/en/BOOK_NOTES.md" "$package_dir/docs/en/"
 for file in LICENSE THIRD_PARTY_NOTICES.md; do
     if [ -f "$repo/$file" ]; then
         install -m 0644 "$repo/$file" "$package_dir/"

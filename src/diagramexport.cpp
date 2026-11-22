@@ -63,6 +63,20 @@ QString DiagramExport::save(const QUrl &file, const QVariantMap &diagram, const 
         || destination.suffix().compare(QStringLiteral("drawio"), Qt::CaseInsensitive) != 0)
         return tr("Scegli un file .drawio da salvare.");
 
+    QSaveFile output(destination.absoluteFilePath());
+    if (!output.open(QIODevice::WriteOnly))
+        return tr("Impossibile salvare il diagramma. %1").arg(output.errorString());
+    const QString error = write(output, diagram, title);
+    if (!error.isEmpty()) { output.cancelWriting(); return error; }
+    if (!output.commit())
+        return tr("Impossibile salvare il diagramma. %1").arg(output.errorString());
+    return {};
+}
+
+QString DiagramExport::write(QIODevice &output, const QVariantMap &diagram, const QString &title)
+{
+    if (!output.isWritable())
+        return tr("Impossibile salvare il diagramma. %1").arg(output.errorString());
     auto candidate = diagram;
     if (candidate.value(QStringLiteral("id")).toString().isEmpty()) {
         candidate.insert(QStringLiteral("id"), QStringLiteral("diagram"));
@@ -79,10 +93,6 @@ QString DiagramExport::save(const QUrl &file, const QVariantMap &diagram, const 
     const auto edges = valid.value(QStringLiteral("edges")).toList();
     const int width = qMax(1, qRound(valid.value(QStringLiteral("width")).toReal() * pageWidth));
     const int height = qMax(1, qRound(valid.value(QStringLiteral("height")).toReal() * pageHeight));
-    QSaveFile output(destination.absoluteFilePath());
-    if (!output.open(QIODevice::WriteOnly))
-        return tr("Impossibile salvare il diagramma. %1").arg(output.errorString());
-
     QXmlStreamWriter xml(&output);
     xml.setAutoFormatting(true);
     xml.writeStartDocument();
@@ -165,11 +175,7 @@ QString DiagramExport::save(const QUrl &file, const QVariantMap &diagram, const 
         xml.writeEndElement();
     }
     xml.writeEndDocument();
-    if (xml.hasError()) {
-        output.cancelWriting();
+    if (xml.hasError())
         return tr("Il diagramma contiene testo che non può essere esportato.");
-    }
-    if (!output.commit())
-        return tr("Impossibile salvare il diagramma. %1").arg(output.errorString());
     return {};
 }

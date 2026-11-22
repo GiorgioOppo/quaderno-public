@@ -5,6 +5,7 @@ import Quaderno
 
 Dialog {
     id: editor
+    objectName: "pageItemEditor"
 
     required property real uiScale
     required property bool tabletMode
@@ -16,6 +17,7 @@ Dialog {
     signal saveOnNewPageRequested(var item)
     signal replaceTranscriptRequested(var selection, string text)
     signal deleteRequested(string id)
+    signal restoreHandwritingRequested(string id)
     signal tableChartRequested(var item)
     signal csvImportRequested()
     signal csvExportRequested(var item)
@@ -30,11 +32,14 @@ Dialog {
     property string csvErrorText: ""
     property bool confirmDelete: false
     property var transcriptSelection: null
+    property bool formulaHelpOpen: false
+    property int pendingRows: 0
+    property int pendingColumns: 0
 
     readonly property bool transcript: transcriptSelection !== null
     readonly property bool editingTable: itemType === "table"
     readonly property bool existing: originalItem !== null && Boolean(originalItem.id)
-    readonly property bool canSave: !confirmDelete && (editingTable || textInput.text.trim().length > 0)
+    readonly property bool canSave: !confirmDelete && pendingRows === 0 && (editingTable || textInput.text.trim().length > 0)
     readonly property var cellValues: visible && editingTable ? notebook.tableCellValues(tableDraft()) : []
     readonly property string selectedValue: cellValues[selectedRow * columnCount + selectedColumn] || ""
     readonly property bool canInsertFormula: selectedRow > 0 && cellInput.text.length === 0
@@ -81,6 +86,9 @@ Dialog {
         itemType = type
         originalItem = item && item.id ? item : null
         confirmDelete = false
+        pendingRows = 0
+        pendingColumns = 0
+        formulaHelpOpen = false
         transcriptSelection = selection || null
         errorText = ""
         csvErrorText = ""
@@ -148,8 +156,8 @@ Dialog {
     function showSelectedCell() {
         if (grid.width <= 0 || grid.height <= 0)
             return
-        const x = selectedColumn * grid.cellWidth
-        const y = selectedRow * grid.cellHeight
+        const x = grid.headerWidth + selectedColumn * grid.cellWidth
+        const y = (selectedRow + 1) * grid.cellHeight
         grid.contentX = Math.max(0, Math.min(x, Math.max(grid.contentX, x + grid.cellWidth - grid.width)))
         grid.contentY = Math.max(0, Math.min(y, Math.max(grid.contentY, y + grid.cellHeight - grid.height)))
     }
@@ -174,6 +182,39 @@ Dialog {
         cellInput.text = cellDraft[cellIndex(selectedRow, selectedColumn)] || ""
         grid.returnToBounds()
         showSelectedCell()
+    }
+
+    function requestDimensions(rows: int, cols: int) {
+        storeCell()
+        for (let row = 0; row < rowCount; ++row) {
+            for (let col = 0; col < columnCount; ++col) {
+                if ((row >= rows || col >= cols) && (cellDraft[cellIndex(row, col)] || "").length) {
+                    pendingRows = rows
+                    pendingColumns = cols
+                    return
+                }
+            }
+        }
+        setDimensions(rows, cols)
+    }
+
+    function confirmDimensions() {
+        if (pendingRows === 0) return
+        setDimensions(pendingRows, pendingColumns)
+        pendingRows = 0
+        pendingColumns = 0
+    }
+
+    function formulaErrorExplanation(value: string): string {
+        if (!cellInput.text.trim().startsWith("=")) return ""
+        switch (value) {
+        case "#REF!": return qsTr("Il riferimento indica una cella fuori dalla tabella.")
+        case "#CYCLE!": return qsTr("La formula dipende da sé stessa, direttamente o tramite altre celle.")
+        case "#DIV/0!": return qsTr("Non ci sono numeri da usare per calcolare la media.")
+        case "#NAME?": return qsTr("Funzione sconosciuta. Apri la guida alle formule disponibili.")
+        case "#VALUE!": return qsTr("Controlla numeri, intervalli e separatori della formula.")
+        default: return ""
+        }
     }
 
     function moveCell(delta: int): bool {
@@ -412,7 +453,7 @@ Dialog {
                     increaseLabel: qsTr("Aggiungi una riga")
                     value: editor.rowCount
                     maximum: 12
-                    onValueRequested: value => editor.setDimensions(value, editor.columnCount)
+                    onValueRequested: value => editor.requestDimensions(value, editor.columnCount)
                 }
 
                 Dimension {
@@ -422,21 +463,44 @@ Dialog {
                     increaseLabel: qsTr("Aggiungi una colonna")
                     value: editor.columnCount
                     maximum: 8
-                    onValueRequested: value => editor.setDimensions(editor.rowCount, value)
+                    onValueRequested: value => editor.requestDimensions(editor.rowCount, value)
+                }
+            }
+
+            Caption {
+                visible: editor.editingTable && editor.pendingRows > 0
+                Layout.fillWidth: true
+                text: qsTr("Le celle escluse dalla nuova dimensione contengono dati e non saranno salvate.")
+            }
+            Flow {
+                visible: editor.editingTable && editor.pendingRows > 0
+                Layout.fillWidth: true
+                spacing: 5 * editor.uiScale
+                PaperButton {
+                    uiScale: editor.uiScale
+                    text: qsTr("Mantieni dimensioni")
+                    onClicked: editor.pendingRows = 0
+                }
+                PaperButton {
+                    uiScale: editor.uiScale
+                    text: qsTr("Riduci tabella")
+                    onClicked: editor.confirmDimensions()
                 }
             }
 
             Flickable {
                 id: grid
+                objectName: "tableGrid"
 
-                readonly property real cellWidth: Math.max(88 * editor.uiScale, width / editor.columnCount)
+                readonly property real headerWidth: 38 * editor.uiScale
+                readonly property real cellWidth: Math.max(88 * editor.uiScale, (width - headerWidth) / editor.columnCount)
                 readonly property real cellHeight: 44 * editor.uiScale
 
                 visible: editor.editingTable
                 Layout.fillWidth: true
-                Layout.preferredHeight: Math.min(editor.rowCount, 4) * cellHeight
-                contentWidth: editor.columnCount * cellWidth
-                contentHeight: editor.rowCount * cellHeight
+                Layout.preferredHeight: (Math.min(editor.rowCount, 4) + 1) * cellHeight
+                contentWidth: headerWidth + editor.columnCount * cellWidth
+                contentHeight: (editor.rowCount + 1) * cellHeight
                 clip: true
                 boundsBehavior: Flickable.StopAtBounds
                 interactive: contentWidth > width || contentHeight > height
@@ -444,29 +508,32 @@ Dialog {
                 ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
                 Grid {
-                    columns: editor.columnCount
+                    columns: editor.columnCount + 1
 
                     Repeater {
-                        model: editor.editingTable ? editor.rowCount * editor.columnCount : 0
+                        model: editor.editingTable ? (editor.rowCount + 1) * (editor.columnCount + 1) : 0
 
                         ItemDelegate {
                             id: cell
 
                             required property int index
-                            readonly property int row: Math.floor(index / editor.columnCount)
-                            readonly property int column: index % editor.columnCount
+                            readonly property int row: Math.floor(index / (editor.columnCount + 1)) - 1
+                            readonly property int column: index % (editor.columnCount + 1) - 1
+                            readonly property bool headerCell: row < 0 || column < 0
                             readonly property bool selected: row === editor.selectedRow && column === editor.selectedColumn
+                            readonly property bool selectedHeader: headerCell && (row === editor.selectedRow || column === editor.selectedColumn)
 
-                            width: grid.cellWidth
+                            width: column < 0 ? grid.headerWidth : grid.cellWidth
                             height: grid.cellHeight
                             padding: 6 * editor.uiScale
                             focusPolicy: Qt.ClickFocus
-                            text: editor.cellValues[index] || ""
+                            text: row < 0 ? (column < 0 ? "" : editor.columnLetter(column)) : column < 0 ? String(row + 1)
+                                : editor.cellValues[row * editor.columnCount + column] || ""
                             Accessible.name: qsTr("Cella %1%2").arg(editor.columnLetter(column)).arg(row + 1)
-                            onClicked: editor.selectCell(row, column, false)
+                            onClicked: if (!headerCell) editor.selectCell(row, column, false)
 
                             background: Rectangle {
-                                color: cell.selected ? editor.selected : cell.down ? editor.surface : "white"
+                                color: cell.selected || cell.selectedHeader ? editor.selected : cell.headerCell || cell.down ? editor.surface : "white"
                                 border.color: cell.selected ? editor.blue : editor.border
                                 border.width: editor.hairline
                             }
@@ -474,7 +541,8 @@ Dialog {
                             contentItem: Text {
                                 text: cell.text.replace(/\n/g, " ")
                                 textFormat: Text.PlainText
-                                color: cell.selected ? editor.blue : editor.ink
+                                color: cell.selected || cell.selectedHeader ? editor.blue : editor.ink
+                                font.weight: cell.headerCell ? Font.DemiBold : Font.Normal
                                 font.pixelSize: 14 * editor.uiScale
                                 elide: Text.ElideRight
                                 verticalAlignment: Text.AlignVCenter
@@ -501,6 +569,7 @@ Dialog {
 
                 Area {
                     id: cellInput
+                    objectName: "tableCellInput"
 
                     textLimit: 500
                     placeholderText: qsTr("Testo della cella")
@@ -528,12 +597,42 @@ Dialog {
                     enabled: editor.canInsertFormula
                     onClicked: editor.insertFormula(qsTr("MEDIA", "Table formula name"))
                 }
+                Repeater {
+                    model: [{label: qsTr("Minimo"), formula: "MIN"},
+                            {label: qsTr("Massimo"), formula: "MAX"},
+                            {label: qsTr("Conta numeri"), formula: "COUNT"}]
+                    PaperButton {
+                        required property var modelData
+                        uiScale: editor.uiScale
+                        text: modelData.label
+                        enabled: editor.canInsertFormula
+                        onClicked: editor.insertFormula(modelData.formula)
+                    }
+                }
+                PaperButton {
+                    uiScale: editor.uiScale
+                    text: qsTr("Guida formule")
+                    filled: editor.formulaHelpOpen
+                    onClicked: editor.formulaHelpOpen = !editor.formulaHelpOpen
+                }
+            }
+
+            Caption {
+                visible: editor.editingTable && editor.formulaHelpOpen
+                Layout.fillWidth: true
+                text: qsTr("Usa SOMMA/SUM, MEDIA/AVERAGE, MIN, MAX e CONTA.NUMERI/COUNT. Esempi: =SOMMA(A1:A3), =MIN(B1:B3), =COUNT(A1:B3). Negli intervalli il testo e le celle vuote vengono ignorati. Per i numeri nelle formule usa il punto decimale.")
             }
 
             Caption {
                 visible: editor.editingTable && editor.selectedValue !== cellInput.text
                 Layout.fillWidth: true
                 text: qsTr("Risultato %1").arg(editor.selectedValue)
+            }
+            Caption {
+                visible: editor.editingTable && text.length > 0
+                Layout.fillWidth: true
+                text: editor.formulaErrorExplanation(editor.selectedValue)
+                color: "#87332c"
             }
 
             PaperButton {
@@ -566,6 +665,15 @@ Dialog {
 
     footer: ColumnLayout {
         spacing: 6 * editor.uiScale
+
+        PaperButton {
+            visible: editor.existing && !editor.editingTable && !!editor.originalItem.handwritingSource
+            Layout.alignment: Qt.AlignRight
+            Layout.rightMargin: editor.rightPadding
+            uiScale: editor.uiScale
+            text: qsTr("Ripristina scrittura originale")
+            onClicked: editor.restoreHandwritingRequested(editor.originalItem.id)
+        }
 
         PaperButton {
             visible: editor.transcript

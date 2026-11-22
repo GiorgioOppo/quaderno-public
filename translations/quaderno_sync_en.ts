@@ -82,6 +82,12 @@
             <source>L’altro dispositivo sta modificando il quaderno. Riprova tra poco.</source>
             <translation>The other device is editing the notebook. Try again shortly.</translation>
         </message>
+        <message><source>Il quaderno supera il limite di trasferimento di 64 MiB.</source><translation>The notebook exceeds the 64 MiB transfer limit.</translation></message>
+
+        <message>
+            <source>Impossibile salvare lo stato del trasferimento. Libera spazio o controlla i permessi, poi riprova dall’anteprima.</source>
+            <translation>Could not save the transfer state. Free up space or check permissions, then try again from the preview.</translation>
+        </message>
     </context>
     <context>
         <name>Main</name>
@@ -89,7 +95,29 @@
             <source>Sincronizzazione wireless</source>
             <translation>Wireless sync</translation>
         </message>
-    </context>
+        <message><source>Nessun elemento selezionato. Circonda tratti o contenuti della pagina.</source><translation>No items selected. Draw around strokes or page content.</translation></message>
+    <message><source>Cestino</source><translation>Trash</translation></message>
+    <message><source>Lazo: elementi contenuti</source><translation>Lasso: contained items</translation></message>
+    <message><source>Lazo: elementi toccati</source><translation>Lasso: touched items</translation></message>
+    <message><source>Italiano</source><translation>Italian</translation></message>
+    <message><source>English</source><translation>English</translation></message>
+    <message><source>Circonda gli elementi da aggiungere.</source><translation>Draw around the items to add.</translation></message>
+    <message><source>Circonda gli elementi da sottrarre.</source><translation>Draw around the items to subtract.</translation></message>
+    <message><source>Quaderno in pausa</source><translation>Quaderno is asleep</translation></message>
+    <message><source>Riprendi</source><translation>Resume</translation></message>
+    <message><source>Selezione</source><translation>Selection</translation></message>
+    <message><source>Trascrivi nella lingua del documento</source><translation>Transcribe in the document language</translation></message>
+    <message><source>Elimina selezione</source><translation>Delete selection</translation></message>
+    <message><source>Ripristina scrittura originale</source><translation>Restore original handwriting</translation></message>
+    <message><source>Importazione documento</source><translation>Document import</translation></message>
+    <message><source>Elimina</source><translation>Delete</translation></message>
+    <message><source>Caricamento pagina…</source><translation>Loading page…</translation></message>
+    <message><source>Tratti: %1 · Elementi: %2</source><translation>Strokes: %1 · Items: %2</translation></message>
+    <message><source>Riconoscimento: italiano</source><translation>Recognition: Italian</translation></message>
+    <message><source>Riconoscimento: inglese</source><translation>Recognition: English</translation></message>
+    <message><source>Documento importato</source><translation>Document imported</translation></message>
+    <message><source>Apri documento</source><translation>Open document</translation></message>
+</context>
     <context>
         <name>Notebook</name>
         <message>
@@ -100,7 +128,7 @@
             <source> (copia wireless)</source>
             <translation> (wireless copy)</translation>
         </message>
-    </context>
+    <message><source>La selezione è troppo grande. Seleziona un passaggio più breve.</source><translation>The selection is too large. Select a shorter passage.</translation></message></context>
     <context>
         <name>SyncChannel</name>
         <message>
@@ -178,6 +206,11 @@
             <source>Collegamento Wi-Fi attivo.</source>
             <translation>Wi-Fi connection active.</translation>
         </message>
+
+        <message>
+            <source>La rete Wi-Fi del Paper Pro è cambiata. Riconnessione in corso…</source>
+            <translation>The Paper Pro Wi-Fi network has changed. Reconnecting…</translation>
+        </message>
     </context>
     <context>
         <name>WirelessSync</name>
@@ -244,6 +277,23 @@
         <message>
             <source>Abbinamento rimosso.</source>
             <translation>Pairing removed.</translation>
+        </message>
+    <message><source>Inserisci l’indirizzo IPv4 locale del Paper Pro, ad esempio 192.168.1.20. L’indirizzo USB non è utilizzabile qui.</source><translation>Enter the Paper Pro’s local IPv4 address, such as 192.168.1.20. The USB address cannot be used here.</translation></message>
+        <message>
+            <source>In attesa del Mac via Bluetooth; Wi-Fi non disponibile.</source>
+            <translation>Waiting for the Mac over Bluetooth; Wi-Fi is unavailable.</translation>
+        </message>
+        <message>
+            <source>In attesa del Mac via Wi-Fi o Bluetooth…</source>
+            <translation>Waiting for the Mac over Wi-Fi or Bluetooth…</translation>
+        </message>
+        <message>
+            <source>In attesa del Mac via Wi-Fi; Bluetooth non disponibile.</source>
+            <translation>Waiting for the Mac over Wi-Fi; Bluetooth is unavailable.</translation>
+        </message>
+        <message>
+            <source>Reti non disponibili. Quaderno riproverà il collegamento automaticamente.</source>
+            <translation>Connections unavailable. Quaderno will retry automatically.</translation>
         </message>
     </context>
     <context>
@@ -384,6 +434,62 @@
             <source>Annulla richiesta di apertura</source>
             <translation>Cancel open request</translation>
         </message>
+        <message><source>Invio delle sole pagine e risorse mancanti · %1%</source><translation>Sending missing pages and assets · %1%</translation></message>
+    <message><source>Riprendi trasferimento</source><translation>Resume transfer</translation></message>
+    <message><source>Annulla trasferimento</source><translation>Cancel transfer</translation></message>
+<message><source>Connesso · %1</source><translation>Connected · %1</translation></message><message><source>Collegamento in corso…</source><translation>Connecting…</translation></message><message><source>Abbinato · Disconnesso</source><translation>Paired · Disconnected</translation></message><message><source>Da abbinare</source><translation>Not paired</translation></message><message><source>L’abbinamento è salvato. Per il Wi-Fi, avvia il collegamento anche sul Paper Pro e verifica che entrambi siano sulla stessa rete.</source><translation>Pairing is saved. For Wi-Fi, start the connection on the Paper Pro too, and check that both devices are on the same network.</translation></message><message><source>Usa un IPv4 della rete locale, per esempio 192.168.1.20. L’indirizzo USB e gli indirizzi Internet non sono accettati.</source><translation>Use a local network IPv4 address, such as 192.168.1.20. USB and Internet addresses are not accepted.</translation></message><message><source>Ultimo indirizzo Wi-Fi: %1. Puoi modificarlo se è cambiato.</source><translation>Last Wi-Fi address: %1. You can edit it if it has changed.</translation></message>        <message>
+            <source>Sincronizzazione automatica via Wi-Fi</source>
+            <translation>Automatic sync over Wi-Fi</translation>
+        </message>
+
+        <message>
+            <source>A intervalli regolari</source>
+            <translation>At regular intervals</translation>
+        </message>
+        <message>
+            <source>All’apertura di un quaderno</source>
+            <translation>On opening a notebook</translation>
+        </message>
+        <message>
+            <source>Collegamento automatico</source>
+            <translation>Automatic connection</translation>
+        </message>
+        <message>
+            <source>Dopo le modifiche</source>
+            <translation>After changes</translation>
+        </message>
+        <message>
+            <source>Preferisci Wi-Fi, altrimenti Bluetooth</source>
+            <translation>Prefer Wi-Fi, otherwise Bluetooth</translation>
+        </message>
+        <message>
+            <source>Quando sincronizzare</source>
+            <translation>When to sync</translation>
+        </message>
+        <message>
+            <source>Riprendi collegamento</source>
+            <translation>Resume connection</translation>
+        </message>
+        <message>
+            <source>Riprova collegamento</source>
+            <translation>Retry connection</translation>
+        </message>
+        <message>
+            <source>Sincronizza i quaderni selezionati ora</source>
+            <translation>Sync selected notebooks now</translation>
+        </message>
+        <message>
+            <source>Solo Bluetooth</source>
+            <translation>Bluetooth only</translation>
+        </message>
+        <message>
+            <source>Solo Wi-Fi</source>
+            <translation>Wi-Fi only</translation>
+        </message>
+        <message>
+            <source>Solo manualmente</source>
+            <translation>Manual only</translation>
+        </message>
     </context>
     <context>
         <name>BleCentral</name>
@@ -454,6 +560,130 @@
         <message>
             <source>Paper Pro non trovato o collegamento Bluetooth scaduto.</source>
             <translation>Paper Pro was not found or the Bluetooth connection timed out.</translation>
+        </message>
+    </context>
+  <context>
+    <name>DeltaTransfer</name>
+    <message><source>Invio interrotto. Le parti ricevute restano disponibili per riprendere il trasferimento.</source><translation>Transfer interrupted. Received parts have been kept so the transfer can resume.</translation></message>
+    <message><source>Aggiorna Quaderno su entrambi i dispositivi per trasferire sorgenti dei libri, scrittura originale e proprietà degli elementi.</source><translation>Update Quaderno on both devices to transfer book sources, original handwriting and item properties.</translation></message>
+    <message><source>L’altro dispositivo usa il trasferimento precedente. Aggiorna Quaderno o passa al Wi-Fi per questo quaderno.</source><translation>The other device uses the previous transfer protocol. Update Quaderno or use Wi-Fi for this notebook.</translation></message>
+    <message><source>Impossibile preparare il trasferimento incrementale: %1</source><translation>Could not prepare the incremental transfer: %1</translation></message>
+    <message><source>L’altro dispositivo non ha potuto ricevere il trasferimento incrementale. Riprova per riprendere le parti già salvate.</source><translation>The other device could not receive the incremental transfer. Try again to resume from the saved parts.</translation></message>
+    <message><source>La richiesta di una parte del quaderno non è valida.</source><translation>The request for a notebook part is invalid.</translation></message>
+    <message><source>Parte del quaderno non valida.</source><translation>Invalid notebook part.</translation></message>
+    <message><source>Impossibile preparare il trasferimento.</source><translation>Could not prepare the transfer.</translation></message>
+    <message><source>Impossibile salvare una parte del quaderno.</source><translation>Could not save a notebook part.</translation></message>
+    <message><source>Una parte del quaderno non corrisponde ai dati salvati.</source><translation>A notebook part does not match the saved data.</translation></message>
+    <message><source>La verifica del quaderno non è riuscita.</source><translation>Notebook verification failed.</translation></message>
+    <message><source>Impossibile completare il salvataggio della parte ricevuta.</source><translation>Could not finish saving the received part.</translation></message>
+      <message><source>Ricezione interrotta.</source><translation>Reception interrupted.</translation></message>
+        <message>
+            <source>Il formato del quaderno da trasferire non è valido.</source>
+            <translation>The notebook to transfer has an invalid format.</translation>
+        </message>
+        <message>
+            <source>L’altro dispositivo non ha indicato una versione valida del formato. Aggiorna Quaderno su entrambi i dispositivi e ricollegali.</source>
+            <translation>The other device did not provide a valid format version. Update Quaderno on both devices and reconnect them.</translation>
+        </message>
+        <message>
+            <source>Questo quaderno richiede il formato %2. Per l’altro dispositivo Quaderno usa il formato %1 come limite di compatibilità. Aggiorna Quaderno sull’altro dispositivo. Evidenziazioni e note restano salvate qui.</source>
+            <translation>This notebook requires format %2. Quaderno uses format %1 as the compatibility limit for the other device. Update Quaderno on the other device. Your highlights and notes remain saved here.</translation>
+        </message>
+        <message>
+            <source>L’altro dispositivo non supporta il formato di questo quaderno. Aggiorna Quaderno prima di sincronizzare le annotazioni.</source>
+            <translation>The other device does not support this notebook format. Update Quaderno before syncing annotations.</translation>
+        </message>
+</context>
+    <context>
+        <name>SyncAutomation</name>
+        <message>
+            <source>Sincronizzazione automatica disattivata.</source>
+            <translation>Automatic sync is off.</translation>
+        </message>
+        <message>
+            <source>Abbina un dispositivo per sincronizzare automaticamente.</source>
+            <translation>Pair a device to sync automatically.</translation>
+        </message>
+        <message>
+            <source>Scegli i quaderni da sincronizzare nella finestra wireless.</source>
+            <translation>Choose notebooks to sync in the wireless window.</translation>
+        </message>
+        <message>
+            <source>Sincronizzazione automatica in pausa durante il blocco o la modifica.</source>
+            <translation>Automatic sync is paused while locked or editing.</translation>
+        </message>
+        <message>
+            <source>In pausa: il nome della rete Wi-Fi non è disponibile.</source>
+            <translation>Paused: the Wi-Fi network name is unavailable.</translation>
+        </message>
+        <message>
+            <source>In pausa: la rete Wi-Fi non è nell’elenco delle reti attendibili.</source>
+            <translation>Paused: the Wi-Fi network is not on the trusted list.</translation>
+        </message>
+        <message>
+            <source>In pausa: attendi la ricarica del tablet.</source>
+            <translation>Paused: waiting for the tablet to charge.</translation>
+        </message>
+        <message>
+            <source>L’automazione richiede un collegamento Wi-Fi; il Bluetooth resta manuale.</source>
+            <translation>Automation requires a Wi-Fi connection; Bluetooth remains manual.</translation>
+        </message>
+        <message>
+            <source>In attesa del collegamento Wi-Fi con il dispositivo abbinato.</source>
+            <translation>Waiting for a Wi-Fi connection to the paired device.</translation>
+        </message>
+        <message>
+            <source>Controlla l’anteprima wireless prima di continuare.</source>
+            <translation>Review the wireless preview before continuing.</translation>
+        </message>
+        <message>
+            <source>Sincronizzazione dei quaderni selezionati in corso…</source>
+            <translation>Syncing selected notebooks…</translation>
+        </message>
+        <message>
+            <source>Sincronizzazione programmata ogni %1 minuti.</source>
+            <translation>Scheduled sync every %1 minutes.</translation>
+        </message>
+        <message>
+            <source>Sincronizzazione dei quaderni selezionati alla loro apertura.</source>
+            <translation>Sync selected notebooks when they are opened.</translation>
+        </message>
+
+        <message>
+            <source>Bluetooth</source>
+            <translation>Bluetooth</translation>
+        </message>
+        <message>
+            <source>Collegamento sospeso. Premi «Riprendi collegamento» per riattivarlo.</source>
+            <translation>Connection paused. Select “Resume connection” to reconnect.</translation>
+        </message>
+        <message>
+            <source>Il collegamento attivo non è consentito dalle impostazioni automatiche.</source>
+            <translation>The active connection is not allowed by the automatic sync settings.</translation>
+        </message>
+        <message>
+            <source>In attesa del dispositivo abbinato. Le modifiche restano salvate qui.</source>
+            <translation>Waiting for the paired device. Your changes remain saved here.</translation>
+        </message>
+        <message>
+            <source>Modifiche in attesa di sincronizzazione.</source>
+            <translation>Changes waiting to sync.</translation>
+        </message>
+        <message>
+            <source>Nuovo tentativo di collegamento tra circa %1 secondi.</source>
+            <translation>Retrying the connection in about %1 seconds.</translation>
+        </message>
+        <message>
+            <source>Sincronizzazione dopo le modifiche · %1.</source>
+            <translation>Sync after changes · %1.</translation>
+        </message>
+        <message>
+            <source>Trasferimento interrotto: nuovo tentativo automatico in attesa.</source>
+            <translation>Transfer interrupted: waiting to retry automatically.</translation>
+        </message>
+        <message>
+            <source>Wi-Fi</source>
+            <translation>Wi-Fi</translation>
         </message>
     </context>
 </TS>

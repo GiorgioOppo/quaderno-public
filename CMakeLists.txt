@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21.1)
-project(Quaderno VERSION 0.1.0 LANGUAGES CXX)
+project(Quaderno VERSION 0.2.12 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -14,13 +14,15 @@ qt_add_executable(quaderno MACOSX_BUNDLE src/main.cpp)
 target_include_directories(quaderno PRIVATE src)
 target_link_libraries(quaderno PRIVATE Qt6::Quick Qt6::QuickControls2 Qt6::DBus Qt6::Network OpenSSL::SSL ZLIB::ZLIB)
 
-set(qml_sources qml/Main.qml qml/PaperButton.qml qml/PaperIcon.qml qml/SettingsView.qml qml/AppleShareView.qml
+set(qml_sources qml/Main.qml qml/PaperButton.qml qml/PaperIcon.qml qml/SettingsView.qml qml/TabletSettingsPanel.qml qml/AccountsPanel.qml
+    qml/CloudAccountsDialog.qml qml/CloudImportDialog.qml qml/QuickControlsPopup.qml qml/ReadingPreferencesDialog.qml qml/SyncAutomation.qml qml/AppleShareView.qml
     qml/TouchKeyboard.qml qml/PinScreen.qml qml/PinKeypad.qml qml/PageDecorations.qml
-    qml/PageTemplateDialog.qml qml/PageItemDialog.qml qml/PageOverview.qml qml/LibraryOrganizer.qml
-    qml/PageLayers.qml qml/PageTags.qml qml/ChartDialog.qml qml/ReadingControls.qml
-    qml/InkSelection.qml qml/UsbTransferDialog.qml qml/UsbImportDialog.qml qml/TableChartDialog.qml
-    qml/WirelessSyncDialog.qml qml/DocumentDropArea.qml qml/PdfDragHandle.qml qml/MarkdownDialog.qml
-    qml/ObsidianSyncDialog.qml qml/DiagramEditor.qml qml/DiagramArrangement.js)
+    qml/PageTemplateDialog.qml qml/PageItemDialog.qml qml/TableHandwritingDialog.qml qml/PageOverview.qml qml/LibraryOrganizer.qml
+    qml/PageLayers.qml qml/PageTags.qml qml/ChartDialog.qml qml/ReadingControls.qml qml/ReadingGestures.qml
+    qml/InkSelection.qml qml/SelectionOverlay.qml qml/UsbTransferDialog.qml qml/UsbImportDialog.qml qml/TableChartDialog.qml
+    qml/WirelessSyncDialog.qml qml/DocumentDropArea.qml qml/PdfDragHandle.qml qml/MarkdownDialog.qml qml/MarkdownEditor.qml
+    qml/ObsidianSyncDialog.qml qml/DiagramEditor.qml qml/DiagramHandwritingDialog.qml qml/DiagramArrangement.js
+    qml/WorkspaceTools.qml qml/BookNoteDialog.qml)
 get_target_property(qt_disabled_gui_features Qt6::Gui QT_DISABLED_PUBLIC_FEATURES)
 foreach(qml_file IN LISTS qml_sources)
     get_filename_component(qml_name "${qml_file}" NAME)
@@ -29,6 +31,9 @@ foreach(qml_file IN LISTS qml_sources)
         set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${qml_file}")
         file(READ "${qml_file}" qml_contents)
         string(REGEX REPLACE "\n[ \t]*Accessible\\.(name|ignored|role|onPressAction):[^\n]*" "" qml_contents "${qml_contents}")
+        if(qml_contents MATCHES "Accessible\\.")
+            message(FATAL_ERROR "${qml_file}: put each Accessible binding on its own physical line so the firmware build can remove it.")
+        endif()
         set(qml_file "${CMAKE_CURRENT_BINARY_DIR}/qml-portable/${qml_name}")
         file(WRITE "${qml_file}" "${qml_contents}")
     endif()
@@ -46,6 +51,7 @@ qt_add_qml_module(quaderno
         src/shaperecognition.cpp src/shaperecognition.h
         src/chartitem.cpp src/chartitem.h
         src/diagramitem.cpp src/diagramitem.h
+        src/diagramrecognizer.cpp src/diagramrecognizer.h
         src/diagramexport.cpp src/diagramexport.h src/diagramimport.cpp
         src/chartrecognizer.cpp src/chartrecognizer.h
         src/handwriting.cpp src/handwriting.h
@@ -54,18 +60,28 @@ qt_add_qml_module(quaderno
         src/pagepreviewitem.cpp src/pagepreviewitem.h
         src/pdfimport.cpp src/pdfimport.h
         src/epubimport.cpp src/epubimport.h
+        src/documentreader.cpp src/documentreader.h
         src/notebook.cpp src/notebook.h
+        src/pagestore.cpp src/pagestore.h src/syncpackage.cpp src/syncpackage.h
         src/tablecsv.cpp
         src/appleshare.cpp src/appleshare.h
         src/deviceinfo.cpp src/deviceinfo.h
+        src/screenorientation.cpp src/screenorientation.h
+        src/markerbattery.cpp src/markerbattery.h
+        src/tabletpreferences.cpp src/tabletpreferences.h
+        src/portabledocuments.cpp src/portabledocuments.h
+        src/cloudaccounts.cpp src/cloudaccounts.h src/cloudprotocol.cpp src/cloudprotocol.h src/cloudstore.cpp src/cloudstore.h
+        src/librarymaintenance.cpp src/librarymaintenance.h
         src/epaperrefresh.cpp src/epaperrefresh.h
         src/externalkeyboard.cpp src/externalkeyboard.h
         src/pinlock.cpp src/pinlock.h
+        src/paperprostandby.cpp src/paperprostandby.h
         src/usbssh.cpp src/usbssh.h
         src/usbtransfer.cpp src/usbtransfer.h
         src/wifisettings.cpp src/wifisettings.h
         src/bluetoothsettings.cpp src/bluetoothsettings.h
         src/blesync.cpp src/blesync.h
+        src/deltatransfer.cpp src/deltatransfer.h
         src/wirelesssync.cpp src/wirelesssync.h
         src/syncchannel.cpp src/syncchannel.h
         src/blepipe.cpp src/blepipe.h
@@ -95,13 +111,14 @@ if(APPLE)
         MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}")
     target_sources(quaderno PRIVATE src/appleshare_mac.mm src/pdftext_mac.mm src/blecentral_mac.mm src/blecentral.h)
     set_source_files_properties(src/appleshare_mac.mm src/pdftext_mac.mm src/blecentral_mac.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
+    find_library(security_framework Security REQUIRED)
     find_library(appkit_framework AppKit REQUIRED)
     find_library(uti_framework UniformTypeIdentifiers REQUIRED)
     find_library(coregraphics_framework CoreGraphics REQUIRED)
     find_library(pdfkit_framework PDFKit REQUIRED)
     find_library(bluetooth_framework CoreBluetooth REQUIRED)
     target_link_libraries(quaderno PRIVATE ${appkit_framework} ${uti_framework} ${coregraphics_framework}
-        ${pdfkit_framework} ${bluetooth_framework})
+        ${pdfkit_framework} ${bluetooth_framework} ${security_framework})
 
     find_program(xcrun_program xcrun)
     if(xcrun_program)
@@ -132,4 +149,9 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_sources(quaderno PRIVATE src/bleperipheral.cpp src/bleperipheral.h src/paperprobluetooth.h)
     target_link_libraries(quaderno PRIVATE ${CMAKE_DL_LIBS})
+endif()
+
+include(CTest)
+if(BUILD_TESTING)
+    add_subdirectory(tests)
 endif()

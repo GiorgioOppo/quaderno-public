@@ -33,7 +33,7 @@ QVariantMap Notebook::libraryItemCopy(const QString &bookId, const QString &page
 
     QVariantMap copy = PageContent::resolveTableCharts(page.items).at(itemIndex).toMap();
     const QString type = copy.value(QStringLiteral("type")).toString();
-    if (type != QStringLiteral("chart") && type != QStringLiteral("table"))
+    if (type != QStringLiteral("chart") && type != QStringLiteral("table") && type != QStringLiteral("diagram"))
         return {};
 
     // A table-linked chart becomes an editable snapshot of its current values.
@@ -41,6 +41,8 @@ QVariantMap Notebook::libraryItemCopy(const QString &bookId, const QString &page
     copy.remove(QStringLiteral("xColumn"));
     copy.remove(QStringLiteral("yColumn"));
     copy.remove(QStringLiteral("hasHeader"));
+    // Copies are independent objects; source-book ink/layer identifiers do not travel with them.
+    copy.remove(QStringLiteral("handwritingSource"));
     copy = PageContent::validatedItem(copy);
     for (const QString &key : {QStringLiteral("id"), QStringLiteral("x"), QStringLiteral("y"),
                                QStringLiteral("width"), QStringLiteral("height")})

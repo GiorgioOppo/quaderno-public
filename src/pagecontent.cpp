@@ -2,6 +2,8 @@
 
 #include "diagramitem.h"
 #include "notebook.h"
+#include "inkselection.h"
+#include "inkrender.h"
 
 #include <QBuffer>
 #include <QCoreApplication>
@@ -153,8 +155,116 @@ bool readDiagramLabel(const QVariant &value, qsizetype limit, QString &label)
     return readText(value, limit, label) && label.isValidUtf16() && !label.contains(QChar::Null);
 }
 
+QVariantMap validatedNote(const QVariantMap &item, QVariantMap validated)
+{
+    QString text;
+    QString color;
+    if (!readText(item.value(QStringLiteral("text"), QString{}), PageContent::maxNoteTextLength, text)
+        || !text.isValidUtf16() || text.contains(QChar::Null)
+        || !readText(item.value(QStringLiteral("noteColor"), QStringLiteral("yellow")), 8, color)
+        || !QStringList{QStringLiteral("yellow"), QStringLiteral("blue"), QStringLiteral("green"), QStringLiteral("pink")}.contains(color))
+        return {};
+    const QVariant inkValue = item.value(QStringLiteral("noteInk"), QVariantList{});
+    if (inkValue.typeId() != QMetaType::QVariantList)
+        return {};
+    const QVariantList ink = inkValue.toList();
+    if (ink.size() > PageContent::maxNoteStrokes || (text.trimmed().isEmpty() && ink.isEmpty()))
+        return {};
+    QVariantList cleanInk;
+    qsizetype count = 0;
+    for (const QVariant &value : ink) {
+        if (value.typeId() != QMetaType::QVariantMap) return {};
+        const QVariantMap stroke = value.toMap();
+        QString tool, strokeColor;
+        double width = 0;
+        if (!readText(stroke.value(QStringLiteral("tool"), QStringLiteral("pen")), 11, tool)
+            || !QStringList{QStringLiteral("pen"), QStringLiteral("pencil"), QStringLiteral("marker"),
+                QStringLiteral("highlighter"), QStringLiteral("underline"), QStringLiteral("line"),
+                QStringLiteral("rectangle"), QStringLiteral("ellipse")}.contains(tool)
+            || !readText(stroke.value(QStringLiteral("color")), 32, strokeColor) || !QColor(strokeColor).isValid()
+            || !readNumber(stroke.value(QStringLiteral("width")), width) || width <= 0 || width > 100
+            || stroke.contains(QStringLiteral("original"))
+            || stroke.value(QStringLiteral("points")).typeId() != QMetaType::QVariantList)
+            return {};
+        const QVariantList points = stroke.value(QStringLiteral("points")).toList();
+        count += points.size();
+        if (points.isEmpty() || count > PageContent::maxNotePoints
+            || (isInkShape(inkToolFromName(tool)) && points.size() != 2))
+            return {};
+        QVariantList cleanPoints;
+        for (const QVariant &pointValue : points) {
+            if (pointValue.typeId() != QMetaType::QVariantMap) return {};
+            const QVariantMap point = pointValue.toMap();
+            double x = 0, y = 0, pressure = 0;
+            if (!readNumber(point.value(QStringLiteral("x")), x) || !readNumber(point.value(QStringLiteral("y")), y)
+                || !readNumber(point.value(QStringLiteral("p")), pressure)
+                || x < 0 || x > 1 || y < 0 || y > 1 || pressure < 0 || pressure > 1)
+                return {};
+            cleanPoints.append(QVariantMap{{QStringLiteral("x"), x}, {QStringLiteral("y"), y},
+                {QStringLiteral("p"), pressure}});
+        }
+        cleanInk.append(QVariantMap{{QStringLiteral("tool"), tool}, {QStringLiteral("color"), strokeColor},
+            {QStringLiteral("width"), width}, {QStringLiteral("points"), cleanPoints}});
+    }
+    validated.insert(QStringLiteral("text"), text);
+    validated.insert(QStringLiteral("noteInk"), cleanInk);
+    validated.insert(QStringLiteral("noteColor"), color);
+    return validated;
+}
+
+bool preserveHandwritingSource(const QVariantMap &item, QVariantMap &validated)
+{
+    if (item.contains(QStringLiteral("handwritingSource"))) {
+        const QVariantMap source = item.value(QStringLiteral("handwritingSource")).toMap();
+        QString layerId;
+        if (!readText(source.value(QStringLiteral("layerId")), 128, layerId))
+            return false;
+        const QVariantList strokes = source.value(QStringLiteral("strokes")).toList();
+        if (strokes.isEmpty() || strokes.size() > 4000)
+            return false;
+        qsizetype total = 0;
+        for (const QVariant &entry : strokes) {
+            const QVariantMap stroke = entry.toMap();
+            const QString tool = stroke.value(QStringLiteral("tool")).toString();
+            const QVariantList points = stroke.value(QStringLiteral("points")).toList();
+            total += points.size();
+            double width = 0;
+            if ((!tool.isEmpty() && tool != QStringLiteral("pen") && tool != QStringLiteral("pencil") && tool != QStringLiteral("marker"))
+                || points.isEmpty() || total > 120000 || !QColor(stroke.value(QStringLiteral("color")).toString()).isValid()
+                || !readNumber(stroke.value(QStringLiteral("width")), width) || width <= 0 || width > 100
+                || stroke.contains(QStringLiteral("original")))
+                return false;
+        }
+        const QVariantList cleaned = InkSelectionGeometry::transformed(strokes, {}, {}, 1, 0);
+        if (cleaned.size() != strokes.size())
+            return false;
+        QVariantMap recovery{{QStringLiteral("layerId"), layerId}, {QStringLiteral("strokes"), cleaned}};
+        if (source.contains(QStringLiteral("baseDiagram"))) {
+            // A single bounded snapshot preserves an already editable diagram
+            // when recovering later additions. Never accept recursive history.
+            const QVariantMap base = source.value(QStringLiteral("baseDiagram")).toMap();
+            const QVariantMap baseSource = base.value(QStringLiteral("handwritingSource")).toMap();
+            if (item.value(QStringLiteral("type")) != QStringLiteral("diagram")
+                || base.value(QStringLiteral("type")) != QStringLiteral("diagram")
+                || baseSource.contains(QStringLiteral("baseDiagram")))
+                return false;
+            const QVariantMap cleanBase = PageContent::validatedItem(base);
+            if (cleanBase.isEmpty()) return false;
+            recovery.insert(QStringLiteral("baseDiagram"), cleanBase);
+        }
+        validated.insert(QStringLiteral("handwritingSource"), recovery);
+    }
+    return true;
+}
+
 QVariantMap validatedDiagram(const QVariantMap &item, QVariantMap validated)
 {
+    if (item.contains(QStringLiteral("styleScale"))) {
+        double scale = 0;
+        if (!readNumber(item.value(QStringLiteral("styleScale")), scale) || scale < .001 || scale > 1000)
+            return {};
+        validated.insert(QStringLiteral("styleScale"), scale);
+    }
     const auto nodesKey = QStringLiteral("nodes");
     const auto edgesKey = QStringLiteral("edges");
     const auto idKey = QStringLiteral("id");
@@ -216,6 +326,7 @@ QVariantMap validatedDiagram(const QVariantMap &item, QVariantMap validated)
 
     validated.insert(nodesKey, cleanNodes);
     validated.insert(edgesKey, cleanEdges);
+    if (!preserveHandwritingSource(item, validated)) return {};
     return validated;
 }
 
@@ -315,11 +426,15 @@ private:
 
     struct Aggregate {
         double sum = 0;
+        double minimum = 0;
+        double maximum = 0;
         int count = 0;
 
         void add(double number)
         {
             sum += number;
+            minimum = count ? qMin(minimum, number) : number;
+            maximum = count ? qMax(maximum, number) : number;
             ++count;
         }
     };
@@ -380,7 +495,10 @@ private:
         const QString function = (open >= 0 ? expression.first(open).trimmed() : expression).toString().toUpper();
         const bool sum = function == QStringLiteral("SUM") || function == QStringLiteral("SOMMA");
         const bool average = function == QStringLiteral("AVERAGE") || function == QStringLiteral("MEDIA");
-        if (!sum && !average) {
+        const bool minimum = function == QStringLiteral("MIN");
+        const bool maximum = function == QStringLiteral("MAX");
+        const bool count = function == QStringLiteral("COUNT") || function == QStringLiteral("CONTA.NUMERI");
+        if (!sum && !average && !minimum && !maximum && !count) {
             static const QRegularExpression name(QStringLiteral("\\A[A-Z][A-Z0-9_.]*\\z"));
             if (open >= 0 && name.match(function).hasMatch())
                 return formulaError(QLatin1String("#NAME?"));
@@ -404,7 +522,8 @@ private:
         }
         if (average && result.count == 0)
             return formulaError(QLatin1String("#DIV/0!"));
-        const double number = average ? result.sum / result.count : result.sum;
+        const double number = average ? result.sum / result.count : minimum ? result.minimum
+                              : maximum ? result.maximum : count ? result.count : result.sum;
         if (!std::isfinite(number))
             return formulaError(QLatin1String("#VALUE!"));
         return {FormulaValue::Number, number, {}};
@@ -576,6 +695,8 @@ QVariantMap imageFromFile(const QUrl &file, QString &error)
 qreal preferredItemHeight(const QVariantMap &item, qreal width)
 {
     const QString type = item.value(QStringLiteral("type")).toString();
+    if (type == QStringLiteral("note"))
+        return 0.0375;
     if (type == QStringLiteral("chart"))
         return 0.37;
     if (type == QStringLiteral("diagram"))
@@ -664,8 +785,22 @@ QVariantMap validatedItem(const QVariantMap &item)
 
     QVariantMap validated{{idKey, id}, {typeKey, type}, {xKey, rect->x()}, {yKey, rect->y()},
                           {widthKey, rect->width()}, {heightKey, rect->height()}};
+    for (const QString &key : {QStringLiteral("rotation"), QStringLiteral("textScale")}) {
+        if (!item.contains(key))
+            continue;
+        double value = 0;
+        if (!readNumber(item.value(key), value) || (key == QStringLiteral("textScale") && (value < .15 || value > 6)))
+            return {};
+        validated.insert(key, key == QStringLiteral("rotation") ? std::remainder(value, 360.0) : value);
+    }
+    const QRectF rotated = InkSelectionGeometry::itemOutline(validated).boundingRect();
+    if (rotated.left() < -geometryTolerance || rotated.top() < -geometryTolerance
+        || rotated.right() > 1 + geometryTolerance || rotated.bottom() > 1 + geometryTolerance)
+        return {};
     if (type == QStringLiteral("diagram"))
         return validatedDiagram(item, std::move(validated));
+    if (type == QStringLiteral("note"))
+        return validatedNote(item, std::move(validated));
     if (type == QStringLiteral("image")) {
         if (storedImage(item).isNull())
             return {};
@@ -678,6 +813,7 @@ QVariantMap validatedItem(const QVariantMap &item)
         if (!readText(item.value(textKey), textLimit, text))
             return {};
         validated.insert(textKey, text);
+        if (!preserveHandwritingSource(item, validated)) return {};
         return validated;
     }
     if (type == QStringLiteral("chart")) {
@@ -906,18 +1042,54 @@ void paintTemplate(QPainter &painter, QSizeF pageSize, const QString &key)
     painter.restore();
 }
 
+void paintNoteMarker(QPainter &painter, const QRectF &rect, const QVariantMap &note, int number)
+{
+    static const QHash<QString, QColor> colors{{QStringLiteral("yellow"), QColor("#fff2a6")},
+        {QStringLiteral("blue"), QColor("#d8eaff")}, {QStringLiteral("green"), QColor("#dff0d5")},
+        {QStringLiteral("pink"), QColor("#f7dce8")}};
+    painter.save();
+    painter.setRenderHint(QPainter::Antialiasing);
+    const qreal fold = qMin(rect.width(), rect.height()) * .24;
+    const QPolygonF body{rect.topLeft(), rect.topRight(), QPointF(rect.right(), rect.bottom() - fold),
+        QPointF(rect.right() - fold, rect.bottom()), rect.bottomLeft()};
+    painter.setBrush(colors.value(note.value(QStringLiteral("noteColor")).toString(), QColor("#fff2a6")));
+    painter.setPen(QPen(QColor("#6a6041"), qMax<qreal>(.5, rect.width() / 40)));
+    painter.drawPolygon(body);
+    painter.setBrush(QColor("#ffffff"));
+    painter.drawPolygon(QPolygonF{QPointF(rect.right() - fold, rect.bottom()),
+        QPointF(rect.right() - fold, rect.bottom() - fold), QPointF(rect.right(), rect.bottom() - fold)});
+    QFont font = painter.font();
+    font.setPixelSize(qMax(1, qRound(qMin(rect.height() * .5, rect.width() * .42))));
+    font.setBold(true);
+    painter.setFont(font);
+    painter.setPen(QColor("#242723"));
+    painter.drawText(rect.adjusted(0, 0, -fold * .25, -fold * .25), Qt::AlignCenter, QString::number(number));
+    painter.restore();
+}
+
 void paintItems(QPainter &painter, QSizeF pageSize, const QVariantList &items)
 {
     if (pageSize.isEmpty() || items.isEmpty())
         return;
 
     const qreal scale = pageSize.width() / 600;
+    int noteNumber = 0;
     painter.save();
     painter.setClipRect(QRectF(QPointF(), pageSize), Qt::IntersectClip);
     for (const QVariant &entry : items) {
         const QVariantMap item = entry.toMap();
         const QRectF rect = itemRect(item, pageSize);
+        painter.save();
+        struct RestorePainter { QPainter &painter; ~RestorePainter() { painter.restore(); } } restore{painter};
+        painter.translate(rect.center());
+        painter.rotate(item.value(QStringLiteral("rotation")).toDouble());
+        painter.translate(-rect.center());
+        const qreal itemScale = scale * item.value(QStringLiteral("textScale"), 1.0).toDouble();
         const QString type = item.value(QStringLiteral("type")).toString();
+        if (type == QStringLiteral("note")) {
+            paintNoteMarker(painter, rect, item, ++noteNumber);
+            continue;
+        }
         if (type == QStringLiteral("diagram")) {
             drawDiagram(painter, rect, item);
             continue;
@@ -930,7 +1102,7 @@ void paintItems(QPainter &painter, QSizeF pageSize, const QVariantList &items)
             continue;
         }
         if (type == QStringLiteral("text")) {
-            painter.setFont(pageFont(painter, scale, textSize));
+            painter.setFont(pageFont(painter, itemScale, textSize));
             drawPageText(painter, rect, item.value(QStringLiteral("text")).toString(), textInset * scale);
             continue;
         }
@@ -970,7 +1142,7 @@ void paintItems(QPainter &painter, QSizeF pageSize, const QVariantList &items)
             painter.drawLine(QPointF(x, rect.top()), QPointF(x, rect.bottom()));
         }
 
-        painter.setFont(pageFont(painter, scale, cellTextSize));
+        painter.setFont(pageFont(painter, itemScale, cellTextSize));
         for (int row = 0; row < rows; ++row) {
             for (int column = 0; column < cols; ++column) {
                 const QRectF cell(rect.left() + column * cellWidth, rect.top() + row * cellHeight,

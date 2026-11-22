@@ -28,6 +28,10 @@ class InkItem : public QQuickPaintedItem
     Q_PROPERTY(qreal inkWidth READ inkWidth WRITE setInkWidth NOTIFY inkWidthChanged)
     Q_PROPERTY(QString inkTool READ inkTool WRITE setInkTool NOTIFY inkToolChanged)
     Q_PROPERTY(bool smartShapes READ smartShapes WRITE setSmartShapes NOTIFY smartShapesChanged)
+    Q_PROPERTY(qreal pressureExponent READ pressureExponent WRITE setPressureExponent NOTIFY inputPreferencesChanged)
+    Q_PROPERTY(qreal shapeTolerance READ shapeTolerance WRITE setShapeTolerance NOTIFY inputPreferencesChanged)
+    Q_PROPERTY(QString palmRejection READ palmRejection WRITE setPalmRejection NOTIFY inputPreferencesChanged)
+    Q_PROPERTY(bool touchBlocked READ touchBlocked NOTIFY touchBlockedChanged)
     Q_PROPERTY(bool lassoMode READ lassoMode WRITE setLassoMode NOTIFY lassoModeChanged)
     Q_PROPERTY(int erasableFrom READ erasableFrom WRITE setErasableFrom NOTIFY erasableRangeChanged)
     Q_PROPERTY(int erasableCount READ erasableCount WRITE setErasableCount NOTIFY erasableRangeChanged)
@@ -35,6 +39,10 @@ class InkItem : public QQuickPaintedItem
     Q_PROPERTY(QVariantList pageItems MEMBER m_pageItems NOTIFY pageItemsChanged)
     Q_PROPERTY(bool penAvailable READ penAvailable NOTIFY penAvailableChanged)
     Q_PROPERTY(bool drawing READ drawing NOTIFY drawingChanged)
+    Q_PROPERTY(QQuickItem *inputOverlay MEMBER m_inputOverlay NOTIFY inputOverlayChanged)
+    Q_PROPERTY(bool pointPicking READ pointPicking WRITE setPointPicking NOTIFY pointPickingChanged)
+    Q_PROPERTY(bool nativeMarkerEnabled READ nativeMarkerEnabled WRITE setNativeMarkerEnabled NOTIFY nativeMarkerEnabledChanged)
+    Q_PROPERTY(InkItem *markerInkTarget READ markerInkTarget WRITE setMarkerInkTarget NOTIFY markerInkTargetChanged)
 
 public:
     explicit InkItem(QQuickItem *parent = nullptr);
@@ -50,6 +58,13 @@ public:
     void setInkTool(const QString &name);
     bool smartShapes() const { return m_smartShapes; }
     void setSmartShapes(bool enabled);
+    qreal pressureExponent() const { return m_pressureExponent; }
+    void setPressureExponent(qreal value);
+    qreal shapeTolerance() const { return m_shapeTolerance; }
+    void setShapeTolerance(qreal value);
+    QString palmRejection() const { return m_palmRejection; }
+    void setPalmRejection(const QString &value);
+    bool touchBlocked() const;
     bool lassoMode() const { return m_lassoMode; }
     void setLassoMode(bool enabled);
     int erasableFrom() const { return m_erasableFrom; }
@@ -60,9 +75,19 @@ public:
     void setAcceptsMouse(bool enabled);
     bool penAvailable() const;
     bool drawing() const;
+    bool pointPicking() const { return m_pointPicking; }
+    void setPointPicking(bool value);
+    bool nativeMarkerEnabled() const { return m_nativeMarkerEnabled; }
+    void setNativeMarkerEnabled(bool value);
+    InkItem *markerInkTarget() const { return m_markerInkTarget.data(); }
+    void setMarkerInkTarget(InkItem *target);
 
     Q_INVOKABLE void cancelDrawing();
     Q_INVOKABLE QString textItemAt(QPointF position) const;
+    Q_INVOKABLE QVariantMap tableCellAt(QPointF position) const;
+    Q_INVOKABLE QString chartItemAt(QPointF position) const;
+    Q_INVOKABLE QString diagramItemAt(QPointF position) const;
+    Q_INVOKABLE QString noteItemAt(QPointF position) const;
     void paint(QPainter *painter) override;
 
 signals:
@@ -71,6 +96,8 @@ signals:
     void inkWidthChanged();
     void inkToolChanged();
     void smartShapesChanged();
+    void inputPreferencesChanged();
+    void touchBlockedChanged();
     void lassoModeChanged();
     void erasableRangeChanged();
     void acceptsMouseChanged();
@@ -78,8 +105,18 @@ signals:
     void penAvailableChanged();
     void drawingChanged();
     void strokeStarted();
+    void inputActivity();
+    void inputOverlayChanged();
+    void pointPickingChanged();
+    void nativeMarkerEnabledChanged();
+    void markerInkTargetChanged();
+    void pagePointPicked(QPointF position);
+    void noteItemTapped(const QString &id);
     void strokeCompleted(const QVariantMap &stroke);
     void textItemTapped(const QString &id);
+    void tableCellTapped(const QString &id, int row, int column);
+    void chartItemTapped(const QString &id);
+    void diagramItemTapped(const QString &id);
     void correctedStrokeCompleted(const QVariantMap &shape, const QVariantMap &original);
     void lassoCompleted(const QVariantList &polygon);
     void strokesErased(const QVariantList &indexes);
@@ -107,6 +144,12 @@ private:
         InkTool tool = InkTool::Pen;
         QList<InkPoint> points;
         QString textTapId;
+        QVariantMap tableTapCell;
+        QString chartTapId;
+        QString diagramTapId;
+        QString noteTapId;
+        bool pointPick = false;
+        bool pointPickCancelled = false;
         QPointF textTapStart;
         qreal textTapPressure = 0;
         QElapsedTimer textTapTime;
@@ -122,6 +165,7 @@ private:
     void dispatchMarker(Phase phase, QPointF windowPoint, qreal pressure, bool eraserTip);
     void cancelMarker();
     void releaseMarkerWindow();
+    bool inputOverlayContains(QPointF position) const;
     bool handleInput(Source source, Phase phase, QPointF position, qreal pressure, bool eraserTip = false);
     void addPoint(QPointF position, qreal pressure);
     void addLassoPoint(const InkPoint &point);
@@ -136,6 +180,10 @@ private:
     void resetDrawing();
     void rebuildImage();
 
+    QPointer<QQuickItem> m_inputOverlay;
+    QPointer<InkItem> m_markerInkTarget;
+    QPointer<InkItem> m_markerStrokeTarget;
+    QElapsedTimer m_inputActivity;
     QPointer<QQuickWindow> m_observedWindow;
     QPointer<QQuickWindow> m_markerWindow;
     std::unique_ptr<QPointingDevice> m_markerPointer;
@@ -159,8 +207,14 @@ private:
     int m_eraserOffset = 0;
     bool m_acceptsMouse = true;
     bool m_smartShapes = false;
+    qreal m_pressureExponent = 1;
+    qreal m_shapeTolerance = 1;
+    QString m_palmRejection = QStringLiteral("writing");
+    QTimer m_palmHold;
     bool m_lassoMode = false;
     bool m_epaper = false;
+    bool m_pointPicking = false;
+    bool m_nativeMarkerEnabled = true;
 
 #ifdef Q_OS_LINUX
     std::unique_ptr<PaperProMarker> m_marker;

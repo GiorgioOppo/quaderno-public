@@ -622,7 +622,8 @@ Dialog {
                 anchors.margins: 8 * editor.uiScale
                 diagram: ({
                     nodes: editor.shownNodes,
-                    edges: editor.edges
+                    edges: editor.edges,
+                    styleScale: editor.original && editor.original.styleScale !== undefined ? editor.original.styleScale : 1
                 })
                 viewRect: editor.view
                 selectedNode: editor.connecting ? editor.connectFrom : ""

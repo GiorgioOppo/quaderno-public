@@ -235,10 +235,12 @@ std::string asUtf8(const UCHR *result, size_t &resultLength)
     return text;
 }
 
-const char *transcribe(RECOGNIZER_PTR recognizer, const std::vector<Stroke> &strokes, std::string &text)
+const char *transcribe(RECOGNIZER_PTR recognizer, const std::vector<Stroke> &strokes, std::string &text, std::vector<std::string> &alternatives)
 {
     size_t resultLength = 0;
     const auto lines = readLines(strokes);
+    std::vector<std::string> recognizedLines;
+    std::vector<std::pair<size_t, std::string>> candidates;
     for (const auto &line : lines) {
         if (line.strokes.size() > maxEngineStrokes)
             return tooLarge;
@@ -271,25 +273,75 @@ const char *transcribe(RECOGNIZER_PTR recognizer, const std::vector<Stroke> &str
                 ++resultLength;
             }
             text += lineText;
+            const int wordCount = HWR_GetResultWordCount(recognizer);
+            for (int word = 0; word < wordCount && candidates.size() < 2; ++word) {
+                const int count = HWR_GetResultAlternativeCount(recognizer, word);
+                for (int alternative = 1; alternative < count && candidates.size() < 2; ++alternative) {
+                    std::string lineCandidate;
+                    size_t length = 0;
+                    for (int token = 0; token < wordCount; ++token) {
+                        const std::string value = asUtf8(HWR_GetResultWord(recognizer, token, token == word ? alternative : 0), length);
+                        if (!lineCandidate.empty() && !value.empty()) lineCandidate += ' ';
+                        lineCandidate += value;
+                    }
+                    if (!lineCandidate.empty() && lineCandidate != lineText && length <= maxResultLength)
+                        candidates.emplace_back(recognizedLines.size(), std::move(lineCandidate));
+                }
+            }
+            recognizedLines.push_back(lineText);
         }
         if (resultLength > maxResultLength)
             return "La trascrizione supera 4.000 caratteri. Seleziona un passaggio più breve.";
     }
+    alternatives.push_back(text);
+    for (const auto &candidate : candidates) {
+        std::string variant;
+        for (size_t line = 0; line < recognizedLines.size(); ++line) {
+            if (!variant.empty()) variant += '\n';
+            variant += line == candidate.first ? candidate.second : recognizedLines[line];
+        }
+        if (variant != text && variant.size() <= maxResultLength * 2)
+            alternatives.push_back(std::move(variant));
+    }
     return text.empty() ? emptyResult : nullptr;
+}
+
+int respondText(const std::string &text, const std::vector<std::string> &alternatives)
+{
+    Json response(json_object_new_object(), json_object_put);
+    if (!response) return EXIT_FAILURE;
+    json_object_object_add(response.get(), "text", json_object_new_string_len(text.data(), static_cast<int>(text.size())));
+    auto *choices = json_object_new_array();
+    if (!choices) return EXIT_FAILURE;
+    for (const auto &candidate : alternatives)
+        json_object_array_add(choices, json_object_new_string_len(candidate.data(), static_cast<int>(candidate.size())));
+    json_object_object_add(response.get(), "alternatives", choices);
+    return std::puts(json_object_to_json_string_ext(response.get(), JSON_C_TO_STRING_PLAIN)) < 0 ? EXIT_FAILURE : EXIT_SUCCESS;
 }
 }
 
 int main(int argc, char *argv[])
 {
-    const bool checking = argc == 2 && std::strcmp(argv[1], "--check") == 0;
-    if (argc != 1 && !checking)
-        return EXIT_FAILURE;
+    bool checking = false;
+    bool english = false;
+    for (int argument = 1; argument < argc; ++argument) {
+        if (std::strcmp(argv[argument], "--check") == 0) {
+            checking = true;
+        } else if (std::strcmp(argv[argument], "--language") == 0 && argument + 1 < argc) {
+            const char *language = argv[++argument];
+            if (std::strcmp(language, "it") != 0 && std::strcmp(language, "en") != 0)
+                return EXIT_FAILURE;
+            english = std::strcmp(language, "en") == 0;
+        } else {
+            return EXIT_FAILURE;
+        }
+    }
 
     std::error_code error;
     const auto executable = std::filesystem::canonical(argv[0], error);
     if (error)
         return checking ? EXIT_FAILURE : respond("error", badDictionary);
-    const auto dictionary = executable.parent_path() / "quaderno-handwriting-it.dct";
+    const auto dictionary = executable.parent_path() / (english ? "quaderno-handwriting-en.dct" : "quaderno-handwriting-it.dct");
     if (!std::filesystem::is_regular_file(dictionary, error))
         return checking ? EXIT_FAILURE : respond("error", badDictionary);
 
@@ -298,7 +350,7 @@ int main(int argc, char *argv[])
         HWR_FreeRecognizer(recognizer, nullptr, nullptr, nullptr);
     };
     std::unique_ptr<void, decltype(freeRecognizer)> recognizer(
-        HWR_InitRecognizer(dictionary.c_str(), nullptr, nullptr, nullptr, LANGUAGE_ITALIAN, &flags), freeRecognizer);
+        HWR_InitRecognizer(dictionary.c_str(), nullptr, nullptr, nullptr, english ? LANGUAGE_ENGLISH : LANGUAGE_ITALIAN, &flags), freeRecognizer);
     if (!recognizer || !(flags & FLAG_MAINDICT))
         return checking ? EXIT_FAILURE : respond("error", badDictionary);
     if (checking)
@@ -309,7 +361,8 @@ int main(int argc, char *argv[])
     if (const char *message = readInk(strokes))
         return respond("error", message);
     std::string text;
-    if (const char *message = transcribe(recognizer.get(), strokes, text))
+    std::vector<std::string> alternatives;
+    if (const char *message = transcribe(recognizer.get(), strokes, text, alternatives))
         return respond("error", message);
-    return respond("text", text);
+    return respondText(text, alternatives);
 }

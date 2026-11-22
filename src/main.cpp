@@ -2,6 +2,7 @@
 #include "applanguage.h"
 #include "bluetoothsettings.h"
 #include "deviceinfo.h"
+#include "cloudaccounts.h"
 #include "epaperrefresh.h"
 #include "externalkeyboard.h"
 #include "macdocumentexchange.h"
@@ -10,6 +11,8 @@
 #include "obsidianintegration.h"
 #include "obsidiansync.h"
 #include "pinlock.h"
+#include "paperprostandby.h"
+#include "screenorientation.h"
 #include "usbssh.h"
 #include "wifisettings.h"
 #include "wirelesssync.h"
@@ -40,15 +43,21 @@ int main(int argc, char *argv[])
             return 0;
         }
         const bool preview = argc == 2 && command == "--usb-transfer-preview";
+        const bool exportLibrary = argc == 2 && command == "--usb-transfer-export";
         const bool apply = argc == 3 && command == "--usb-transfer-apply";
         const QByteArray token = apply ? QByteArray(argv[2]) : QByteArray{};
-        if ((!preview && !apply) || (apply && (token.size() != 64 || QByteArray::fromHex(token).toHex() != token)))
+        if ((!preview && !apply && !exportLibrary) || (apply && (token.size() != 64 || QByteArray::fromHex(token).toHex() != token)))
             return 2;
 
         QCoreApplication app(argc, argv);
         QCoreApplication::setApplicationName(QStringLiteral("Quaderno"));
         const QDir dataDir(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation));
         Notebook notebook(dataDir.filePath(QStringLiteral("quaderni.json")));
+        if (exportLibrary) {
+            const QByteArray exported = notebook.exportLibraryForTransfer();
+            if (exported.isEmpty()) return 1;
+            return std::fwrite(exported.constData(), 1, size_t(exported.size()), stdout) == size_t(exported.size()) ? 0 : 1;
+        }
         QByteArray payload;
         char buffer[65536];
         while (payload.size() <= 64 * 1024 * 1024) {
@@ -89,6 +98,8 @@ int main(int argc, char *argv[])
     Notebook notebook(dataDir.filePath(QStringLiteral("quaderni.json")));
     AppleShare appleShare(tablet);
     PinLock pinLock(dataDir.filePath(QStringLiteral("accesso.json")));
+    CloudAccounts cloudAccounts(QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation) + QStringLiteral("/cloud"), tablet);
+    cloudAccounts.setLocked(pinLock.locked());
     MacDocumentExchange documentExchange(&notebook, tablet);
     MarkdownWeb markdownWeb(&notebook);
     ObsidianIntegration obsidian;
@@ -104,6 +115,11 @@ int main(int argc, char *argv[])
             obsidian.clearLastSavedNote();
     });
     DeviceInfo deviceInfo(onDevice);
+    ScreenOrientation screenOrientation(onDevice);
+    PaperProStandby standby(tablet, &pinLock, &deviceInfo);
+    const auto updateCloudLock = [&] { cloudAccounts.setLocked(pinLock.locked() || standby.sleeping()); };
+    QObject::connect(&pinLock, &PinLock::lockedChanged, &cloudAccounts, updateCloudLock);
+    QObject::connect(&standby, &PaperProStandby::sleepingChanged, &cloudAccounts, updateCloudLock);
     EpaperRefresh epaperRefresh;
     ExternalKeyboard externalKeyboard(onDevice);
     WifiSettings wifi(onDevice);
@@ -127,9 +143,12 @@ int main(int argc, char *argv[])
     QQmlApplicationEngine engine;
     QVariantMap initialProperties{
         {QStringLiteral("notebook"), QVariant::fromValue(&notebook)},
+        {QStringLiteral("cloudAccountsModel"), QVariant::fromValue(&cloudAccounts)},
         {QStringLiteral("appleShare"), QVariant::fromValue(&appleShare)},
         {QStringLiteral("pinLock"), QVariant::fromValue(&pinLock)},
+        {QStringLiteral("standby"), QVariant::fromValue(&standby)},
         {QStringLiteral("deviceInfo"), QVariant::fromValue(&deviceInfo)},
+        {QStringLiteral("screenOrientationModel"), QVariant::fromValue(&screenOrientation)},
         {QStringLiteral("wifi"), QVariant::fromValue(&wifi)},
         {QStringLiteral("bluetooth"), QVariant::fromValue(&bluetooth)},
         {QStringLiteral("usbSsh"), QVariant::fromValue(&usbSsh)},
@@ -152,6 +171,26 @@ int main(int argc, char *argv[])
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app,
                      [] { QCoreApplication::exit(1); }, Qt::QueuedConnection);
     engine.loadFromModule(QStringLiteral("Quaderno"), QStringLiteral("Main"));
+    if (app.arguments().contains(QStringLiteral("--check-startup"))) {
+        if (engine.rootObjects().isEmpty())
+            return 1;
+        auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().constFirst());
+        if (!window || window->width() < 380 || window->height() < 500)
+            return 1;
+        // An alive process is insufficient: require a rendered frame and a
+        // subsequent event-loop callback. A blocked UI never reaches ready.
+        QObject::connect(window, &QQuickWindow::frameSwapped, &app, [&, window] {
+            if (!window->isVisible() || engine.rootObjects().isEmpty())
+                return;
+            QTimer::singleShot(0, &app, [&] {
+                std::puts("QUADERNO_READY");
+                std::fflush(stdout);
+                app.exit(0);
+            });
+        }, Qt::QueuedConnection);
+        QTimer::singleShot(8000, &app, [&] { app.exit(3); });
+        window->update();
+    }
     if (epaperScreen && !engine.rootObjects().isEmpty()) {
         auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().constFirst());
         if (window) {

@@ -33,7 +33,16 @@
       <source>Scegli una destinazione nel menu Condividi.</source>
       <translation>Choose a destination from the Share menu.</translation>
     </message>
-  </context>
+      <message><source>La coda Apple non è leggibile. I file esportati sono conservati.</source><translation>The Apple queue cannot be read. Exported files have been kept.</translation></message>
+    <message><source>Impossibile aggiornare la coda Apple. Riapri Quaderno e riprova.</source><translation>Could not update the Apple queue. Reopen Quaderno and try again.</translation></message>
+    <message><source>La coda Apple contiene 256 esportazioni. I file sono conservati.</source><translation>The Apple queue contains 256 exports. The files have been kept.</translation></message>
+    <message><source>Apri una pagina con una tabella per esportarla in Numbers.</source><translation>Open a page with a table to export it to Numbers.</translation></message>
+    <message><source>File preparato, ma la coda Apple non è stata salvata.</source><translation>The file is ready, but the Apple queue could not be saved.</translation></message>
+    <message><source>Il file esportato non è disponibile.</source><translation>The exported file is unavailable.</translation></message>
+    <message><source>Completa l’importazione nell’app Apple, poi confermala qui.</source><translation>Finish importing in the Apple app, then confirm it here.</translation></message>
+    <message><source>Impossibile aprire l’app Apple. Il file è conservato e puoi riprovare.</source><translation>Could not open the Apple app. The file has been kept so you can try again.</translation></message>
+    <message><source>Cronologia completata archiviata. I file esportati sono conservati.</source><translation>Finished history archived. Exported files have been kept.</translation></message>
+<message><source>Il file esportato non è disponibile. Puoi preparare una nuova esportazione dal quaderno.</source><translation>The exported file is unavailable. You can prepare a new export from the notebook.</translation></message></context>
   <context>
     <name>AppleShareMac</name>
     <message>
@@ -197,6 +206,26 @@
       <source>Stato rilevabile sul Paper Pro</source>
       <translation>Status available on Paper Pro</translation>
     </message>
+    <message>
+      <source>Telemetria della penna non disponibile</source>
+      <translation>Pen battery data unavailable</translation>
+    </message>
+    <message>
+      <source>Penna non rilevata</source>
+      <translation>Pen not detected</translation>
+    </message>
+    <message>
+      <source>Penna agganciata</source>
+      <translation>Pen docked</translation>
+    </message>
+    <message>
+      <source>Penna in uso</source>
+      <translation>Pen in use</translation>
+    </message>
+    <message>
+      <source>Stato di carica della penna non disponibile</source>
+      <translation>Pen charging status unavailable</translation>
+    </message>
   </context>
   <context>
     <name>EpubImport</name>
@@ -302,7 +331,15 @@
       <source>Una sezione dell’EPUB supera il limite di importazione.</source>
       <translation>An EPUB section exceeds the import limit.</translation>
     </message>
-  </context>
+      <message><source>L’EPUB supera il limite di 100000 pagine importate.</source><translation>The EPUB exceeds the limit of 100000 imported pages.</translation></message>
+    <message><source>Scegli un file EPUB leggibile.</source><translation>Choose a readable EPUB file.</translation></message>
+    <message><source>Il pacchetto EPUB contiene un collegamento non supportato.</source><translation>The EPUB package contains an unsupported link.</translation></message>
+    <message><source>Impossibile leggere il pacchetto EPUB.</source><translation>Could not read the EPUB package.</translation></message>
+    <message><source>Il pacchetto EPUB supera il limite di 64 MB.</source><translation>The EPUB package exceeds 64 MB.</translation></message>
+    <message><source>Impossibile preparare il documento EPUB.</source><translation>Could not prepare the EPUB document.</translation></message>
+    <message><source>Il documento EPUB preparato supera il limite di 48 MB.</source><translation>The prepared EPUB document exceeds 48 MB.</translation></message>
+    <message><source>L’EPUB non contiene pagine importabili o supera il limite di dimensione.</source><translation>The EPUB has no importable pages or exceeds the size limit.</translation></message>
+</context>
   <context>
     <name>Handwriting</name>
     <message>
@@ -357,7 +394,8 @@
       <source>Non è stato riconosciuto alcun testo.</source>
       <translation>No text was recognized.</translation>
     </message>
-  </context>
+      <message><source>Il dizionario per la lingua scelta non è installato.</source><translation>The dictionary for the selected language is not installed.</translation></message>
+</context>
   <context>
     <name>PageContent</name>
     <message>
@@ -466,7 +504,16 @@
       <source>Le pagine preparate del PDF superano 30 MB.</source>
       <translation>The prepared PDF pages exceed 30 MiB.</translation>
     </message>
-  </context>
+      <message><source>Scegli un PDF leggibile da meno di 48 MB.</source><translation>Choose a readable PDF smaller than 48 MB.</translation></message>
+    <message><source>Impossibile leggere il PDF.</source><translation>Could not read the PDF.</translation></message>
+    <message><source>Sorgente della pagina non valida.</source><translation>Invalid page source.</translation></message>
+    <message><source>La sorgente PDF supera il limite di dimensione.</source><translation>The PDF source exceeds the size limit.</translation></message>
+    <message><source>La sorgente della pagina è mancante o danneggiata.</source><translation>The page source is missing or damaged.</translation></message>
+    <message><source>Il PDF supera il limite di 100000 pagine.</source><translation>The PDF exceeds the limit of 100000 pages.</translation></message>
+    <message><source>Impossibile leggere il PDF. Verifica che non richieda una password.</source><translation>Could not read the PDF. Check that it does not require a password.</translation></message>
+    <message><source>Sorgente PDF non valida.</source><translation>Invalid PDF source.</translation></message>
+    <message><source>Impossibile leggere la pagina PDF richiesta.</source><translation>Could not read the requested PDF page.</translation></message>
+</context>
   <context>
     <name>PinLock</name>
     <message>
@@ -556,7 +603,47 @@
       <source>Seleziona un tratto di scrittura a mano.</source>
       <translation>Select a handwritten stroke.</translation>
     </message>
-  </context>
+        <message>
+            <source>Il disegno contiene troppi tratti. Seleziona un diagramma più piccolo.</source>
+            <translation>The drawing contains too many strokes. Select a smaller diagram.</translation>
+        </message>
+        <message>
+            <source>Il disegno contiene un tratto non valido.</source>
+            <translation>The drawing contains an invalid stroke.</translation>
+        </message>
+        <message>
+            <source>Il disegno contiene troppi punti. Seleziona un diagramma più piccolo.</source>
+            <translation>The drawing contains too many points. Select a smaller diagram.</translation>
+        </message>
+        <message>
+            <source>Il disegno contiene coordinate non valide.</source>
+            <translation>The drawing contains invalid coordinates.</translation>
+        </message>
+        <message>
+            <source>Il disegno è troppo complesso. Seleziona un diagramma più piccolo.</source>
+            <translation>The drawing is too complex. Select a smaller diagram.</translation>
+        </message>
+        <message>
+            <source>Nessuna forma riconosciuta. Disegna rettangoli, rombi o ovali con contorni chiusi.</source>
+            <translation>No shapes were recognized. Draw rectangles, diamonds or ovals with closed outlines.</translation>
+        </message>
+        <message>
+            <source>Il diagramma supera il limite di 128 collegamenti. Seleziona una parte più piccola.</source>
+            <translation>The diagram exceeds the limit of 128 connections. Select a smaller part.</translation>
+        </message>
+        <message>
+            <source>Alcuni collegamenti non hanno una direzione chiara e restano tratti a mano libera.</source>
+            <translation>Some connections have no clear direction and remain as freehand strokes.</translation>
+        </message>
+        <message>
+            <source>I tratti non assegnati restano sulla pagina.</source>
+            <translation>Unassigned strokes stay on the page.</translation>
+        </message>
+          <message><source>Il diagramma esistente non è valido. Riapri il foglio e riprova.</source><translation>The existing diagram is invalid. Reopen the page and try again.</translation></message>
+        <message><source>Il diagramma supera il limite di 64 forme. Seleziona una parte più piccola.</source><translation>The diagram exceeds the limit of 64 shapes. Select a smaller part.</translation></message>
+        <message><source>Il diagramma esteso supera il bordo della pagina. Sposta le nuove forme verso il centro e riprova.</source><translation>The extended diagram exceeds the page boundary. Move the new shapes toward the center and try again.</translation></message>
+        <message><source>I collegamenti incerti o già presenti restano tratti a mano libera.</source><translation>Uncertain or existing connections remain as freehand strokes.</translation></message>
+    </context>
   <context>
     <name>UsbSsh</name>
     <message>
@@ -1207,7 +1294,9 @@
       <source>Scegli un file PDF, EPUB o Markdown locale.</source>
       <translation>Choose a local PDF, EPUB, or Markdown file.</translation>
     </message>
-  </context>
+      <message><source>Preparazione dell’importazione…</source><translation>Preparing import…</translation></message>
+    <message><source>Importazione di %1…</source><translation>Importing %1…</translation></message>
+<message><source>Formato non supportato. Scegli PDF, EPUB o Markdown locali.</source><translation>Unsupported format. Choose local PDF, EPUB or Markdown files.</translation></message><message><source>Il file non è leggibile o non è disponibile sul Mac.</source><translation>The file cannot be read or is not available on this Mac.</translation></message><message><source>File già presente in questa importazione.</source><translation>This file is already included in this import.</translation></message><message><source>Attendi il termine dell’operazione in corso.</source><translation>Wait for the current operation to finish.</translation></message><message><source>Nessun documento importabile. Apri il rapporto per i dettagli.</source><translation>No documents could be imported. Open the report for details.</translation></message><message><source>Importati: %1 · Non riusciti: %2 · Ignorati: %3 · Annullati: %4</source><translation>Imported: %1 · Failed: %2 · Skipped: %3 · Cancelled: %4</translation></message><message><source>Importazione annullata.</source><translation>Import cancelled.</translation></message></context>
   <context>
     <name>MarkdownWeb</name>
     <message>
@@ -1452,4 +1541,371 @@
       <translation>Some visual details were simplified.</translation>
     </message>
   </context>
+  <context>
+    <name>TabletPreferences</name>
+    <message>
+      <source>Impossibile salvare le preferenze del tablet. Le impostazioni precedenti restano attive.</source>
+      <translation>Could not save tablet preferences. Your previous settings remain active.</translation>
+    </message>
+  </context>
+    <context>
+        <name>CloudAccounts</name>
+        <message>
+            <source>Archivio privato degli accessi non disponibile.</source>
+            <translation>Private sign-in storage is unavailable.</translation>
+        </message>
+        <message>
+            <source>Il servizio non risponde. Riprova più tardi.</source>
+            <translation>The service is not responding. Try again later.</translation>
+        </message>
+        <message>
+            <source>Autorizzazione scaduta. Premi di nuovo Accedi.</source>
+            <translation>Authorization expired. Press Sign in again.</translation>
+        </message>
+        <message>
+            <source>Archivio accessi non disponibile</source>
+            <translation>Sign-in storage unavailable</translation>
+        </message>
+        <message>
+            <source>Accesso SSO non configurato in questa installazione</source>
+            <translation>SSO sign-in is not configured for this installation</translation>
+        </message>
+        <message>
+            <source>Accesso salvato · verifica durante il collegamento</source>
+            <translation>Saved access · verified when connecting</translation>
+        </message>
+        <message>
+            <source>Da collegare</source>
+            <translation>Not connected</translation>
+        </message>
+        <message>
+            <source>Accesso SSO non configurato in questa installazione.</source>
+            <translation>SSO sign-in is not configured for this installation.</translation>
+        </message>
+        <message>
+            <source>Accesso salvato. Aggiorna per verificare i file disponibili.</source>
+            <translation>Access saved. Refresh to check available files.</translation>
+        </message>
+        <message>
+            <source>Accedi tramite la pagina ufficiale del servizio.</source>
+            <translation>Sign in through the service’s official page.</translation>
+        </message>
+        <message>
+            <source>Operazione annullata.</source>
+            <translation>Operation canceled.</translation>
+        </message>
+        <message>
+            <source>Richiesta al servizio non valida.</source>
+            <translation>Invalid service request.</translation>
+        </message>
+        <message>
+            <source>Il file o la risposta supera il limite consentito.</source>
+            <translation>The file or response exceeds the allowed limit.</translation>
+        </message>
+        <message>
+            <source>Accesso scaduto o revocato. Accedi di nuovo.</source>
+            <translation>Access expired or was revoked. Sign in again.</translation>
+        </message>
+        <message>
+            <source>Il servizio non ha autorizzato questa operazione. Controlla i permessi dell’account.</source>
+            <translation>The service did not authorize this operation. Check your account permissions.</translation>
+        </message>
+        <message>
+            <source>Il file non è più disponibile.</source>
+            <translation>The file is no longer available.</translation>
+        </message>
+        <message>
+            <source>Esiste già un file con questo nome. Scegli un altro nome; nessun file è stato sostituito.</source>
+            <translation>A file with this name already exists. Choose another name; no file was replaced.</translation>
+        </message>
+        <message>
+            <source>Troppe richieste al servizio. Attendi e riprova.</source>
+            <translation>Too many requests to the service. Wait and try again.</translation>
+        </message>
+        <message>
+            <source>Collegamento HTTPS non riuscito. Controlla la rete e riprova.</source>
+            <translation>HTTPS connection failed. Check the network and try again.</translation>
+        </message>
+        <message>
+            <source>Il servizio ha rifiutato la richiesta (HTTP %1).</source>
+            <translation>The service rejected the request (HTTP %1).</translation>
+        </message>
+        <message>
+            <source>Il servizio ha restituito un accesso non valido.</source>
+            <translation>The service returned invalid access credentials.</translation>
+        </message>
+        <message>
+            <source>Impossibile salvare l’accesso nell’archivio privato.</source>
+            <translation>Could not save access in private storage.</translation>
+        </message>
+        <message>
+            <source>Accedi al servizio prima di continuare.</source>
+            <translation>Sign in to the service before continuing.</translation>
+        </message>
+        <message>
+            <source>Pagina di autorizzazione non valida.</source>
+            <translation>Invalid authorization page.</translation>
+        </message>
+        <message>
+            <source>Impossibile preparare l’autorizzazione privata.</source>
+            <translation>Could not prepare private authorization.</translation>
+        </message>
+        <message>
+            <source>Completa l’accesso nel browser del Mac con l’assistente SSH.</source>
+            <translation>Complete sign-in in the Mac browser with the SSH helper.</translation>
+        </message>
+        <message>
+            <source>Impossibile aprire il browser. Usa il collegamento di autorizzazione.</source>
+            <translation>Could not open the browser. Use the authorization link.</translation>
+        </message>
+        <message>
+            <source>Completa l’accesso nella pagina ufficiale del servizio.</source>
+            <translation>Complete sign-in on the service’s official page.</translation>
+        </message>
+        <message>
+            <source>Impossibile aprire il ritorno locale per l’accesso Google.</source>
+            <translation>Could not open the local callback for Google sign-in.</translation>
+        </message>
+        <message>
+            <source>Inserisci il codice fornito da Dropbox.</source>
+            <translation>Enter the code provided by Dropbox.</translation>
+        </message>
+        <message>
+            <source>Autorizzazione annullata nella pagina Microsoft.</source>
+            <translation>Authorization canceled on the Microsoft page.</translation>
+        </message>
+        <message>
+            <source>Collegamento al servizio…</source>
+            <translation>Connecting to the service…</translation>
+        </message>
+        <message>
+            <source>Cartella cloud non valida.</source>
+            <translation>Invalid cloud folder.</translation>
+        </message>
+        <message>
+            <source>Risposta del servizio non valida.</source>
+            <translation>Invalid service response.</translation>
+        </message>
+        <message>
+            <source>Risposta dei file cloud non valida o troppo grande.</source>
+            <translation>The cloud file response is invalid or too large.</translation>
+        </message>
+        <message>
+            <source>%1 elementi disponibili. I trasferimenti creano nuove copie.</source>
+            <translation>%1 items available. Transfers create new copies.</translation>
+        </message>
+        <message>
+            <source>Impossibile preparare il download privato.</source>
+            <translation>Could not prepare the private download.</translation>
+        </message>
+        <message>
+            <source>Impossibile salvare il file scaricato.</source>
+            <translation>Could not save the downloaded file.</translation>
+        </message>
+        <message>
+            <source>Download di %1…</source>
+            <translation>Downloading %1…</translation>
+        </message>
+        <message>
+            <source>Destinazione del download non autorizzata.</source>
+            <translation>Download destination not authorized.</translation>
+        </message>
+        <message>
+            <source>Il file remoto è cambiato. Aggiorna l’elenco e scaricalo di nuovo.</source>
+            <translation>The remote file changed. Refresh the list and download it again.</translation>
+        </message>
+        <message>
+            <source>Impossibile completare il salvataggio del download.</source>
+            <translation>Could not finish saving the download.</translation>
+        </message>
+        <message>
+            <source>Scaricato: %1. Conferma l’importazione in Quaderno.</source>
+            <translation>Downloaded: %1. Confirm import into Quaderno.</translation>
+        </message>
+        <message>
+            <source>Scegli un file supportato: massimo 100 MiB, oppure 64 MiB per un quaderno.</source>
+            <translation>Choose a supported file: maximum 100 MiB, or 64 MiB for a notebook.</translation>
+        </message>
+        <message>
+            <source>Impossibile leggere il file da caricare.</source>
+            <translation>Could not read the file to upload.</translation>
+        </message>
+        <message>
+            <source>Il file è cambiato. Selezionalo di nuovo.</source>
+            <translation>The file changed. Select it again.</translation>
+        </message>
+        <message>
+            <source>Caricamento di una nuova copia di %1…</source>
+            <translation>Uploading a new copy of %1…</translation>
+        </message>
+        <message>
+            <source>Nuova copia caricata. Aggiorna l’elenco per visualizzarla.</source>
+            <translation>New copy uploaded. Refresh the list to see it.</translation>
+        </message>
+        <message>
+            <source>Sessione di caricamento non autorizzata.</source>
+            <translation>Upload session not authorized.</translation>
+        </message>
+        <message>
+            <source>Il file è cambiato durante il caricamento.</source>
+            <translation>The file changed during upload.</translation>
+        </message>
+        <message>
+            <source>Accesso aggiornato. Puoi aggiornare l’elenco dei file.</source>
+            <translation>Access renewed. You can refresh the file list.</translation>
+        </message>
+        <message>
+            <source>Impossibile rimuovere l’accesso dall’archivio privato.</source>
+            <translation>Could not remove access from private storage.</translation>
+        </message>
+        <message>
+            <source>Accesso rimosso da questo dispositivo.</source>
+            <translation>Access removed from this device.</translation>
+        </message>
+        <message>
+            <source>Per revocare Microsoft, gestisci le autorizzazioni nella pagina dell’account. Puoi rimuovere qui l’accesso locale.</source>
+            <translation>To revoke Microsoft access, manage permissions on your account page. You can remove local access here.</translation>
+        </message>
+        <message>
+            <source>Revoca non confermata dal servizio. Puoi rimuovere soltanto l’accesso locale.</source>
+            <translation>The service did not confirm revocation. You can remove local access only.</translation>
+        </message>
+    </context>
+    <context>
+        <name>LibraryMaintenance</name>
+        <message>
+            <source>Impossibile leggere un file del backup.</source>
+            <translation>Could not read a backup file.</translation>
+        </message>
+        <message>
+            <source>Il file del backup supera il limite consentito.</source>
+            <translation>The backup file exceeds the allowed limit.</translation>
+        </message>
+        <message>
+            <source>Impossibile salvare il backup locale. %1</source>
+            <translation>Could not save the local backup. %1</translation>
+        </message>
+        <message>
+            <source>La cartella dei backup non è una cartella locale valida.</source>
+            <translation>The backup folder is not a valid local folder.</translation>
+        </message>
+        <message>
+            <source>Troppi file nella cartella dei backup. Controllala prima di proseguire.</source>
+            <translation>Too many files in the backup folder. Check it before continuing.</translation>
+        </message>
+        <message>
+            <source>L’archivio degli originali non è una cartella valida.</source>
+            <translation>Original file storage is not a valid folder.</translation>
+        </message>
+        <message>
+            <source>L’archivio contiene troppi file.</source>
+            <translation>Storage contains too many files.</translation>
+        </message>
+        <message>
+            <source>Impossibile creare la cartella dei backup locali.</source>
+            <translation>Could not create the local backup folder.</translation>
+        </message>
+        <message>
+            <source>Impossibile proteggere la cartella dei backup.</source>
+            <translation>Could not protect the backup folder.</translation>
+        </message>
+        <message>
+            <source>Le preferenze di lettura non sono valide; il backup precedente viene conservato.</source>
+            <translation>Reading preferences are invalid; the previous backup is preserved.</translation>
+        </message>
+        <message>
+            <source>Spazio insufficiente per il backup locale.</source>
+            <translation>Not enough space for the local backup.</translation>
+        </message>
+        <message>
+            <source>Impossibile preparare il backup locale.</source>
+            <translation>Could not prepare the local backup.</translation>
+        </message>
+        <message>
+            <source>Impossibile completare il backup locale.</source>
+            <translation>Could not complete the local backup.</translation>
+        </message>
+        <message>
+            <source>Backup locale in corso…</source>
+            <translation>Creating local backup…</translation>
+        </message>
+        <message>
+            <source>Pulizia della cache in corso…</source>
+            <translation>Clearing cache…</translation>
+        </message>
+        <message>
+            <source>Controllo dello spazio locale…</source>
+            <translation>Checking local storage…</translation>
+        </message>
+        <message>
+            <source>Operazione non completata; gli originali sono conservati.</source>
+            <translation>Operation did not complete; originals are preserved.</translation>
+        </message>
+        <message>
+            <source>Backup salvato su questo dispositivo.</source>
+            <translation>Backup saved on this device.</translation>
+        </message>
+        <message>
+            <source>Cache ricreabile eliminata. Originali e annotazioni conservati.</source>
+            <translation>Rebuildable cache removed. Originals and annotations preserved.</translation>
+        </message>
+        <message>
+            <source>Spazio locale aggiornato.</source>
+            <translation>Local storage updated.</translation>
+        </message>
+        <message>
+            <source>La manutenzione è già in corso. Riprova.</source>
+            <translation>Maintenance is already running. Try again.</translation>
+        </message>
+            <message>
+            <source>Una parte della cache è stata pulita. Ripeti l’operazione per completarla.</source>
+            <translation>Part of the cache was cleared. Repeat the operation to finish.</translation>
+        </message>
+</context>
+    <context>
+        <name>PortableDocuments</name>
+        <message>
+            <source>Scegli un file Quaderno locale valido, fino a 64 MiB.</source>
+            <translation>Choose a valid local Quaderno file, up to 64 MiB.</translation>
+        </message>
+        <message>
+            <source>Impossibile leggere il quaderno scaricato.</source>
+            <translation>Could not read the downloaded notebook.</translation>
+        </message>
+        <message>
+            <source>Il quaderno scaricato supera il limite o non è leggibile.</source>
+            <translation>The downloaded notebook exceeds the limit or cannot be read.</translation>
+        </message>
+        <message>
+            <source>Impossibile preparare il quaderno da caricare.</source>
+            <translation>Could not prepare the notebook for upload.</translation>
+        </message>
+        <message>
+            <source>Impossibile salvare la copia temporanea del quaderno.</source>
+            <translation>Could not save the temporary notebook copy.</translation>
+        </message>
+    </context>
+    <context>
+        <name>ScreenOrientation</name>
+        <message>
+            <source>La rotazione automatica è disponibile sul Paper Pro.</source>
+            <translation>Automatic rotation is available on Paper Pro.</translation>
+        </message>
+        <message>
+            <source>Sensore di orientamento non disponibile. Usa la rotazione manuale.</source>
+            <translation>The orientation sensor is unavailable. Use manual rotation.</translation>
+        </message>
+        <message>
+            <source>Lettura del sensore in attesa; l’orientamento attuale viene conservato.</source>
+            <translation>Waiting for a sensor reading; the current orientation is retained.</translation>
+        </message>
+        <message>
+            <source>Sensore disponibile. Attiva la rotazione automatica per seguirne l’orientamento.</source>
+            <translation>Sensor available. Enable automatic rotation to follow its orientation.</translation>
+        </message>
+        <message>
+            <source>Ruota il tablet sollevato e attendi un istante. In piano conserva l’orientamento.</source>
+            <translation>Rotate the tablet while holding it upright and wait briefly. When flat, it keeps its orientation.</translation>
+        </message>
+    </context>
 </TS>

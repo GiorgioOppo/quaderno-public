@@ -7,6 +7,7 @@ import Quaderno
 
 Dialog {
     id: dialog
+    objectName: "usbTransferDialog"
 
     required property Notebook notebook
     required property UsbTransfer transfer
@@ -22,6 +23,7 @@ Dialog {
     padding: 16 * uiScale
     spacing: 12 * uiScale
     modal: true
+    focus: true
     closePolicy: transfer.applying ? Popup.NoAutoClose : Popup.CloseOnEscape
     title: qsTr("Invia al Paper Pro")
 
@@ -68,46 +70,64 @@ Dialog {
         bottomPadding: 0
     }
 
-    contentItem: ColumnLayout {
-        spacing: 10 * dialog.uiScale
+    contentItem: ScrollView {
+        id: reviewScroll
+        objectName: "usbTransferReview"
+        clip: true
+        implicitHeight: Math.min(reviewBody.implicitHeight, Math.max(80, (dialog.parent ? dialog.parent.height : 700) - 180 * dialog.uiScale))
+        contentWidth: availableWidth
+        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
-        TransferLabel {
-            text: qsTr("Mac → Paper Pro via USB-C")
-            color: "#555b67"
-            font.weight: Font.DemiBold
-        }
+        ColumnLayout {
+            id: reviewBody
+            width: reviewScroll.availableWidth
+            spacing: 10 * dialog.uiScale
 
-        TransferLabel {
-            visible: dialog.action.length > 0 && !dialog.transfer.applying
-            text: dialog.actionDescription()
-        }
+            ProgressBar {
+                Layout.fillWidth: true
+                visible: dialog.transfer.busy
+                indeterminate: visible
+                Accessible.name: dialog.transfer.applying ? qsTr("Invio del quaderno in corso") : qsTr("Preparazione dell’anteprima")
+            }
 
-        TransferLabel {
-            visible: dialog.action.length > 0 && !dialog.transfer.applying
-            text: qsTr("Mac · %1 · %n pagina/e", "", dialog.preview.sourcePages || 0).arg(dialog.preview.sourceTitle || "")
-        }
+            TransferLabel {
+                text: qsTr("Mac → Paper Pro via USB-C")
+                color: "#555b67"
+                font.weight: Font.DemiBold
+            }
 
-        TransferLabel {
-            visible: Boolean(dialog.preview.targetTitle) && !dialog.transfer.applying
-            text: qsTr("Paper Pro · %1 · %n pagina/e", "", dialog.preview.targetPages || 0).arg(dialog.preview.targetTitle || "")
-        }
+            TransferLabel {
+                visible: dialog.action.length > 0 && !dialog.transfer.applying
+                text: dialog.actionDescription()
+            }
 
-        TransferLabel {
-            visible: (dialog.action === "replace" || dialog.action === "conflict") && !dialog.transfer.applying
-            text: qsTr("Pagine con modifiche: %1").arg(dialog.preview.changedPages || 0)
-        }
+            TransferLabel {
+                visible: dialog.action.length > 0 && !dialog.transfer.applying
+                text: qsTr("Mac · %1 · %n pagina/e", "", dialog.preview.sourcePages || 0).arg(dialog.preview.sourceTitle || "")
+            }
 
-        TransferLabel {
-            visible: dialog.action.length > 0 && !dialog.transfer.busy
-            text: qsTr("Chiudi Quaderno sul Paper Pro prima di confermare.")
-            color: "#555b67"
-            font.pixelSize: 14 * dialog.uiScale
-        }
+            TransferLabel {
+                visible: Boolean(dialog.preview.targetTitle) && !dialog.transfer.applying
+                text: qsTr("Paper Pro · %1 · %n pagina/e", "", dialog.preview.targetPages || 0).arg(dialog.preview.targetTitle || "")
+            }
 
-        TransferLabel {
-            visible: text.length > 0
-            text: dialog.transfer.status
-            color: dialog.transfer.busy || dialog.transfer.completed ? "#24262c" : "#87332c"
+            TransferLabel {
+                visible: (dialog.action === "replace" || dialog.action === "conflict") && !dialog.transfer.applying
+                text: qsTr("Pagine con modifiche: %1").arg(dialog.preview.changedPages || 0)
+            }
+
+            TransferLabel {
+                visible: dialog.action.length > 0 && !dialog.transfer.busy
+                text: qsTr("Chiudi Quaderno sul Paper Pro prima di confermare.")
+                color: "#555b67"
+                font.pixelSize: 14 * dialog.uiScale
+            }
+
+            TransferLabel {
+                visible: text.length > 0
+                text: dialog.transfer.status
+                color: dialog.transfer.busy || dialog.transfer.completed ? "#24262c" : "#87332c"
+            }
         }
     }
 
@@ -125,6 +145,7 @@ Dialog {
         }
 
         PaperButton {
+            objectName: "usbTransferConfirm"
             uiScale: dialog.uiScale
             Layout.bottomMargin: dialog.padding
             Layout.rightMargin: dialog.padding
@@ -132,6 +153,8 @@ Dialog {
             text: dialog.action.length === 0 ? qsTr("Riprova")
                 : dialog.action === "unchanged" ? qsTr("Conferma") : qsTr("Invia quaderno")
             filled: true
+            Keys.onReturnPressed: if (visible && enabled) clicked()
+            Keys.onEnterPressed: if (visible && enabled) clicked()
             onClicked: {
                 if (dialog.action.length === 0)
                     dialog.transfer.preview(dialog.notebook, dialog.bookId)

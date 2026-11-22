@@ -4,14 +4,29 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
   desktop:
-    name: Desktop build and checks
-    runs-on: ubuntu-24.04-arm
+    name: Build and regressions (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04-arm
+            qt-host: linux_arm64
+            qt-arch: linux_gcc_arm64
+            qt-directory: gcc_arm64
+            binary: build-ci/quaderno
+          - os: macos-15
+            qt-host: mac
+            qt-arch: clang_64
+            qt-directory: macos
+            binary: build-ci/quaderno.app/Contents/MacOS/quaderno
     timeout-minutes: 20
     env:
       QT_VERSION: 6.8.3
@@ -21,10 +36,15 @@ jobs:
           persist-credentials: false
 
       - name: Install build dependencies
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y \
             build-essential libgl1-mesa-dev libssl-dev libxkbcommon-dev ninja-build python3-venv shellcheck zlib1g-dev
+
+      - name: Install Mac build dependencies
+        if: runner.os == 'macOS'
+        run: brew install ninja openssl@3 shellcheck
 
       - name: Check shell scripts
         run: sh scripts/check-shell.sh
@@ -33,14 +53,41 @@ jobs:
         run: |
           python3 -m venv "$RUNNER_TEMP/qt-installer"
           "$RUNNER_TEMP/qt-installer/bin/pip" install aqtinstall==3.3.0
-          "$RUNNER_TEMP/qt-installer/bin/aqt" install-qt linux_arm64 desktop "$QT_VERSION" linux_gcc_arm64 \
+          "$RUNNER_TEMP/qt-installer/bin/aqt" install-qt '${{ matrix.qt-host }}' desktop "$QT_VERSION" '${{ matrix.qt-arch }}' \
             --outputdir "$RUNNER_TEMP/qt"
 
       - name: Build Quaderno
         run: |
-          cmake -S . -B build-ci -G Ninja -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/qt/$QT_VERSION/gcc_arm64"
+          openssl_options=()
+          if [ "$RUNNER_OS" = macOS ]; then openssl_options=(-DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)"); fi
+          cmake -S . -B build-ci -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
+            -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/qt/$QT_VERSION/${{ matrix.qt-directory }}" "${openssl_options[@]}"
           cmake --build build-ci --parallel 2
 
+      - name: Regression tests
+        run: ctest --test-dir build-ci --output-on-failure
+
       - name: Check desktop and tablet layout startup
-        run: python3 scripts/check-startup.py build-ci/quaderno
+        run: python3 scripts/check-startup.py '${{ matrix.binary }}'
+
+  paper-pro:
+    name: Paper Pro 3.29.1.0 SDK build
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+      - name: Install matching SDK
+        run: |
+          curl --fail --location --retry 3 \
+            https://storage.googleapis.com/remarkable-codex-toolchain/3.29.1.0/remarkable-production-image-6.0.112-ferrari-public-aarch64-toolchain.sh \
+            -o "$RUNNER_TEMP/ferrari-sdk.sh"
+          sh "$RUNNER_TEMP/ferrari-sdk.sh" -y -d "$RUNNER_TEMP/ferrari-sdk"
+      - name: Cross compile tablet binary
+        shell: bash
+        run: |
+          source "$RUNNER_TEMP/ferrari-sdk/environment-setup-cortexa53-crypto-remarkable-linux"
+          cmake -S . -B build-paper-pro -G Ninja -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-paper-pro --parallel 2

@@ -1,10 +1,15 @@
 #include "notebook.h"
+#include "notebookformat.h"
 
 #include "epubimport.h"
+#include "diagramitem.h"
+#include "diagramexport.h"
+#include "diagramrecognizer.h"
 #include "inkrender.h"
 #include "inkselection.h"
 #include "pagecontent.h"
 #include "pdfimport.h"
+#include "pagestore.h"
 
 #include <QBuffer>
 #include <QCryptographicHash>
@@ -19,6 +24,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLockFile>
+#include <QLineF>
+#include <QMap>
 #include <QPageLayout>
 #include <QPageSize>
 #include <QPainter>
@@ -32,6 +39,8 @@
 #include <QStringConverter>
 #include <QSysInfo>
 #include <QTextBoundaryFinder>
+#include <QTextLayout>
+#include <QTransform>
 #include <QTemporaryDir>
 #include <QUrl>
 #include <QtMath>
@@ -41,6 +50,7 @@
 #include <cmath>
 #include <memory>
 #include <utility>
+#include <vector>
 
 namespace {
 constexpr int LegacyFileVersion = 1;
@@ -51,6 +61,9 @@ constexpr int ReadingFileVersion = 5;
 constexpr int DiagramFileVersion = 6;
 constexpr int OrthogonalDiagramFileVersion = 7;
 constexpr int ImageFileVersion = 8;
+constexpr int ExtendedFileVersion = 9;
+constexpr int DiagramExtensionFileVersion = 10;
+constexpr int PageNoteFileVersion = 11;
 constexpr qsizetype maxPagePdfText = 20000;
 constexpr qsizetype maxTranscripts = 32;
 constexpr qsizetype maxImportBytes = 64 * 1024 * 1024;
@@ -170,7 +183,9 @@ bool validBackground(const QByteArray &data)
     buffer.open(QIODevice::ReadOnly);
     QImageReader reader(&buffer, QByteArrayLiteral("jpeg"));
     const QSize size = reader.size();
-    return !size.isEmpty() && size.width() <= 1600 && size.height() <= 1600 && !reader.read().isNull();
+    // Validate dimensions without decoding every page during library startup.
+    // The requested page is decoded on the reader worker and reports errors.
+    return reader.canRead() && !size.isEmpty() && size.width() <= 1600 && size.height() <= 1600;
 }
 
 bool normalizedTags(const QVariantList &input, QStringList &tags)
@@ -282,7 +297,7 @@ QString tableLibraryTitle(const QVariantMap &item)
 
 bool isLibraryItem(const QVariant &type)
 {
-    return type == QStringLiteral("chart") || type == QStringLiteral("table");
+    return type == QStringLiteral("chart") || type == QStringLiteral("table") || type == QStringLiteral("diagram");
 }
 
 qsizetype imageCount(const QVariantList &items)
@@ -290,37 +305,6 @@ qsizetype imageCount(const QVariantList &items)
     return std::count_if(items.cbegin(), items.cend(), [](const QVariant &entry) {
         return entry.toMap().value(QStringLiteral("type")) == QStringLiteral("image");
     });
-}
-
-bool mostlyInside(const QPolygonF &polygon, const QRectF &bounds, const QList<InkPoint> &points)
-{
-    if (points.isEmpty())
-        return false;
-    if (points.size() == 1)
-        return polygon.containsPoint(points.constFirst().position, Qt::OddEvenFill);
-
-    qreal total = 0;
-    qreal enclosed = 0;
-    for (qsizetype i = 1; i < points.size(); ++i) {
-        const QPointF from = points.at(i - 1).position;
-        const QPointF to = points.at(i).position;
-        const QPointF delta = to - from;
-        const qreal length = std::hypot(delta.x(), delta.y() * 4 / 3);
-        if (length <= 0)
-            continue;
-        total += length;
-        if (qMax(from.x(), to.x()) < bounds.left() || qMin(from.x(), to.x()) > bounds.right()
-            || qMax(from.y(), to.y()) < bounds.top() || qMin(from.y(), to.y()) > bounds.bottom())
-            continue;
-        const int samples = qBound(1, qCeil(length / 0.008), 192);
-        const qreal weight = length / samples;
-        for (int j = 0; j < samples; ++j) {
-            if (polygon.containsPoint(from + delta * ((j + 0.5) / samples), Qt::OddEvenFill))
-                enclosed += weight;
-        }
-    }
-    return total > 0 ? enclosed >= total * 0.72
-                     : polygon.containsPoint(points.constFirst().position, Qt::OddEvenFill);
 }
 
 bool readStrokes(const QJsonArray &data, QVariantList &strokes)
@@ -373,6 +357,14 @@ QRectF itemRect(const QVariantMap &item)
 
 int requiredItemVersion(const QVariantMap &item)
 {
+    if (item.value(QStringLiteral("type")) == QStringLiteral("note"))
+        return PageNoteFileVersion;
+    if (item.contains(QStringLiteral("styleScale"))
+        || item.value(QStringLiteral("handwritingSource")).toMap().contains(QStringLiteral("baseDiagram")))
+        return DiagramExtensionFileVersion;
+    if (item.contains(QStringLiteral("handwritingSource")) || item.contains(QStringLiteral("rotation"))
+        || item.contains(QStringLiteral("textScale")))
+        return ExtendedFileVersion;
     const QVariant type = item.value(QStringLiteral("type"));
     if (type == QStringLiteral("image"))
         return ImageFileVersion;
@@ -388,7 +380,7 @@ int requiredItemVersion(const QVariantMap &item)
 QRectF placement(const QVariantList &items, const QVariantMap &item)
 {
     const QString type = item.value(QStringLiteral("type")).toString();
-    const double width = type == QStringLiteral("text") ? 0.76 : 0.84;
+    const double width = type == QStringLiteral("note") ? 0.05 : type == QStringLiteral("text") ? 0.76 : 0.84;
     const double height = PageContent::preferredItemHeight(item, width);
     const QRectF candidate(0.08, 0.10, width, height);
     for (double y = candidate.y(); y + height <= 0.95; y += 0.04) {
@@ -423,7 +415,142 @@ Notebook::Notebook(QString filePath, QObject *parent)
     : QObject(parent), m_filePath(QFileInfo(filePath).absoluteFilePath())
 {
     m_loadError = load();
-    setError(m_loadError);
+    loadReadingPreferences();
+    setError(m_loadError.isEmpty() && m_recoveredStorage
+        ? tr("Recuperata l’ultima versione valida della libreria. Il salvataggio danneggiato verrà conservato.")
+        : m_loadError);
+}
+
+Notebook::~Notebook()
+{
+    if (m_importCancellation)
+        m_importCancellation->store(true);
+}
+
+namespace {
+bool validReadingPreferences(const QVariantMap &values)
+{
+    for (auto it = values.cbegin(); it != values.cend(); ++it) {
+        if (it.key() == QStringLiteral("swipeAction")) {
+            if (!QStringList{QStringLiteral("pages"), QStringLiteral("scroll"), QStringLiteral("none")}.contains(it.value().toString())) return false;
+            continue;
+        }
+        if (it.value().metaType().id() == QMetaType::Bool) return false;
+        bool valid = false;
+        const double number = it.value().toDouble(&valid);
+        if (!valid || !std::isfinite(number) || number != std::floor(number)) return false;
+        const auto allowed = [&](std::initializer_list<int> choices) {
+            return std::find(choices.begin(), choices.end(), number) != choices.end();
+        };
+        if (it.key() == QStringLiteral("readingZoom")) { if (number < 100 || number > 300) return false; }
+        else if (it.key() == QStringLiteral("readingMargins")) { if (!allowed({0, 8, 16, 24})) return false; }
+        else if (it.key() == QStringLiteral("readingOrientation")) { if (!allowed({-1, 0, 90, 180, 270})) return false; }
+        else return false;
+    }
+    return true;
+}
+}
+
+QString Notebook::sourceCacheDirectory() const { return QFileInfo(m_filePath).absolutePath() + QStringLiteral("/document-sources"); }
+QString Notebook::readingPreferencesPath() const { return m_filePath + QStringLiteral(".reader-settings.json"); }
+QString Notebook::validateBackupData(const QByteArray &data) { State state; return readState(data, state); }
+QVariantMap Notebook::localReadingPreferences() const { return readingPreferencesForBook(bookId()); }
+QVariantMap Notebook::readingPreferencesForBook(const QString &id) const { return m_readingPreferences.value(id).toMap(); }
+
+void Notebook::loadReadingPreferences()
+{
+    QFile file(readingPreferencesPath());
+    if (!file.exists()) return;
+    const auto invalid = tr("Le preferenze di lettura locali non sono leggibili. I quaderni restano disponibili.");
+    if (QFileInfo(file).isSymLink() || !file.open(QIODevice::ReadOnly) || file.size() > 1024 * 1024) {
+        m_readingPreferencesLoadError = invalid;
+        return;
+    }
+    m_readingPreferencesBytes = file.read(1024 * 1024 + 1);
+    const auto root = QJsonDocument::fromJson(m_readingPreferencesBytes).object();
+    if (file.error() != QFileDevice::NoError || m_readingPreferencesBytes.size() > 1024 * 1024
+        || root.value(QStringLiteral("format")) != QStringLiteral("quaderno-reader-settings-v1")
+        || !root.value(QStringLiteral("books")).isObject()) {
+        m_readingPreferencesLoadError = invalid;
+        return;
+    }
+    const auto books = root.value(QStringLiteral("books")).toObject();
+    for (auto it = books.begin(); it != books.end(); ++it) {
+        if (!it.value().isObject() || !validReadingPreferences(it.value().toObject().toVariantMap())) {
+            m_readingPreferencesLoadError = invalid;
+            return;
+        }
+    }
+    m_readingPreferences = books.toVariantMap();
+}
+
+bool Notebook::saveReadingPreferences(const QVariantMap &values)
+{
+    if (!m_readingPreferencesLoadError.isEmpty()) return fail(m_readingPreferencesLoadError);
+    const QString path = readingPreferencesPath();
+    QLockFile lock(path + QStringLiteral(".lock"));
+    if (!lock.tryLock(0)) return fail(tr("Le preferenze di lettura sono in uso. Riprova."));
+    QFile previous(path);
+    QByteArray bytes;
+    if (previous.exists()) {
+        if (QFileInfo(previous).isSymLink() || !previous.open(QIODevice::ReadOnly) || previous.size() > 1024 * 1024)
+            return fail(tr("Impossibile leggere le preferenze di lettura."));
+        bytes = previous.read(1024 * 1024 + 1);
+        if (previous.error() != QFileDevice::NoError || bytes.size() > 1024 * 1024)
+            return fail(tr("Impossibile leggere le preferenze di lettura."));
+    }
+    if (bytes != m_readingPreferencesBytes) return fail(tr("Le preferenze di lettura sono cambiate. Riapri Quaderno."));
+    const QByteArray next = QJsonDocument(QJsonObject{{QStringLiteral("format"), QStringLiteral("quaderno-reader-settings-v1")},
+        {QStringLiteral("books"), QJsonObject::fromVariantMap(values)}}).toJson(QJsonDocument::Compact);
+    if (next.size() > 1024 * 1024) return fail(tr("Le preferenze di lettura superano il limite locale."));
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly) || !file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner)
+        || file.write(next) != next.size() || !file.commit()) return fail(tr("Impossibile salvare le preferenze di lettura."));
+    m_readingPreferencesBytes = next;
+    m_readingPreferences = values;
+    setError({});
+    emit localReadingPreferencesChanged();
+    return true;
+}
+
+bool Notebook::setReadingPreferences(const QVariantMap &changes)
+{
+    if (!currentBook() || !validReadingPreferences(changes)) return fail(tr("Le preferenze di lettura non sono valide."));
+    QVariantMap next = m_readingPreferences, book = localReadingPreferences();
+    for (auto it = changes.cbegin(); it != changes.cend(); ++it) book.insert(it.key(), it.value());
+    if (book == localReadingPreferences()) return true;
+    next.insert(bookId(), book);
+    return saveReadingPreferences(next);
+}
+
+bool Notebook::clearReadingPreferences()
+{
+    if (!currentBook()) return false;
+    if (!m_readingPreferences.contains(bookId())) return true;
+    auto next = m_readingPreferences;
+    next.remove(bookId());
+    return saveReadingPreferences(next);
+}
+
+QVariantMap Notebook::sourceForPage(const Book &book, const Page &page) const
+{
+    if (page.source.isEmpty())
+        return {};
+    QVariantMap source = page.source;
+    const auto stored = book.sourceDocuments.value(source.value(QStringLiteral("asset")).toString()).toMap();
+    source.insert(QStringLiteral("data"), stored.value(QStringLiteral("data")));
+    source.insert(QStringLiteral("cacheDirectory"), sourceCacheDirectory());
+    return source;
+}
+
+QVariantMap Notebook::pageRenderContent() const
+{
+    const Book *book = currentBook();
+    const Page *page = currentPage();
+    if (!book || !page)
+        return {};
+    return {{QStringLiteral("background"), page->backgroundData()},
+            {QStringLiteral("source"), sourceForPage(*book, *page)}};
 }
 
 QVariantList Notebook::books() const
@@ -437,15 +564,27 @@ QVariantList Notebook::books() const
         bool markdown = false;
         bool hasCharts = false;
         bool hasTables = false;
+        bool hasDiagrams = false;
+        QSet<QString> documentFormats;
         for (const Page &page : book.pages) {
-            document |= !page.background.isEmpty();
+            document |= page.hasBackground();
             markdown |= !page.markdownBlockId.isEmpty();
-            if (!hasCharts || !hasTables) {
+            if (!page.source.isEmpty()) {
+                const QString sourceId = page.source.value(QStringLiteral("origin"),
+                    page.source.value(QStringLiteral("asset"))).toString();
+                const QString kind = book.sourceDocuments.value(sourceId).toMap().value(QStringLiteral("kind")).toString();
+                if (kind == QStringLiteral("pdf") || kind == QStringLiteral("epub"))
+                    documentFormats.insert(kind);
+            } else if (page.hasBackground()) {
+                documentFormats.insert(QStringLiteral("legacy"));
+            }
+            if (!hasCharts || !hasTables || !hasDiagrams) {
                 for (const QVariant &entry : page.items) {
                     const QVariant type = entry.toMap().value(QStringLiteral("type"));
                     hasCharts |= type == QStringLiteral("chart");
                     hasTables |= type == QStringLiteral("table");
-                    if (hasCharts && hasTables)
+                    hasDiagrams |= type == QStringLiteral("diagram");
+                    if (hasCharts && hasTables && hasDiagrams)
                         break;
                 }
             }
@@ -467,9 +606,14 @@ QVariantList Notebook::books() const
             {QStringLiteral("tags"), book.tags},
             {QStringLiteral("pageTags"), pageTags},
             {QStringLiteral("document"), document},
+            {QStringLiteral("format"), documentFormats.size() == 1 ? *documentFormats.cbegin()
+                : documentFormats.size() > 1 ? QStringLiteral("mixed")
+                : markdown ? QStringLiteral("markdown") : QStringLiteral("notebook")},
             {QStringLiteral("markdown"), markdown},
             {QStringLiteral("hasCharts"), hasCharts},
             {QStringLiteral("hasTables"), hasTables},
+            {QStringLiteral("hasDiagrams"), hasDiagrams},
+            {QStringLiteral("workspace"), book.workspace},
         });
     }
     return result;
@@ -493,6 +637,7 @@ QVariantList Notebook::libraryItems() const
     for (const Book &book : m_state.books) {
         if (book.trashed)
             continue;
+        bool hasDiagram = false;
         for (int index = 0; index < book.pages.size(); ++index) {
             const Page &page = book.pages.at(index);
             for (const QVariant &entry : page.items) {
@@ -500,6 +645,18 @@ QVariantList Notebook::libraryItems() const
                 const QVariant type = item.value(QStringLiteral("type"));
                 if (!isLibraryItem(type))
                     continue;
+                hasDiagram |= type == QStringLiteral("diagram");
+                QString itemTitle = type == QStringLiteral("chart") ? item.value(QStringLiteral("title")).toString()
+                    : type == QStringLiteral("table") ? tableLibraryTitle(item) : QString{};
+                if (type == QStringLiteral("diagram")) {
+                    for (const QVariant &node : item.value(QStringLiteral("nodes")).toList()) {
+                        itemTitle = node.toMap().value(QStringLiteral("text")).toString().simplified();
+                        if (!itemTitle.isEmpty()) break;
+                    }
+                    if (itemTitle.isEmpty()) itemTitle = book.title;
+                    itemTitle.truncate(80);
+                    if (!itemTitle.isEmpty() && itemTitle.back().isHighSurrogate()) itemTitle.chop(1);
+                }
                 result.append(QVariantMap{
                     {QStringLiteral("bookId"), book.id},
                     {QStringLiteral("bookTitle"), book.title},
@@ -507,14 +664,24 @@ QVariantList Notebook::libraryItems() const
                     {QStringLiteral("pageNumber"), index + 1},
                     {QStringLiteral("itemId"), item.value(QStringLiteral("id"))},
                     {QStringLiteral("type"), type},
-                    {QStringLiteral("title"), type == QStringLiteral("chart")
-                        ? item.value(QStringLiteral("title")).toString() : tableLibraryTitle(item)},
+                    {QStringLiteral("title"), itemTitle},
+                    {QStringLiteral("empty"), false},
                     {QStringLiteral("folderId"), book.folderId},
                     {QStringLiteral("favorite"), book.favorite},
                     {QStringLiteral("tags"), book.tags},
                     {QStringLiteral("pageTags"), page.tags},
                 });
             }
+        }
+        if (!hasDiagram && book.workspace == QStringLiteral("diagrams") && !book.pages.isEmpty()) {
+            const int index = resumePage(book);
+            const Page &page = book.pages.at(index);
+            result.append(QVariantMap{{QStringLiteral("bookId"), book.id}, {QStringLiteral("bookTitle"), book.title},
+                {QStringLiteral("pageId"), page.id}, {QStringLiteral("pageNumber"), index + 1},
+                {QStringLiteral("itemId"), QString{}}, {QStringLiteral("type"), QStringLiteral("diagram")},
+                {QStringLiteral("empty"), true}, {QStringLiteral("title"), book.title},
+                {QStringLiteral("folderId"), book.folderId}, {QStringLiteral("favorite"), book.favorite},
+                {QStringLiteral("tags"), book.tags}, {QStringLiteral("pageTags"), page.tags}});
         }
     }
     return result;
@@ -651,13 +818,19 @@ QStringList Notebook::knownTags() const
 QByteArray Notebook::pageBackground() const
 {
     const Page *page = currentPage();
-    return page ? page->background : QByteArray{};
+    return page ? page->backgroundData() : QByteArray{};
 }
 
 bool Notebook::hasPageBackground() const
 {
     const Page *page = currentPage();
-    return page && !page->background.isEmpty();
+    return page && page->hasBackground();
+}
+
+bool Notebook::diagramBook() const
+{
+    const Book *book = currentBook();
+    return book && book->workspace == QStringLiteral("diagrams");
 }
 
 bool Notebook::markdownBook() const
@@ -747,7 +920,7 @@ bool Notebook::isPureMarkdown(const Book &book)
 
 bool Notebook::hasMarkdownPageAnnotations(const Page &page)
 {
-    return page.items.size() != 1 || !page.strokes.isEmpty() || !page.layers.isEmpty() || !page.background.isEmpty()
+    return page.items.size() != 1 || !page.strokes.isEmpty() || !page.layers.isEmpty() || page.hasBackground()
         || !page.pdfText.isEmpty() || !page.tags.isEmpty() || !page.transcripts.isEmpty() || page.bookmarked
         || page.paper != QStringLiteral("blank");
 }
@@ -776,12 +949,21 @@ QString Notebook::markdownTextOf(const Book &book)
 {
     QString text = QStringLiteral("");
     bool previousWasSource = false;
+    int pageNumber = 0;
     for (const Page &page : book.pages) {
+        ++pageNumber;
+        int noteNumber = 0;
         for (const QVariant &entry : page.items) {
             const QVariantMap item = entry.toMap();
-            if (item.value(QStringLiteral("type")) != QStringLiteral("text"))
+            const QString type = item.value(QStringLiteral("type")).toString();
+            if (type != QStringLiteral("text") && type != QStringLiteral("note"))
                 continue;
-            const QString fragment = item.value(QStringLiteral("text")).toString();
+            QString fragment = item.value(QStringLiteral("text")).toString();
+            if (type == QStringLiteral("note")) {
+                ++noteNumber;
+                if (!fragment.isEmpty())
+                    fragment = QStringLiteral("### %1\n\n%2").arg(tr("Nota %1 · Pagina %2").arg(noteNumber).arg(pageNumber), fragment);
+            }
             const bool source = item.value(QStringLiteral("id")).toString() == page.markdownBlockId;
             if (fragment.isEmpty() && !source)
                 continue;
@@ -848,6 +1030,7 @@ bool Notebook::exportMarkdownWithAssets(const QUrl &file)
         const auto pagePrefix = QStringLiteral("page-%1-").arg(index + 1);
         QString links;
         int itemNumber = 0;
+        int noteNumber = 0;
         for (const QVariant &entry : PageContent::resolveTableCharts(page.items)) {
             const QVariantMap item = entry.toMap();
             const QVariant type = item.value(QStringLiteral("type"));
@@ -872,6 +1055,48 @@ bool Notebook::exportMarkdownWithAssets(const QUrl &file)
                     }))
                     return false;
                 links += imageLink(name, tr("Grafico"));
+            } else if (type == QStringLiteral("note")) {
+                ++noteNumber;
+                links += QStringLiteral("%1\n").arg(tr("Nota %1 · Pagina %2").arg(noteNumber).arg(index + 1));
+                const QVariantList noteInk = item.value(QStringLiteral("noteInk")).toList();
+                if (!noteInk.isEmpty()) {
+                    const QString name = pagePrefix + QStringLiteral("note-%1.png").arg(noteNumber);
+                    if (!addAsset(name, [&](QIODevice &device) {
+                            QImage image(QSize(900, 600), QImage::Format_ARGB32_Premultiplied);
+                            if (image.isNull()) return false;
+                            image.fill(Qt::white);
+                            QPainter painter(&image);
+                            paintStoredStrokes(painter, image.size(), noteInk);
+                            return painter.end() && QImageWriter(&device, "png").write(image);
+                        })) return false;
+                    links += imageLink(name, tr("Scrittura della nota"));
+                }
+            } else if (type == QStringLiteral("diagram")) {
+                const QString base = pagePrefix + QStringLiteral("diagram-%1").arg(++itemNumber);
+                const QString imageName = base + QStringLiteral(".png");
+                if (!addAsset(imageName, [&](QIODevice &device) {
+                        const qreal aspect = item.value(QStringLiteral("height")).toDouble() * 800
+                            / (item.value(QStringLiteral("width")).toDouble() * 600);
+                        const QSize size = QSizeF(1000, 1000 * aspect).scaled(QSizeF(1200, 1200), Qt::KeepAspectRatio).toSize();
+                        QImage image(size.expandedTo(QSize(1, 1)), QImage::Format_ARGB32_Premultiplied);
+                        if (image.isNull()) return false;
+                        image.fill(Qt::white);
+                        QPainter painter(&image);
+                        drawDiagram(painter, QRectF(QPointF{}, image.size()), item);
+                        return painter.end() && QImageWriter(&device, "png").write(image);
+                    })) return false;
+                const QString diagramName = base + QStringLiteral(".drawio");
+                QString exportError;
+                if (!addAsset(diagramName, [&](QIODevice &device) {
+                        exportError = DiagramExport::write(device, item, book->title);
+                        return exportError.isEmpty();
+                    })) {
+                    if (!exportError.isEmpty()) return assetError(exportError);
+                    return false;
+                }
+                links += imageLink(imageName, tr("Diagramma"));
+                links += QStringLiteral("[%1](%2/%3)\n").arg(tr("Modifica il diagramma (.drawio)"),
+                    QFileInfo(assets->path()).fileName(), diagramName);
             }
         }
         const QVariantList strokes = visibleStrokes(page);
@@ -961,12 +1186,112 @@ bool Notebook::exportPdf(const QString &path, bool currentPageOnly)
                 return fail(tr("Impossibile aggiungere una pagina al PDF."));
             painter.fillRect(QRect(QPoint(), size), Qt::white);
             const Page &page = book->pages.at(index);
-            if (page.background.isEmpty())
+            if (!page.hasBackground())
                 PageContent::paintTemplate(painter, size, page.paper);
             else
-                paintPdfBackground(painter, size, QImage::fromData(page.background, "JPEG"));
+                {
+                QString error;
+                const QImage background = page.source.isEmpty() ? QImage::fromData(page.backgroundData(), "JPEG")
+                    : renderDocumentPage(sourceForPage(*book, page), 2400, error);
+                if (background.isNull())
+                    return fail(error.isEmpty() ? tr("Impossibile leggere lo sfondo della pagina.") : error);
+                paintPdfBackground(painter, size, background);
+            }
             PageContent::paintItems(painter, size, PageContent::resolveTableCharts(page.items));
             paintStoredStrokes(painter, size, visibleStrokes(page));
+        }
+        // Keep the book's original pages intact. Note markers refer to these
+        // appendices, where all typed text is paginated and ink has its own
+        // fixed-aspect page instead of being clipped into the tiny marker.
+        const qreal pageScale = qreal(size.width()) / 600;
+        for (qsizetype index = first; index < end; ++index) {
+            int noteNumber = 0;
+            for (const QVariant &entry : book->pages.at(index).items) {
+                const QVariantMap note = entry.toMap();
+                if (note.value(QStringLiteral("type")) != QStringLiteral("note")) continue;
+                ++noteNumber;
+                const auto beginNotePage = [&](const QString &section) {
+                    if (!writer.newPage()) return false;
+                    painter.fillRect(QRect(QPoint(), size), Qt::white);
+                    painter.save();
+                    painter.scale(pageScale, pageScale);
+                    QFont font = painter.font();
+                    font.setPixelSize(18); font.setBold(true);
+                    painter.setFont(font); painter.setPen(QColor("#242723"));
+                    painter.drawText(QRectF(36, 26, 480, 30), Qt::AlignLeft | Qt::AlignVCenter,
+                        tr("Nota %1 · Pagina %2").arg(noteNumber).arg(index + 1));
+                    PageContent::paintNoteMarker(painter, QRectF(534, 27, 30, 30), note, noteNumber);
+                    font.setPixelSize(12); font.setBold(false); painter.setFont(font);
+                    painter.drawText(QRectF(36, 58, 528, 24), Qt::AlignLeft | Qt::AlignVCenter, section);
+                    painter.restore();
+                    return true;
+                };
+                const QString text = note.value(QStringLiteral("text")).toString();
+                if (!text.trimmed().isEmpty()) {
+                    QFont font;
+                    font.setPixelSize(14);
+                    QTextOption option;
+                    option.setWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
+                    const QSizeF bodySize(528, 660);
+                    struct NoteLine { QTextLine line; int page; qreal y; };
+                    QList<NoteLine> lines;
+                    std::vector<std::unique_ptr<QTextLayout>> layouts;
+                    QString plain = text;
+                    plain.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
+                    plain.replace(u'\r', u'\n');
+                    int lastPage = 0;
+                    qreal y = 0;
+                    // Paginate complete visual lines. Drawing a clipped slice
+                    // of one long document can split boundary glyphs and leave
+                    // duplicate lines in a PDF reader's extracted text.
+                    for (const QString &paragraph : plain.split(u'\n')) {
+                        auto layout = std::make_unique<QTextLayout>(paragraph.isEmpty() ? QStringLiteral(" ") : paragraph,
+                            font, painter.device());
+                        layout->setTextOption(option);
+                        layout->beginLayout();
+                        for (;;) {
+                            QTextLine line = layout->createLine();
+                            if (!line.isValid()) break;
+                            line.setLineWidth(bodySize.width());
+                            line.setPosition(QPointF());
+                            const qreal height = qMax<qreal>(1, line.height());
+                            if (y > 0 && y + height > bodySize.height()) { ++lastPage; y = 0; }
+                            lines.append({line, lastPage, y});
+                            y += height;
+                        }
+                        layout->endLayout();
+                        layouts.push_back(std::move(layout));
+                    }
+                    const int pages = lastPage + 1;
+                    for (int part = 0; part < pages; ++part) {
+                        if (!beginNotePage(tr("Testo · %1 / %2").arg(part + 1).arg(pages)))
+                            return fail(tr("Impossibile aggiungere una pagina al PDF."));
+                        painter.save();
+                        painter.scale(pageScale, pageScale);
+                        painter.setPen(QColor("#242723"));
+                        painter.setClipRect(QRectF(QPointF(36, 96), bodySize));
+                        for (const NoteLine &line : lines) {
+                            if (line.page == part) line.line.draw(&painter, QPointF(36, 96 + line.y));
+                        }
+                        painter.restore();
+                    }
+                }
+                const QVariantList noteInk = note.value(QStringLiteral("noteInk")).toList();
+                if (!noteInk.isEmpty()) {
+                    if (!beginNotePage(tr("Scrittura a mano")))
+                        return fail(tr("Impossibile aggiungere una pagina al PDF."));
+                    painter.save();
+                    painter.scale(pageScale, pageScale);
+                    painter.translate(36, 108);
+                    const QSizeF canvas(528, 352);
+                    painter.setPen(QPen(QColor("#9ea9b6"), .7));
+                    painter.setBrush(Qt::NoBrush);
+                    painter.drawRect(QRectF(QPointF(), canvas));
+                    painter.setClipRect(QRectF(QPointF(), canvas));
+                    paintStoredStrokes(painter, canvas, noteInk);
+                    painter.restore();
+                }
+            }
         }
         if (!painter.end())
             return fail(tr("Impossibile completare il PDF."));
@@ -983,10 +1308,30 @@ bool Notebook::importFromFile(const QString &path)
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly))
         return fail(tr("Impossibile aprire il file dei quaderni."));
-    const QByteArray contents = file.read(maxImportBytes + 1);
+    if (file.size() > PageStore::maximumLibraryBytes)
+        return fail(tr("Il file locale dei quaderni supera 256 MB."));
+    const QByteArray contents = file.read(PageStore::maximumLibraryBytes + 1);
     if (file.error() != QFileDevice::NoError)
         return fail(tr("Impossibile leggere il file dei quaderni."));
-    return importFromData(contents);
+    QByteArray payload = contents;
+    if (PageStore::isManifest(contents)) {
+        const auto snapshot = PageStore::read(path);
+        if (!snapshot.error.isEmpty()) return fail(snapshot.error);
+        payload = snapshot.payload;
+    }
+    const QVariantMap result = mergeImport(payload, false, {}, true);
+    return !result.contains(QStringLiteral("error")) || fail(result.value(QStringLiteral("error")).toString());
+}
+
+QByteArray Notebook::exportLibraryForTransfer()
+{
+    if (!m_loadError.isEmpty()) { fail(m_loadError); return {}; }
+    const QByteArray payload = serialize(m_state);
+    if (payload.size() > maxImportBytes) {
+        fail(tr("La libreria supera 64 MB. Trasferisci un quaderno alla volta."));
+        return {};
+    }
+    return payload;
 }
 
 bool Notebook::importFromData(const QByteArray &contents)
@@ -1007,15 +1352,15 @@ QVariantMap Notebook::applyImportFromData(const QByteArray &contents, const QStr
     return mergeImport(contents, false, token);
 }
 
-QVariantMap Notebook::mergeImport(const QByteArray &contents, bool preview, const QString &expectedToken)
+QVariantMap Notebook::mergeImport(const QByteArray &contents, bool preview, const QString &expectedToken, bool localFile)
 {
     const auto problem = [](const QString &message) {
         return QVariantMap{{QStringLiteral("error"), message}};
     };
     if (!m_loadError.isEmpty())
         return problem(m_loadError);
-    if (contents.size() > maxImportBytes)
-        return problem(tr("Il file dei quaderni supera 64 MB."));
+    if (contents.size() > (localFile ? PageStore::maximumLibraryBytes : maxImportBytes))
+        return problem(localFile ? tr("Il file locale dei quaderni supera 256 MB.") : tr("Il file dei quaderni supera 64 MB."));
 
     QString token;
     if (preview || !expectedToken.isEmpty()) {
@@ -1055,6 +1400,10 @@ QVariantMap Notebook::mergeImport(const QByteArray &contents, bool preview, cons
             if (local.title == book.title && local.pages == book.pages) {
                 baselineChanged |= local.importedRevision != revision;
                 next.books[index].importedRevision = revision;
+                if (local.workspace.isEmpty() && !book.workspace.isEmpty()) {
+                    next.books[index].workspace = book.workspace;
+                    baselineChanged = true;
+                }
                 ++unchanged;
                 continue;
             }
@@ -1066,6 +1415,7 @@ QVariantMap Notebook::mergeImport(const QByteArray &contents, bool preview, cons
                 replacement.title = std::move(book.title);
                 replacement.pages = std::move(book.pages);
                 replacement.lastViewedPageId = std::move(book.lastViewedPageId);
+                replacement.workspace = std::move(book.workspace);
                 replacement.importedRevision = revision;
                 if (next.activeBook == index)
                     next.page = resumePage(replacement);
@@ -1264,8 +1614,14 @@ QVariantMap Notebook::receiveBookTransfer(const QByteArray &payload, const QByte
                     {QStringLiteral("errorCode"), QStringLiteral("stale")}};
         return problem(tr("La libreria sul Paper Pro è cambiata. Controlla una nuova anteprima."));
     }
-    if (action == QStringLiteral("unchanged"))
+    if (action == QStringLiteral("unchanged")) {
+        if (target->workspace.isEmpty() && !book.workspace.isEmpty()) {
+            State next = m_state;
+            next.books[index].workspace = book.workspace;
+            if (!commit(std::move(next), BooksChanged | DocumentChanged)) return problem(m_error);
+        }
         return reply;
+    }
 
     State next = m_state;
     book.importedRevision = baseOverride ? QByteArray{} : sourceRevision;
@@ -1317,6 +1673,11 @@ bool Notebook::createBookInFolder(const QString &title, const QString &folderId)
     return createBookWithFirstPage(title, folderId, {});
 }
 
+bool Notebook::createDiagramBook(const QString &title, const QString &folderId)
+{
+    return createBookWithFirstPage(title, folderId, {}, QStringLiteral("diagrams"));
+}
+
 bool Notebook::createBookWithItem(const QString &title, const QString &folderId, const QVariantMap &item)
 {
     if (!isLibraryItem(item.value(QStringLiteral("type"))) || item.contains(QStringLiteral("id"))
@@ -1329,10 +1690,11 @@ bool Notebook::createBookWithItem(const QString &title, const QString &folderId,
 
     Page page;
     page.items.append(valid);
-    return createBookWithFirstPage(title, folderId, std::move(page));
+    return createBookWithFirstPage(title, folderId, std::move(page),
+        item.value(QStringLiteral("type")) == QStringLiteral("diagram") ? QStringLiteral("diagrams") : QString{});
 }
 
-bool Notebook::createBookWithFirstPage(const QString &title, const QString &folderId, Page page)
+bool Notebook::createBookWithFirstPage(const QString &title, const QString &folderId, Page page, const QString &workspace)
 {
     const QString trimmedTitle = title.trimmed();
     if (trimmedTitle.isEmpty())
@@ -1345,6 +1707,7 @@ bool Notebook::createBookWithFirstPage(const QString &title, const QString &fold
     book.id = newId();
     book.title = trimmedTitle;
     book.folderId = folderId;
+    book.workspace = workspace;
     page.id = newId();
     book.pages.append(std::move(page));
     next.books.append(std::move(book));
@@ -1363,64 +1726,126 @@ bool Notebook::importDocument(const QUrl &file, const QString &folderId)
     const QString path = file.toLocalFile();
     const QFileInfo info(path);
     const QString extension = info.suffix().toLower();
-    if (isMarkdownExtension(extension)) {
-        QFile input(path);
-        if (!info.isFile() || !input.open(QIODevice::ReadOnly))
-            return fail(tr("Impossibile aprire il file Markdown."));
-        const QByteArray bytes = input.read(maximumMarkdownBytes + 1);
-        if (input.error() != QFileDevice::NoError)
-            return fail(tr("Impossibile leggere il file Markdown."));
-        if (bytes.size() > maximumMarkdownBytes)
-            return fail(tr("Il Markdown supera il limite di 256 KiB."));
-        QStringDecoder decoder(QStringDecoder::Utf8, QStringDecoder::Flag::Stateless | QStringDecoder::Flag::ConvertInitialBom);
-        const QString decoded = decoder(bytes);
-        if (decoder.hasError())
-            return fail(tr("Il Markdown deve essere un file di testo UTF-8."));
-        return importMarkdownText(decoded, info.completeBaseName(), folderId);
-    }
+    if (isMarkdownExtension(extension))
+        return importMarkdownFile(file, folderId);
 
-    QString error;
-    QList<QByteArray> backgrounds;
-    QStringList pdfText;
-    if (extension == QStringLiteral("pdf")) {
-        auto imported = importPdfPages(path, error);
-        backgrounds = std::move(imported.pages);
-        pdfText = std::move(imported.pageText);
-    } else if (extension == QStringLiteral("epub"))
-        backgrounds = renderEpubPages(path, error);
-    else
-        return fail(tr("Il formato deve essere PDF, EPUB o Markdown."));
-    if (backgrounds.isEmpty())
-        return fail(error.isEmpty() ? tr("Impossibile importare il documento.") : error);
+    return importPreparedDocument(prepareDocument(path), info.completeBaseName(), folderId);
+}
 
+bool Notebook::importMarkdownFile(const QUrl &file, const QString &folderId, bool activate, QString *importedId)
+{
+    const QFileInfo info(file.toLocalFile());
+    QFile input(info.absoluteFilePath());
+    if (!info.isFile() || !input.open(QIODevice::ReadOnly))
+        return fail(tr("Impossibile aprire il file Markdown."));
+    const QByteArray bytes = input.read(maximumMarkdownBytes + 1);
+    if (input.error() != QFileDevice::NoError)
+        return fail(tr("Impossibile leggere il file Markdown."));
+    if (bytes.size() > maximumMarkdownBytes)
+        return fail(tr("Il Markdown supera il limite di 256 KiB."));
+    QStringDecoder decoder(QStringDecoder::Utf8, QStringDecoder::Flag::Stateless | QStringDecoder::Flag::ConvertInitialBom);
+    const QString decoded = decoder(bytes);
+    if (decoder.hasError())
+        return fail(tr("Il Markdown deve essere un file di testo UTF-8."));
+    const QString id = newId();
+    if (!importLinkedMarkdown(decoded, info.completeBaseName(), folderId, id, activate)) return false;
+    if (importedId) *importedId = id;
+    return true;
+}
+
+bool Notebook::importPreparedDocument(PreparedDocument prepared, const QString &title, const QString &folderId, bool activate, QString *importedId)
+{
+    if (!prepared.error.isEmpty() || prepared.pages.isEmpty())
+        return fail(prepared.error.isEmpty() ? tr("Impossibile importare il documento.") : prepared.error);
+    if (!folderId.isEmpty() && findFolder(m_state, folderId) < 0)
+        return fail(tr("La cartella di destinazione non esiste più. Ripeti l’importazione."));
     Book book;
     book.id = newId();
-    book.title = info.completeBaseName().left(80).trimmed();
+    book.title = title.left(80).trimmed();
     if (book.title.isEmpty())
         book.title = tr("Documento importato");
     book.folderId = folderId;
-    for (qsizetype index = 0; index < backgrounds.size(); ++index) {
-        const QByteArray &background = backgrounds.at(index);
-        if (background.isEmpty() || background.size() > maxEncodedBackground / 4 * 3)
-            return fail(tr("Una pagina importata supera il limite di dimensione."));
+    book.sourceDocuments = std::move(prepared.sources);
+    for (const QVariant &entry : std::as_const(prepared.pages)) {
+        const auto descriptor = entry.toMap();
         Page page;
         page.id = newId();
-        page.background = background;
-        page.pdfText = pdfText.value(index).left(maxPagePdfText);
+        page.source = descriptor.value(QStringLiteral("source")).toMap();
+        page.pdfText = descriptor.value(QStringLiteral("text")).toString().left(maxPagePdfText);
         book.pages.append(std::move(page));
     }
-
-    qint64 addedBytes = 0;
-    for (const QByteArray &background : backgrounds)
-        addedBytes += ((background.size() + 2) / 3) * 4;
-    if (QFileInfo(m_filePath).size() + addedBytes > maxImportBytes)
-        return fail(tr("Il documento porterebbe la libreria oltre 64 MB."));
-
+    const QString id = book.id;
     State next = m_state;
     next.books.append(std::move(book));
-    next.activeBook = static_cast<int>(next.books.size()) - 1;
-    next.page = 0;
-    return commit(std::move(next), BooksChanged | DocumentChanged | StrokesChanged | PageContentChanged | ResetInkHistory);
+    int changes = BooksChanged;
+    if (activate) {
+        next.activeBook = static_cast<int>(next.books.size()) - 1;
+        next.page = 0;
+        changes |= DocumentChanged | StrokesChanged | PageContentChanged | ResetInkHistory;
+    }
+    if (!commit(std::move(next), changes)) return false;
+    if (importedId) *importedId = id;
+    return true;
+}
+
+bool Notebook::startDocumentImport(const QUrl &file, const QString &folderId)
+{
+    if (m_importing)
+        return fail(tr("Attendi o annulla l’importazione in corso."));
+    if (!file.isLocalFile() || (!file.host().isEmpty() && file.host() != QStringLiteral("localhost")))
+        return fail(tr("Scegli un PDF, un EPUB o un Markdown salvato sul dispositivo."));
+    if (!folderId.isEmpty() && findFolder(m_state, folderId) < 0)
+        return fail(tr("Impossibile trovare la cartella."));
+    const QFileInfo info(file.toLocalFile());
+    if (isMarkdownExtension(info.suffix())) {
+        QString importedId;
+        const bool ok = importMarkdownFile(file, folderId, false, &importedId);
+        if (ok)
+            emit documentImported(importedId);
+        emit importFinished(ok);
+        return ok;
+    }
+    const QString extension = info.suffix().toLower();
+    if (extension != QStringLiteral("pdf") && extension != QStringLiteral("epub"))
+        return fail(tr("Il formato deve essere PDF, EPUB o Markdown."));
+    m_importing = true;
+    m_importProgress = 0;
+    m_importStatus = tr("Preparazione di %1…").arg(info.fileName());
+    setError({});
+    emit importChanged();
+    m_importCancellation = startDocumentPreparation(info.absoluteFilePath(), this,
+        [this](int done, int total) {
+            if (!m_importing || (m_importCancellation && m_importCancellation->load()))
+                return;
+            m_importProgress = total > 0 ? qBound(0.0, double(done) / total, 1.0) : 0;
+            emit importChanged();
+        },
+        [this, title = info.completeBaseName(), folderId](PreparedDocument prepared) {
+            const bool cancelled = m_importCancellation && m_importCancellation->load();
+            bool success = false;
+            QString importedId;
+            if (!cancelled)
+                success = importPreparedDocument(std::move(prepared), title, folderId, false, &importedId);
+            m_importing = false;
+            m_importCancellation.reset();
+            m_importProgress = success ? 1 : 0;
+            m_importStatus = cancelled ? tr("Importazione annullata.")
+                : success ? tr("Documento importato.") : error();
+            emit importChanged();
+            if (success)
+                emit documentImported(importedId);
+            emit importFinished(success);
+        });
+    return true;
+}
+
+void Notebook::cancelDocumentImport()
+{
+    if (!m_importing || !m_importCancellation)
+        return;
+    m_importCancellation->store(true);
+    m_importStatus = tr("Annullamento dell’importazione…");
+    emit importChanged();
 }
 
 QString Notebook::normalizeMarkdownText(QString text)
@@ -1474,7 +1899,8 @@ bool Notebook::importMarkdownText(const QString &text, const QString &title, con
     return importLinkedMarkdown(text, title, folderId, newId());
 }
 
-bool Notebook::importLinkedMarkdown(const QString &text, const QString &title, const QString &folderId, const QString &id)
+bool Notebook::importLinkedMarkdown(const QString &text, const QString &title, const QString &folderId, const QString &id,
+                                    bool activate)
 {
     if (!validUuid(id) || hasBookId(id))
         return fail(tr("L’identificatore del quaderno non è valido o è già in uso."));
@@ -1495,9 +1921,13 @@ bool Notebook::importLinkedMarkdown(const QString &text, const QString &title, c
 
     State next = m_state;
     next.books.append(std::move(book));
-    next.activeBook = static_cast<int>(next.books.size()) - 1;
-    next.page = 0;
-    return commit(std::move(next), BooksChanged | DocumentChanged | StrokesChanged | PageContentChanged | ResetInkHistory, true);
+    int changes = BooksChanged;
+    if (activate) {
+        next.activeBook = static_cast<int>(next.books.size()) - 1;
+        next.page = 0;
+        changes |= DocumentChanged | StrokesChanged | PageContentChanged | ResetInkHistory;
+    }
+    return commit(std::move(next), changes, true);
 }
 
 bool Notebook::refreshMarkdownBook(const QString &id, const QString &text, const QString &expectedBookRevision)
@@ -1589,6 +2019,11 @@ QVariantMap Notebook::openLibraryItem(const QString &bookId, const QString &page
         return {};
     }
     const Page &page = book.pages.at(pageIndex);
+    if (itemId.isEmpty() && book.workspace == QStringLiteral("diagrams")) {
+        return openBookPage(bookIndex, pageIndex)
+            ? QVariantMap{{QStringLiteral("workspace"), true}, {QStringLiteral("type"), QStringLiteral("diagram")}}
+            : QVariantMap{};
+    }
     const int itemIndex = findPageItem(page, itemId);
     if (itemIndex < 0 || !isLibraryItem(page.items.at(itemIndex).toMap().value(QStringLiteral("type")))) {
         fail(tr("L’elemento non è più presente sulla pagina."));
@@ -1842,8 +2277,26 @@ QVariantMap Notebook::pagePreview(int index) const
     return {{QStringLiteral("pageId"), page.id}, {QStringLiteral("strokes"), visibleStrokes(page)},
             {QStringLiteral("items"), PageContent::resolveTableCharts(page.items)},
             {QStringLiteral("paper"), page.paper},
-            {QStringLiteral("background"), page.background},
+            {QStringLiteral("background"), page.backgroundData()},
+            {QStringLiteral("source"), sourceForPage(*book, page)},
             {QStringLiteral("tags"), page.tags}};
+}
+
+QVariantList Notebook::pageSummaries() const
+{
+    QVariantList result;
+    const Book *book = currentBook();
+    if (!book) return result;
+    result.reserve(book->pages.size());
+    for (int index = 0; index < book->pages.size(); ++index) {
+        const Page &page = book->pages.at(index);
+        bool annotated = !page.strokes.isEmpty() || !page.items.isEmpty() || !page.transcripts.isEmpty();
+        for (const InkLayer &layer : page.layers)
+            annotated |= !layer.strokes.isEmpty();
+        result.append(QVariantMap{{QStringLiteral("index"), index}, {QStringLiteral("pageId"), page.id},
+            {QStringLiteral("bookmarked"), page.bookmarked}, {QStringLiteral("annotated"), annotated}});
+    }
+    return result;
 }
 
 QVariantList Notebook::searchPages(const QString &query) const
@@ -2016,6 +2469,11 @@ bool Notebook::transferPage(int index, const QString &targetBookId)
     auto &source = next.books[next.activeBook].pages;
     Book &destination = next.books[target];
     Page moved = source.takeAt(index);
+    for (const auto &key : {QStringLiteral("asset"), QStringLiteral("origin")}) {
+        const QString id = moved.source.value(key).toString();
+        if (!id.isEmpty())
+            destination.sourceDocuments.insert(id, book->sourceDocuments.value(id));
+    }
     // A partially synchronized transfer can leave this page in both books.
     // A second move into the same book must give the distinct copy a new ID.
     if (findPage(destination, moved.id) >= 0)
@@ -2057,47 +2515,205 @@ bool Notebook::appendCorrectedStroke(const QVariantMap &shape, const QVariantMap
     return appendStroke(corrected);
 }
 
+QString Notebook::handwritingLanguage() const
+{
+    return currentBook() ? currentBook()->handwritingLanguage : QStringLiteral("it");
+}
+
+bool Notebook::setHandwritingLanguage(const QString &language)
+{
+    if (!currentBook() || (language != QStringLiteral("it") && language != QStringLiteral("en")))
+        return false;
+    if (language == handwritingLanguage())
+        return true;
+    State next = m_state;
+    next.books[next.activeBook].handwritingLanguage = language;
+    return commit(std::move(next), DocumentChanged);
+}
+
 QVariantMap Notebook::selectInk(const QVariantList &outline) const
 {
+    return selectContent(outline, QStringLiteral("contained"), {}, QStringLiteral("replace"));
+}
+
+bool Notebook::selectionCurrent(const QVariantMap &selection) const
+{
     const Page *page = currentPage();
-    if (!page || !canWriteLayer() || outline.size() < 3 || outline.size() > 12000)
-        return {};
-
-    QPolygonF polygon;
-    polygon.reserve(qMin<qsizetype>(outline.size(), 256));
-    const qsizetype step = (outline.size() + 255) / 256;
-    for (qsizetype i = 0; i < outline.size(); i += step) {
-        const QVariantMap point = outline.at(i).toMap();
-        double x = 0;
-        double y = 0;
-        if (!readCoordinate(point.value(QStringLiteral("x")), x) || !readCoordinate(point.value(QStringLiteral("y")), y))
-            return {};
-        polygon.append(QPointF(x, y));
-    }
-    const QRectF bounds = polygon.boundingRect();
-    if (polygon.size() < 3 || bounds.width() < 0.008 || bounds.height() < 0.008)
-        return {};
-
-    QVariantList selected;
-    QVariantList indexes;
-    int reversible = 0;
+    if (!page || !canWriteLayer() || selection.value(QStringLiteral("bookId")) != bookId()
+        || selection.value(QStringLiteral("pageId")) != page->id
+        || selection.value(QStringLiteral("layerId")) != activeLayer())
+        return false;
+    const QVariantList indexes = selection.value(QStringLiteral("indexes")).toList();
+    const QVariantList strokes = selection.value(QStringLiteral("strokes")).toList();
+    if (indexes.size() != strokes.size() || indexes.size() > 4000)
+        return false;
     const QVariantList &ink = activeLayerInk(*page);
     const int offset = erasableFrom();
+    int previousIndex = -1;
+    for (qsizetype i = 0; i < indexes.size(); ++i) {
+        bool ok = false;
+        const double value = indexes.at(i).toDouble(&ok) - offset;
+        if (!ok || !std::isfinite(value) || value != std::floor(value) || value <= previousIndex || value >= ink.size()
+            || ink.at(static_cast<int>(value)) != strokes.at(i))
+            return false;
+        previousIndex = static_cast<int>(value);
+    }
+    QSet<QString> seen;
+    for (const QVariant &entry : selection.value(QStringLiteral("items")).toList()) {
+        const QString id = entry.toMap().value(QStringLiteral("id")).toString();
+        const int index = findPageItem(*page, id);
+        if (index < 0 || seen.contains(id) || page->items.at(index) != entry)
+            return false;
+        seen.insert(id);
+    }
+    return true;
+}
+
+QVariantMap Notebook::selectContent(const QVariantList &outline, const QString &mode,
+                                    const QVariantMap &previous, const QString &operation) const
+{
+    const Page *page = currentPage();
+    if (!page || !canWriteLayer() || outline.size() < 3 || outline.size() > 12000
+        || (mode != QStringLiteral("contained") && mode != QStringLiteral("touched"))
+        || (operation != QStringLiteral("replace") && operation != QStringLiteral("add") && operation != QStringLiteral("subtract")))
+        return {};
+    if (operation != QStringLiteral("replace") && !previous.isEmpty() && !selectionCurrent(previous))
+        return {};
+    QPolygonF polygon;
+    polygon.reserve(outline.size());
+    for (const QVariant &entry : outline) {
+        const QVariantMap point = entry.toMap();
+        double x = 0, y = 0;
+        if (!readCoordinate(point.value(QStringLiteral("x")), x) || !readCoordinate(point.value(QStringLiteral("y")), y))
+            return {};
+        const QPointF position(x, y);
+        // Preserve corners and tiny accents. Ignore only consecutive duplicate samples.
+        if (polygon.isEmpty() || position != polygon.last())
+            polygon.append(position);
+    }
+    if (polygon.size() < 3 || polygon.boundingRect().isEmpty())
+        return {};
+    if (polygon.size() > 512) {
+        QSet<qsizetype> keep{0, polygon.size() - 1};
+        QList<QPair<qsizetype, qsizetype>> pending{{0, polygon.size() - 1}};
+        while (!pending.isEmpty()) {
+            const auto span = pending.takeLast();
+            const QPointF a = polygon.at(span.first), delta = polygon.at(span.second) - a;
+            const qreal length2 = QPointF::dotProduct(delta, delta);
+            qreal distance = .0002;
+            qsizetype furthest = -1;
+            for (qsizetype i = span.first + 1; i < span.second; ++i) {
+                const QPointF point = polygon.at(i);
+                const qreal t = length2 > 0 ? qBound(0.0, QPointF::dotProduct(point - a, delta) / length2, 1.0) : 0;
+                const qreal value = QLineF(point, a + t * delta).length();
+                if (value > distance) { distance = value; furthest = i; }
+            }
+            if (furthest >= 0) {
+                keep.insert(furthest);
+                pending.append({span.first, furthest}); pending.append({furthest, span.second});
+            }
+        }
+        if (keep.size() > 1024)
+            return {{QStringLiteral("error"), tr("Il contorno è troppo complesso. Disegna un lazo più semplice.")}};
+        QPolygonF simplified;
+        for (qsizetype i = 0; i < polygon.size(); ++i)
+            if (keep.contains(i)) simplified.append(polygon.at(i));
+        polygon = std::move(simplified);
+    }
+    const QRectF outlineBounds = polygon.boundingRect();
+    const bool contained = mode == QStringLiteral("contained");
+    const bool subtract = operation == QStringLiteral("subtract");
+    QSet<int> included;
+    QSet<QString> itemIds;
+    if (operation != QStringLiteral("replace")) {
+        for (const QVariant &index : previous.value(QStringLiteral("indexes")).toList())
+            included.insert(index.toInt());
+        for (const QVariant &entry : previous.value(QStringLiteral("items")).toList())
+            itemIds.insert(entry.toMap().value(QStringLiteral("id")).toString());
+    }
+    const QVariantList &ink = activeLayerInk(*page);
+    const int offset = erasableFrom();
+    QVariantList selected, indexes, items;
+    int reversible = 0;
     for (int index = 0; index < ink.size(); ++index) {
         const QVariantMap stroke = ink.at(index).toMap();
         const auto tool = inkToolFromName(stroke.value(QStringLiteral("tool")).toString());
         const auto anchors = storedInkPoints(stroke);
-        const auto points = isInkShape(tool) ? shapeOutline(anchors, tool) : anchors;
-        if (!mostlyInside(polygon, bounds, points))
-            continue;
-        indexes.append(index + offset);
-        selected.append(stroke);
-        if (stroke.contains(QStringLiteral("original")))
-            ++reversible;
+        const auto samples = isInkShape(tool) ? shapeOutline(anchors, tool) : anchors;
+        QList<QPointF> points;
+        for (const auto &sample : samples)
+            points.append(sample.position);
+        const QRectF strokeBounds = QPolygonF(points).boundingRect().adjusted(-1e-9, -1e-9, 1e-9, 1e-9);
+        if (outlineBounds.intersects(strokeBounds) && InkSelectionGeometry::intersectsStroke(polygon, points, contained)) {
+            if (subtract) included.remove(index + offset); else included.insert(index + offset);
+        }
+        if (included.contains(index + offset)) {
+            indexes.append(index + offset);
+            selected.append(stroke);
+            reversible += stroke.contains(QStringLiteral("original"));
+        }
+    }
+    for (const QVariant &entry : page->items) {
+        const QVariantMap item = entry.toMap();
+        const QString id = item.value(QStringLiteral("id")).toString();
+        const QPolygonF corners = InkSelectionGeometry::itemOutline(item);
+        const bool hit = InkSelectionGeometry::intersectsStroke(polygon, corners, contained)
+            || (!contained && corners.containsPoint(polygon.first(), Qt::OddEvenFill));
+        if (hit) {
+            if (subtract) itemIds.remove(id); else itemIds.insert(id);
+        }
+        if (itemIds.contains(id))
+            items.append(item);
     }
     return {{QStringLiteral("indexes"), indexes}, {QStringLiteral("strokes"), selected},
+            {QStringLiteral("items"), items}, {QStringLiteral("bounds"), InkSelectionGeometry::boundsOf(selected, items)},
             {QStringLiteral("reversible"), reversible}, {QStringLiteral("bookId"), bookId()},
             {QStringLiteral("pageId"), page->id}, {QStringLiteral("layerId"), activeLayer()}};
+}
+
+QVariantMap Notebook::previewSelection(const QVariantMap &selection, qreal dx, qreal dy, qreal scale, qreal angle) const
+{
+    if (!selectionCurrent(selection))
+        return {};
+    const QVariantList strokes = selection.value(QStringLiteral("strokes")).toList();
+    const QVariantList items = selection.value(QStringLiteral("items")).toList();
+    if (strokes.isEmpty() && items.isEmpty())
+        return {};
+    const QPointF pivot = InkSelectionGeometry::boundsOf(strokes, items).center();
+    const auto movedInk = InkSelectionGeometry::transformed(strokes, pivot, {dx, dy}, scale, angle);
+    const auto movedItems = InkSelectionGeometry::transformedItems(items, pivot, {dx, dy}, scale, angle);
+    if (movedInk.size() != strokes.size() || movedItems.size() != items.size())
+        return {};
+    return {{QStringLiteral("strokes"), movedInk}, {QStringLiteral("items"), movedItems},
+            {QStringLiteral("bounds"), InkSelectionGeometry::boundsOf(movedInk, movedItems)}};
+}
+
+bool Notebook::transformSelection(const QVariantMap &selection, qreal dx, qreal dy, qreal scale, qreal angle)
+{
+    const QVariantMap preview = previewSelection(selection, dx, dy, scale, angle);
+    if (preview.isEmpty())
+        return fail(tr("La selezione è cambiata o la trasformazione supera i bordi della pagina."));
+    InkEdit edit;
+    for (const QVariant &index : selection.value(QStringLiteral("indexes")).toList())
+        edit.indexes.append(index.toInt() - erasableFrom());
+    edit.previous = selection.value(QStringLiteral("strokes")).toList();
+    edit.strokes = preview.value(QStringLiteral("strokes")).toList();
+    edit.itemsBefore = selection.value(QStringLiteral("items")).toList();
+    edit.itemsAfter = preview.value(QStringLiteral("items")).toList();
+    return commitInkEdit(std::move(edit));
+}
+
+bool Notebook::removeSelection(const QVariantMap &selection)
+{
+    if (!selectionCurrent(selection))
+        return fail(tr("La selezione non è più valida."));
+    InkEdit edit;
+    edit.removes = true;
+    for (const QVariant &index : selection.value(QStringLiteral("indexes")).toList())
+        edit.indexes.append(index.toInt() - erasableFrom());
+    edit.strokes = selection.value(QStringLiteral("strokes")).toList();
+    edit.itemsBefore = selection.value(QStringLiteral("items")).toList();
+    return (!edit.strokes.isEmpty() || !edit.itemsBefore.isEmpty()) && commitInkEdit(std::move(edit));
 }
 
 bool Notebook::restoreSelectedInk(const QVariantList &indexes)
@@ -2216,6 +2832,36 @@ bool Notebook::redo()
 
 bool Notebook::applyInkEdit(Page &page, InkEdit &edit, bool reverse)
 {
+    const QVariantList &beforeItems = reverse ? edit.itemsAfter : edit.itemsBefore;
+    const QVariantList &afterItems = reverse ? edit.itemsBefore : edit.itemsAfter;
+    for (const QVariant &entry : beforeItems) {
+        const int index = findPageItem(page, entry.toMap().value(QStringLiteral("id")).toString());
+        if (index < 0 || page.items.at(index) != entry)
+            return fail(tr("L’elemento è cambiato. Rinnova la selezione prima di modificarlo."));
+    }
+    for (const QVariant &entry : beforeItems) {
+        const QString id = entry.toMap().value(QStringLiteral("id")).toString();
+        const auto replacement = std::find_if(afterItems.cbegin(), afterItems.cend(), [&id](const QVariant &candidate) {
+            return candidate.toMap().value(QStringLiteral("id")).toString() == id;
+        });
+        const int index = findPageItem(page, id);
+        if (replacement == afterItems.cend())
+            page.items.removeAt(index);
+        else
+            page.items[index] = *replacement;
+    }
+    for (const QVariant &entry : afterItems) {
+        if (findPageItem(page, entry.toMap().value(QStringLiteral("id")).toString()) < 0)
+            page.items.append(entry);
+    }
+    if (page.items.size() > maxItemsPerPage)
+        return fail(tr("La pagina ha raggiunto il limite di 120 elementi."));
+    if (!reverse && !page.markdownBlockId.isEmpty() && findPageItem(page, page.markdownBlockId) < 0) {
+        edit.removedMarkdownBlock = page.markdownBlockId;
+        page.markdownBlockId.clear();
+    } else if (reverse && !edit.removedMarkdownBlock.isEmpty() && findPageItem(page, edit.removedMarkdownBlock) >= 0) {
+        page.markdownBlockId = edit.removedMarkdownBlock;
+    }
     if (!edit.textItem.isEmpty()) {
         if (reverse) {
             const int index = findPageItem(page, edit.textItem.value(QStringLiteral("id")).toString());
@@ -2253,14 +2899,17 @@ bool Notebook::commitInkEdit(InkEdit edit)
     if (!applyInkEdit(currentPage(next), edit, false) || !commit(std::move(next), 0))
         return false;
 
-    const bool changesItems = !edit.textItem.isEmpty();
+    const bool changesItems = !edit.textItem.isEmpty() || !edit.itemsBefore.isEmpty() || !edit.itemsAfter.isEmpty();
     if (m_undo.size() == maxInkHistory)
         m_undo.removeFirst();
     m_undo.append(std::move(edit));
     m_redo.clear();
     emit strokesChanged();
-    if (changesItems)
+    if (changesItems) {
         emit pageContentChanged();
+        emit libraryItemsChanged();
+        emit booksChanged();
+    }
     return true;
 }
 
@@ -2287,11 +2936,14 @@ bool Notebook::applyInkHistory(bool reverse)
         source.removeLast();
     if (destination.size() == maxInkHistory)
         destination.removeFirst();
-    const bool changesItems = !edit.textItem.isEmpty();
+    const bool changesItems = !edit.textItem.isEmpty() || !edit.itemsBefore.isEmpty() || !edit.itemsAfter.isEmpty();
     destination.append(std::move(edit));
     emit strokesChanged();
-    if (changesItems)
+    if (changesItems) {
         emit pageContentChanged();
+        emit libraryItemsChanged();
+        emit booksChanged();
+    }
     return true;
 }
 
@@ -2417,7 +3069,7 @@ bool Notebook::setPageTemplate(const QString &paper)
     const Page *page = currentPage();
     if (!page || !PageContent::isTemplate(paper))
         return fail(tr("Seleziona un modello di pagina valido."));
-    if (!page->background.isEmpty())
+    if (page->hasBackground())
         return fail(tr("Questa pagina usa lo sfondo del documento importato."));
     if (page->paper == paper) {
         setError({});
@@ -2474,6 +3126,14 @@ bool Notebook::savePageItem(const QVariantMap &item)
             rect.moveBottom(1);
         valid = itemAt(item, rect);
     }
+    if (index >= 0 && !valid.isEmpty()) {
+        const QVariantMap previous = page->items.at(index).toMap();
+        for (const QString &key : {QStringLiteral("handwritingSource"), QStringLiteral("rotation"), QStringLiteral("textScale"), QStringLiteral("styleScale")}) {
+            if (previous.contains(key) && (!item.contains(key) || key == QStringLiteral("handwritingSource")))
+                valid.insert(key, previous.value(key));
+        }
+        valid = PageContent::validatedItem(valid);
+    }
     if (valid.isEmpty())
         return fail(diagram
             ? tr("Controlla le forme, le etichette e i collegamenti del diagramma.")
@@ -2499,6 +3159,70 @@ bool Notebook::savePageItem(const QVariantMap &item)
     if (updated.markdownBlockId != page->markdownBlockId)
         changes |= BooksChanged;
     return commit(std::move(next), changes, image);
+}
+
+bool Notebook::savePageNote(const QVariantMap &input, const QString &expectedBookId,
+                            const QString &expectedPageId, const QVariantMap &expectedOriginal)
+{
+    const Page *page = currentPage();
+    if (!page || expectedBookId != bookId() || expectedPageId != page->id)
+        return fail(tr("La pagina della nota è cambiata. Riapri la nota prima di salvarla."));
+    if (!canWriteLayer())
+        return fail(tr("Mostra il livello attivo prima di modificare le note."));
+    const QVariant idValue = input.value(QStringLiteral("id"), QString{});
+    if (idValue.typeId() != QMetaType::QString)
+        return fail(tr("La nota contiene dati non validi."));
+    const QString id = idValue.toString();
+    const int index = id.isEmpty() ? -1 : findPageItem(*page, id);
+    const QVariantMap before = index < 0 ? QVariantMap{} : page->items.at(index).toMap();
+    const auto canonical = [](const QVariantMap &value) { return QJsonDocument::fromVariant(value).toJson(QJsonDocument::Compact); };
+    if ((!id.isEmpty() && (index < 0 || before.value(QStringLiteral("type")) != QStringLiteral("note")
+            || canonical(before) != canonical(expectedOriginal))) || (id.isEmpty() && !expectedOriginal.isEmpty()))
+        return fail(tr("La nota è cambiata. Riaprila prima di salvarla."));
+    if (index < 0 && page->items.size() >= maxItemsPerPage)
+        return fail(tr("La pagina ha raggiunto il limite di 120 elementi."));
+    QVariantMap item = input;
+    item.insert(QStringLiteral("id"), id.isEmpty() ? newId() : id);
+    item.insert(QStringLiteral("type"), QStringLiteral("note"));
+    if (before.isEmpty()) {
+        if (!item.contains(QStringLiteral("width"))) item.insert(QStringLiteral("width"), .05);
+        if (!item.contains(QStringLiteral("height"))) item.insert(QStringLiteral("height"), .0375);
+    } else {
+        // Editing a note never silently moves its marker. Moving remains a
+        // separate page action, with the note's ink in its own local canvas.
+        for (const QString &key : {QStringLiteral("x"), QStringLiteral("y"), QStringLiteral("width"),
+                QStringLiteral("height"), QStringLiteral("rotation"), QStringLiteral("textScale")}) {
+            item.remove(key);
+            if (before.contains(key)) item.insert(key, before.value(key));
+        }
+    }
+    item = PageContent::validatedItem(item);
+    if (item.isEmpty())
+        return fail(tr("Aggiungi testo o scrittura alla nota e controlla che sia nei limiti della pagina."));
+    if (item == before) { setError({}); return true; }
+    InkEdit edit;
+    if (!before.isEmpty()) edit.itemsBefore.append(before);
+    edit.itemsAfter.append(item);
+    return commitInkEdit(std::move(edit));
+}
+
+bool Notebook::removePageNote(const QString &id, const QString &expectedBookId,
+                              const QString &expectedPageId, const QVariantMap &expectedOriginal)
+{
+    const Page *page = currentPage();
+    const int index = page ? findPageItem(*page, id) : -1;
+    if (!page || expectedBookId != bookId() || expectedPageId != page->id)
+        return fail(tr("La pagina della nota è cambiata. Riapri la nota prima di eliminarla."));
+    if (!canWriteLayer())
+        return fail(tr("Mostra il livello attivo prima di modificare le note."));
+    const QVariantMap before = index < 0 ? QVariantMap{} : page->items.at(index).toMap();
+    const auto canonical = [](const QVariantMap &value) { return QJsonDocument::fromVariant(value).toJson(QJsonDocument::Compact); };
+    if (index < 0 || before.value(QStringLiteral("type")) != QStringLiteral("note")
+        || canonical(before) != canonical(expectedOriginal))
+        return fail(tr("La nota è cambiata. Riaprila prima di eliminarla."));
+    InkEdit edit;
+    edit.itemsBefore.append(before);
+    return commitInkEdit(std::move(edit));
 }
 
 QVariantMap Notebook::tableChartPreview(const QVariantMap &options) const
@@ -2533,7 +3257,25 @@ bool Notebook::saveTranscript(const QVariantMap &item)
     return insertPageWithItem(item, true);
 }
 
-bool Notebook::replaceHandwriting(const QVariantMap &selection, const QString &text)
+QVariantMap Notebook::handwritingPreview(const QVariantMap &selection, const QString &text) const
+{
+    if (!selectionCurrent(selection) || text.trimmed().isEmpty())
+        return {};
+    QVariantList handwriting;
+    for (const QVariant &entry : selection.value(QStringLiteral("strokes")).toList()) {
+        const QString tool = entry.toMap().value(QStringLiteral("tool")).toString();
+        if (tool.isEmpty() || tool == QStringLiteral("pen") || tool == QStringLiteral("pencil") || tool == QStringLiteral("marker"))
+            handwriting.append(entry);
+    }
+    if (handwriting.isEmpty())
+        return {};
+    const QRectF bounds = InkSelectionGeometry::boundsOf(handwriting);
+    return itemAt({{QStringLiteral("id"), QStringLiteral("ocr-preview")},
+                   {QStringLiteral("type"), QStringLiteral("text")}, {QStringLiteral("text"), text}},
+                  PageContent::textRectAtInk(text, bounds));
+}
+
+bool Notebook::replaceHandwriting(const QVariantMap &selection, const QString &text, bool keepInk)
 {
     const Page *page = currentPage();
     const QVariantList indexes = selection.value(QStringLiteral("indexes")).toList();
@@ -2582,6 +3324,435 @@ bool Notebook::replaceHandwriting(const QVariantMap &selection, const QString &t
     edit.textItem = itemAt(draft, PageContent::textRectAtInk(text, bounds));
     if (edit.textItem.isEmpty())
         return fail(tr("Controlla il testo e le dimensioni dell’elemento."));
+    if (!keepInk)
+        edit.textItem.insert(QStringLiteral("handwritingSource"), QVariantMap{
+            {QStringLiteral("layerId"), activeLayer()}, {QStringLiteral("strokes"), edit.strokes}});
+    edit.textItem = PageContent::validatedItem(edit.textItem);
+    if (edit.textItem.isEmpty())
+        return fail(tr("La selezione è troppo grande. Seleziona un passaggio più breve."));
+    if (keepInk) {
+        edit.indexes.clear();
+        edit.strokes.clear();
+    }
+    return commitInkEdit(std::move(edit));
+}
+
+QVariantMap Notebook::diagramHandwritingPlan(const QVariantMap &selection, const QString &targetId) const
+{
+    if (!selectionCurrent(selection) || selection.value(QStringLiteral("strokes")).toList().isEmpty())
+        return {{QStringLiteral("error"), tr("La selezione dei tratti non è più valida.")}};
+    const QVariantList indexes = selection.value(QStringLiteral("indexes")).toList();
+    for (const QVariant &index : indexes) {
+        // Do not accept booleans or strings as stroke addresses.
+        const auto type = index.metaType().id();
+        if (type != QMetaType::Int && type != QMetaType::UInt && type != QMetaType::LongLong
+            && type != QMetaType::ULongLong && type != QMetaType::Float && type != QMetaType::Double)
+            return {{QStringLiteral("error"), tr("La selezione dei tratti non è più valida.")}};
+    }
+    QVariantList choices;
+    QHash<QString, QVariantMap> diagrams;
+    for (const QVariant &entry : currentPage()->items) {
+        const QVariantMap item = entry.toMap();
+        if (item.value(QStringLiteral("type")) != QStringLiteral("diagram")) continue;
+        const QString id = item.value(QStringLiteral("id")).toString();
+        diagrams.insert(id, item);
+        QString title;
+        for (const QVariant &node : item.value(QStringLiteral("nodes")).toList()) {
+            title = node.toMap().value(QStringLiteral("text")).toString().trimmed();
+            if (!title.isEmpty()) break;
+        }
+        choices.append(QVariantMap{{QStringLiteral("id"), id},
+            {QStringLiteral("title"), title.isEmpty() ? tr("Diagramma %1").arg(choices.size() + 1) : title.left(80)}});
+    }
+    QString chosen = targetId;
+    if (chosen.isEmpty()) {
+        QStringList selected;
+        for (const QVariant &entry : selection.value(QStringLiteral("items")).toList()) {
+            const QString id = entry.toMap().value(QStringLiteral("id")).toString();
+            if (diagrams.contains(id)) selected.append(id);
+        }
+        if (selected.size() == 1) chosen = selected.first();
+        else if (diagrams.size() == 1) chosen = diagrams.cbegin().key();
+        else if (diagrams.isEmpty()) chosen = QStringLiteral("new");
+    }
+    QVariantMap plan;
+    if (chosen.isEmpty()) {
+        plan.insert(QStringLiteral("requiresTarget"), true);
+    } else if (chosen != QStringLiteral("new") && !diagrams.contains(chosen)) {
+        plan.insert(QStringLiteral("error"), tr("Il diagramma scelto non è più presente sulla pagina."));
+    } else {
+        const QVariantMap existing = diagrams.value(chosen);
+        const QVariantMap recovery = existing.value(QStringLiteral("handwritingSource")).toMap();
+        const QString recoveryLayer = recovery.value(QStringLiteral("layerId")).toString();
+        const bool recoveryLayerExists = currentPage()->layers.isEmpty()
+            ? recoveryLayer == defaultLayerId : findLayer(*currentPage(), recoveryLayer) >= 0;
+        if (recovery.contains(QStringLiteral("baseDiagram"))
+            && recoveryLayerExists && recoveryLayer != activeLayer()) {
+            plan.insert(QStringLiteral("error"), tr("Seleziona il livello delle aggiunte precedenti per aggiornare questo diagramma."));
+        } else {
+            plan = DiagramRecognition::recognize(selection.value(QStringLiteral("strokes")).toList(), existing);
+        }
+        plan.insert(QStringLiteral("requiresTarget"), false);
+    }
+    plan.insert(QStringLiteral("targetItemId"), chosen == QStringLiteral("new") ? QString{} : chosen);
+    plan.insert(QStringLiteral("targetChoice"), chosen);
+    plan.insert(QStringLiteral("targetChoices"), choices);
+    plan.insert(QStringLiteral("bookId"), bookId());
+    plan.insert(QStringLiteral("pageId"), pageId());
+    plan.insert(QStringLiteral("layerId"), activeLayer());
+    // The existing manifest digest is already available without disk I/O. A
+    // concurrent edit anywhere in this library conservatively invalidates review.
+    plan.insert(QStringLiteral("sourceRevision"), QString::fromLatin1(m_fileRevision.toHex()));
+    return plan;
+}
+
+bool Notebook::applyDiagramHandwriting(const QVariantMap &selection, const QVariantMap &plan,
+                                      const QVariantMap &reviewedDiagram, const QVariantList &acceptedLabelIds,
+                                      bool removeInk)
+{
+    const QVariantMap fresh = diagramHandwritingPlan(selection, plan.value(QStringLiteral("targetChoice")).toString());
+    if (fresh.value(QStringLiteral("requiresTarget")).toBool())
+        return fail(tr("Scegli il diagramma da aggiornare oppure crea un diagramma separato."));
+    if (!fresh.value(QStringLiteral("error")).toString().isEmpty())
+        return fail(fresh.value(QStringLiteral("error")).toString());
+    // JSON canonicalization treats QML arrays and native QStringLists uniformly,
+    // while still rejecting forged membership, omitted fields and stale plans.
+    const auto canonical = [](const QVariantMap &value) { return QJsonDocument::fromVariant(value).toJson(QJsonDocument::Compact); };
+    if (canonical(fresh) != canonical(plan))
+        return fail(tr("Il disegno è cambiato. Rinnova la selezione prima di convertirlo."));
+    if (fresh.contains(QStringLiteral("hasChanges")) && !fresh.value(QStringLiteral("hasChanges")).toBool())
+        return fail(tr("Non ci sono nuove forme o nuovi collegamenti da applicare."));
+    const QVariantMap draft = fresh.value(QStringLiteral("diagram")).toMap();
+    if (draft.isEmpty() || reviewedDiagram.isEmpty())
+        return fail(tr("Controlla le forme, le etichette e i collegamenti del diagramma."));
+
+    const auto withoutLabels = [](QVariantMap item) {
+        for (const QString &key : {QStringLiteral("nodes"), QStringLiteral("edges")}) {
+            QVariantList parts;
+            for (const QVariant &entry : item.value(key).toList()) {
+                QVariantMap part = entry.toMap();
+                part.remove(QStringLiteral("text"));
+                parts.append(part);
+            }
+            item.insert(key, parts);
+        }
+        return item;
+    };
+    if (canonical(withoutLabels(draft)) != canonical(withoutLabels(reviewedDiagram)))
+        return fail(tr("Le forme o i collegamenti della proposta sono cambiati. Riconosci di nuovo il disegno."));
+
+    QHash<QString, QVariantMap> groups;
+    for (const QVariant &entry : fresh.value(QStringLiteral("labelGroups")).toList()) {
+        const QVariantMap group = entry.toMap();
+        const QString id = group.value(QStringLiteral("id")).toString();
+        if (id.isEmpty() || groups.contains(id))
+            return fail(tr("Controlla le etichette riconosciute prima di applicare il diagramma."));
+        groups.insert(id, group);
+    }
+    QSet<QString> accepted;
+    for (const QVariant &entry : acceptedLabelIds) {
+        const QString id = entry.toString();
+        if (entry.metaType().id() != QMetaType::QString || !groups.contains(id) || accepted.contains(id))
+            return fail(tr("Controlla le etichette riconosciute prima di applicare il diagramma."));
+        accepted.insert(id);
+    }
+    QSet<QString> matchedLabels;
+    for (const QString &key : {QStringLiteral("nodes"), QStringLiteral("edges")}) {
+        const QVariantList before = draft.value(key).toList(), after = reviewedDiagram.value(key).toList();
+        for (qsizetype index = 0; index < after.size(); ++index) {
+            const QVariantMap part = after.at(index).toMap();
+            const QString id = part.value(QStringLiteral("id")).toString();
+            const QVariant value = part.value(QStringLiteral("text"));
+            if (value.metaType().id() != QMetaType::QString)
+                return fail(tr("Controlla le etichette riconosciute prima di applicare il diagramma."));
+            const QString existingKey = key == QStringLiteral("nodes") ? QStringLiteral("existingNodeIds") : QStringLiteral("existingEdgeIds");
+            if (fresh.value(existingKey).toStringList().contains(id)
+                && value != before.at(index).toMap().value(QStringLiteral("text")))
+                return fail(tr("Le etichette del diagramma esistente devono restare invariate durante il riconoscimento."));
+            if (!groups.contains(id)) continue; // A manually entered label needs no ink removal.
+            const QString expectedKind = key == QStringLiteral("nodes") ? QStringLiteral("node") : QStringLiteral("edge");
+            if (groups.value(id).value(QStringLiteral("kind")) != expectedKind)
+                return fail(tr("Controlla le etichette riconosciute prima di applicare il diagramma."));
+            if (accepted.contains(id)) {
+                if (value.toString().trimmed().isEmpty())
+                    return fail(tr("Inserisci o correggi il testo delle etichette selezionate."));
+                matchedLabels.insert(id);
+            } else if (value != before.at(index).toMap().value(QStringLiteral("text"))) {
+                return fail(tr("Conferma le etichette da inserire oppure lascia il testo originale."));
+            }
+        }
+    }
+    if (matchedLabels != accepted)
+        return fail(tr("Controlla le etichette riconosciute prima di applicare il diagramma."));
+
+    QVariantMap item = reviewedDiagram;
+    const QString targetId = fresh.value(QStringLiteral("targetItemId")).toString();
+    const int targetIndex = targetId.isEmpty() ? -1 : findPageItem(*currentPage(), targetId);
+    const QVariantMap previous = targetIndex < 0 ? QVariantMap{} : currentPage()->items.at(targetIndex).toMap();
+    item.insert(QStringLiteral("id"), targetId.isEmpty() ? newId() : targetId);
+    item = PageContent::validatedItem(item);
+    if (item.isEmpty())
+        return fail(tr("Controlla le forme, le etichette e i collegamenti del diagramma."));
+    InkEdit edit;
+    edit.removes = removeInk;
+    if (removeInk) {
+        QSet<int> selectedOffsets;
+        const QVariantList selected = selection.value(QStringLiteral("strokes")).toList();
+        const auto collect = [&](const QVariantMap &part) {
+            for (const QVariant &entry : part.value(QStringLiteral("indexes")).toList()) {
+                bool ok = false;
+                const double offset = entry.toDouble(&ok);
+                if (!ok || !std::isfinite(offset) || offset != std::floor(offset) || offset < 0 || offset >= selected.size())
+                    return false;
+                selectedOffsets.insert(static_cast<int>(offset));
+            }
+            return true;
+        };
+        for (const QVariant &entry : fresh.value(QStringLiteral("candidates")).toList()) {
+            if (!collect(entry.toMap())) return fail(tr("La selezione dei tratti non è più valida."));
+        }
+        for (const QString &id : accepted) {
+            if (!collect(groups.value(id))) return fail(tr("La selezione dei tratti non è più valida."));
+        }
+        QList<int> offsets = selectedOffsets.values();
+        std::sort(offsets.begin(), offsets.end());
+        const QVariantList addresses = selection.value(QStringLiteral("indexes")).toList();
+        for (const int offset : offsets) {
+            edit.indexes.append(addresses.at(offset).toInt() - erasableFrom());
+            edit.strokes.append(selected.at(offset));
+        }
+        if (edit.strokes.isEmpty()) return fail(tr("Seleziona un tratto di scrittura a mano."));
+        QVariantMap recovery{{QStringLiteral("layerId"), activeLayer()}, {QStringLiteral("strokes"), edit.strokes}};
+        if (!previous.isEmpty()) {
+            const QVariantMap oldRecovery = previous.value(QStringLiteral("handwritingSource")).toMap();
+            if (oldRecovery.contains(QStringLiteral("baseDiagram"))) {
+                QVariantList accumulated = oldRecovery.value(QStringLiteral("strokes")).toList();
+                accumulated.append(edit.strokes);
+                recovery.insert(QStringLiteral("strokes"), accumulated);
+                recovery.insert(QStringLiteral("baseDiagram"), oldRecovery.value(QStringLiteral("baseDiagram")));
+            } else {
+                recovery.insert(QStringLiteral("baseDiagram"), previous);
+            }
+        }
+        item.insert(QStringLiteral("handwritingSource"), recovery);
+        item = PageContent::validatedItem(item);
+        if (item.isEmpty()) return fail(tr("La selezione è troppo grande. Seleziona un passaggio più breve."));
+    }
+    if (!previous.isEmpty()) edit.itemsBefore.append(previous);
+    edit.itemsAfter.append(item);
+    return commitInkEdit(std::move(edit));
+}
+
+QVariantMap Notebook::tableHandwritingPlan(const QVariantMap &selection, const QString &tableId) const
+{
+    if (!selectionCurrent(selection))
+        return {{QStringLiteral("error"), tr("La selezione dei tratti non è più valida.")}};
+    const Page *page = currentPage();
+    const int itemIndex = findPageItem(*page, tableId);
+    if (itemIndex < 0 || page->items.at(itemIndex).toMap().value(QStringLiteral("type")) != QStringLiteral("table"))
+        return {{QStringLiteral("error"), tr("Seleziona una tabella presente sulla pagina.")}};
+
+    const QVariantMap table = page->items.at(itemIndex).toMap();
+    const int rows = table.value(QStringLiteral("rows")).toInt();
+    const int columns = table.value(QStringLiteral("cols")).toInt();
+    const QVariantList previous = table.value(QStringLiteral("cells")).toList();
+    const qreal left = table.value(QStringLiteral("x")).toDouble() * 600;
+    const qreal top = table.value(QStringLiteral("y")).toDouble() * 800;
+    const qreal width = table.value(QStringLiteral("width")).toDouble() * 600;
+    const qreal height = table.value(QStringLiteral("height")).toDouble() * 800;
+    if (rows <= 0 || columns <= 0 || previous.size() != rows * columns
+        || !std::isfinite(width) || !std::isfinite(height) || width <= 0 || height <= 0)
+        return {{QStringLiteral("error"), tr("Controlla il testo e le dimensioni dell’elemento.")}};
+    const QPointF center(left + width / 2, top + height / 2);
+    QTransform inverse;
+    inverse.translate(center.x(), center.y());
+    inverse.rotate(-table.value(QStringLiteral("rotation")).toDouble());
+    inverse.translate(-center.x(), -center.y());
+
+    QMap<int, QVariantMap> groups;
+    const QVariantList selected = selection.value(QStringLiteral("strokes")).toList();
+    const QVariantList indexes = selection.value(QStringLiteral("indexes")).toList();
+    int unassigned = 0;
+    // A stroke belongs to a cell only when every point lies strictly inside it.
+    // A line crossing a border, or a dot exactly on it, must not silently choose
+    // a destination. All points in a single rectangular cell also contain every
+    // straight segment between those points.
+    constexpr qreal borderTolerance = 1e-7;
+    for (qsizetype position = 0; position < selected.size(); ++position) {
+        const QVariantMap stroke = selected.at(position).toMap();
+        const QString tool = stroke.value(QStringLiteral("tool")).toString();
+        if (!tool.isEmpty() && tool != QStringLiteral("pen") && tool != QStringLiteral("pencil") && tool != QStringLiteral("marker"))
+            continue;
+        const QList<InkPoint> points = storedInkPoints(stroke);
+        int cell = -1;
+        bool assigned = !points.isEmpty();
+        for (const InkPoint &point : points) {
+            const QPointF local = inverse.map(QPointF(point.position.x() * 600, point.position.y() * 800));
+            const qreal columnPosition = (local.x() - left) / width * columns;
+            const qreal rowPosition = (local.y() - top) / height * rows;
+            if (!std::isfinite(columnPosition) || !std::isfinite(rowPosition)
+                || columnPosition <= 0 || columnPosition >= columns || rowPosition <= 0 || rowPosition >= rows
+                || std::abs(columnPosition - std::round(columnPosition)) <= borderTolerance
+                || std::abs(rowPosition - std::round(rowPosition)) <= borderTolerance) {
+                assigned = false;
+                break;
+            }
+            const int nextCell = static_cast<int>(std::floor(rowPosition)) * columns
+                + static_cast<int>(std::floor(columnPosition));
+            if (cell >= 0 && nextCell != cell) {
+                assigned = false;
+                break;
+            }
+            cell = nextCell;
+        }
+        if (!assigned) {
+            ++unassigned;
+            continue;
+        }
+        if (!groups.contains(cell)) {
+            groups.insert(cell, {{QStringLiteral("row"), cell / columns}, {QStringLiteral("column"), cell % columns},
+                                 {QStringLiteral("address"), QString(QChar(static_cast<char16_t>(u'A' + cell % columns))) + QString::number(cell / columns + 1)},
+                                 {QStringLiteral("previous"), previous.at(cell).toString()}});
+        }
+        QVariantMap &group = groups[cell];
+        QVariantList groupStrokes = group.value(QStringLiteral("strokes")).toList();
+        groupStrokes.append(stroke);
+        group.insert(QStringLiteral("strokes"), groupStrokes);
+        QVariantList groupIndexes = group.value(QStringLiteral("indexes")).toList();
+        groupIndexes.append(indexes.at(position));
+        group.insert(QStringLiteral("indexes"), groupIndexes);
+    }
+    QVariantList cells;
+    for (QVariantMap &group : groups) {
+        // The recognizer sees upright handwriting even when the table has been
+        // rotated. Stored ink and global indexes retain their original geometry.
+        const QVariantList strokes = group.value(QStringLiteral("strokes")).toList();
+        const QVariantList upright = InkSelectionGeometry::transformed(strokes,
+            QPointF(center.x() / 600, center.y() / 800), {}, 1, -table.value(QStringLiteral("rotation")).toDouble());
+        if (upright.size() != strokes.size())
+            return {{QStringLiteral("error"), tr("La selezione è troppo grande. Seleziona un passaggio più breve.")}};
+        group.insert(QStringLiteral("strokes"), upright);
+        cells.append(group);
+    }
+    return {{QStringLiteral("tableId"), tableId}, {QStringLiteral("tableSnapshot"), table},
+            {QStringLiteral("rows"), rows}, {QStringLiteral("cols"), columns},
+            {QStringLiteral("cells"), cells}, {QStringLiteral("unassignedCount"), unassigned}};
+}
+
+bool Notebook::applyTableHandwriting(const QVariantMap &selection, const QVariantMap &plan,
+                                    const QVariantList &updates, bool removeInk, bool overwriteExisting)
+{
+    const QVariantMap fresh = tableHandwritingPlan(selection, plan.value(QStringLiteral("tableId")).toString());
+    if (fresh.contains(QStringLiteral("error")))
+        return fail(fresh.value(QStringLiteral("error")).toString());
+    const QVariantMap before = fresh.value(QStringLiteral("tableSnapshot")).toMap();
+    if (before != plan.value(QStringLiteral("tableSnapshot")).toMap())
+        return fail(tr("La tabella è cambiata. Rinnova la selezione prima di aggiornarla."));
+    const int rows = fresh.value(QStringLiteral("rows")).toInt();
+    const int columns = fresh.value(QStringLiteral("cols")).toInt();
+    if (updates.isEmpty() || updates.size() > rows * columns)
+        return fail(tr("Scegli almeno una cella con testo da inserire."));
+    QMap<int, QVariantMap> groups;
+    for (const QVariant &entry : fresh.value(QStringLiteral("cells")).toList()) {
+        const QVariantMap group = entry.toMap();
+        groups.insert(group.value(QStringLiteral("row")).toInt() * columns + group.value(QStringLiteral("column")).toInt(), group);
+    }
+    QVariantMap after = before;
+    QVariantList values = before.value(QStringLiteral("cells")).toList();
+    QSet<int> seen;
+    QMap<int, QVariant> removedStrokes;
+    const QVariantList &ink = activeLayerInk(*currentPage());
+    const int offset = erasableFrom();
+    const auto isNumeric = [](const QVariant &value) {
+        switch (value.metaType().id()) {
+        case QMetaType::Int: case QMetaType::UInt: case QMetaType::LongLong: case QMetaType::ULongLong:
+        case QMetaType::Double: case QMetaType::Float: return true;
+        default: return false;
+        }
+    };
+    for (const QVariant &entry : updates) {
+        const QVariantMap update = entry.toMap();
+        bool rowValid = false;
+        bool columnValid = false;
+        const double row = update.value(QStringLiteral("row")).toDouble(&rowValid);
+        const double column = update.value(QStringLiteral("column")).toDouble(&columnValid);
+        const QVariant textValue = update.value(QStringLiteral("text"));
+        if (!isNumeric(update.value(QStringLiteral("row"))) || !isNumeric(update.value(QStringLiteral("column")))
+            || !rowValid || !columnValid || !std::isfinite(row) || !std::isfinite(column)
+            || row != std::floor(row) || column != std::floor(column)
+            || row < 0 || row >= rows || column < 0 || column >= columns
+            || textValue.metaType().id() != QMetaType::QString)
+            return fail(tr("Controlla le celle e il testo della trascrizione."));
+        const int cell = static_cast<int>(row) * columns + static_cast<int>(column);
+        const QString text = textValue.toString();
+        if (!groups.contains(cell) || seen.contains(cell) || text.trimmed().isEmpty()
+            || text.size() > PageContent::maxTableCellLength)
+            return fail(tr("Controlla le celle e il testo della trascrizione."));
+        seen.insert(cell);
+        if (!overwriteExisting && !values.at(cell).toString().isEmpty() && values.at(cell).toString() != text)
+            return fail(tr("Conferma la sostituzione dei valori o delle formule già presenti."));
+        values[cell] = text;
+        if (removeInk) {
+            for (const QVariant &globalIndex : groups.value(cell).value(QStringLiteral("indexes")).toList()) {
+                const int index = globalIndex.toInt() - offset;
+                removedStrokes.insert(index, ink.at(index));
+            }
+        }
+    }
+    after.insert(QStringLiteral("cells"), values);
+    after = PageContent::validatedItem(after);
+    if (after.isEmpty())
+        return fail(tr("Controlla le celle e il testo della trascrizione."));
+    if (after == before && removedStrokes.isEmpty()) {
+        setError({});
+        return true;
+    }
+    InkEdit edit;
+    edit.itemsBefore.append(before);
+    edit.itemsAfter.append(after);
+    edit.removes = removeInk;
+    for (auto it = removedStrokes.cbegin(); it != removedStrokes.cend(); ++it) {
+        edit.indexes.append(it.key());
+        edit.strokes.append(it.value());
+    }
+    return commitInkEdit(std::move(edit));
+}
+
+bool Notebook::restoreOriginalHandwriting(const QString &itemId)
+{
+    const Page *page = currentPage();
+    const int index = page ? findPageItem(*page, itemId) : -1;
+    if (index < 0)
+        return fail(tr("L’elemento non è più presente sulla pagina."));
+    const QVariantMap item = page->items.at(index).toMap();
+    const QVariantMap source = item.value(QStringLiteral("handwritingSource")).toMap();
+    const QVariantList strokes = source.value(QStringLiteral("strokes")).toList();
+    if (strokes.isEmpty())
+        return fail(tr("Questo elemento non contiene la scrittura originale."));
+    const QString sourceLayer = source.value(QStringLiteral("layerId")).toString();
+    const bool sourceLayerExists = page->layers.isEmpty() ? sourceLayer == defaultLayerId : findLayer(*page, sourceLayer) >= 0;
+    if (!canWriteLayer() || (sourceLayerExists && sourceLayer != activeLayer()))
+        return fail(tr("Seleziona e mostra il livello originale per ripristinare la scrittura."));
+    // If that layer was deliberately removed, recover into the current visible
+    // layer rather than making the still-preserved handwriting inaccessible.
+    InkEdit edit;
+    for (const QVariant &stroke : strokes) {
+        const QVariantMap valid = validatedStroke(stroke.toMap());
+        if (valid.isEmpty())
+            return fail(tr("La scrittura originale contiene dati non validi."));
+        edit.indexes.append(erasableCount() + edit.strokes.size());
+        edit.strokes.append(valid);
+    }
+    edit.itemsBefore.append(item);
+    if (source.contains(QStringLiteral("baseDiagram"))) {
+        QVariantMap base = PageContent::validatedItem(source.value(QStringLiteral("baseDiagram")).toMap());
+        if (base.isEmpty())
+            return fail(tr("Il diagramma originale contiene dati non validi."));
+        // Library copies receive a new outer item ID while their recovery
+        // snapshot remains immutable. Recover into this copy, never its source.
+        base.insert(QStringLiteral("id"), item.value(QStringLiteral("id")));
+        edit.itemsAfter.append(base);
+    }
     return commitInkEdit(std::move(edit));
 }
 
@@ -2632,8 +3803,17 @@ bool Notebook::movePageItem(const QString &id, qreal x, qreal y)
     if (qFuzzyCompare(left + 1, rect.x() + 1) && qFuzzyCompare(top + 1, rect.y() + 1))
         return true;
 
-    item.insert(QStringLiteral("x"), left);
-    item.insert(QStringLiteral("y"), top);
+    const auto moved = InkSelectionGeometry::transformedItems({item}, rect.center(), {left - rect.x(), top - rect.y()}, 1, 0);
+    if (moved.size() != 1)
+        return fail(tr("La trasformazione supera i bordi della pagina o non è valida."));
+    item = moved.first().toMap();
+    if (item.value(QStringLiteral("type")) == QStringLiteral("note")) {
+        if (!canWriteLayer()) return fail(tr("Mostra il livello attivo prima di modificare le note."));
+        InkEdit edit;
+        edit.itemsBefore.append(page->items.at(index));
+        edit.itemsAfter.append(item);
+        return commitInkEdit(std::move(edit));
+    }
     State next = m_state;
     currentPage(next).items[index] = item;
     return commit(std::move(next), PageContentChanged);
@@ -2795,6 +3975,7 @@ void Notebook::preserveReadingPosition(Book &incoming, const Book &local)
 
 void Notebook::preserveMarkdownBlocks(Book &incoming, const Book &local)
 {
+    if (incoming.workspace.isEmpty()) incoming.workspace = local.workspace;
     QHash<QString, QString> sourceByPage;
     QSet<QString> sourceIds;
     for (const Page &page : local.pages) {
@@ -2837,44 +4018,34 @@ int Notebook::findFolder(const State &state, const QString &id)
     return -1;
 }
 
+QVariant Notebook::pageStorageValue(const Page &page)
+{
+    if (!page.hasLayout()) return page.strokes;
+    QVariantMap layout{{QStringLiteral("template"), page.paper}, {QStringLiteral("strokes"), page.strokes},
+                       {QStringLiteral("items"), page.items}};
+    if (!page.encodedBackground.isEmpty()) layout.insert(QStringLiteral("background"), page.encodedBackground);
+    if (!page.source.isEmpty()) layout.insert(QStringLiteral("source"), page.source);
+    if (!page.tags.isEmpty()) layout.insert(QStringLiteral("tags"), page.tags);
+    if (!page.pdfText.isEmpty()) layout.insert(QStringLiteral("pdfText"), page.pdfText);
+    if (!page.markdownBlockId.isEmpty()) layout.insert(QStringLiteral("markdownBlockId"), page.markdownBlockId);
+    if (!page.transcripts.isEmpty()) layout.insert(QStringLiteral("transcripts"), page.transcripts);
+    if (page.bookmarked) layout.insert(QStringLiteral("bookmarked"), true);
+    if (!page.layers.isEmpty()) {
+        QVariantList layers;
+        for (const InkLayer &layer : page.layers)
+            layers.append(QVariantMap{{QStringLiteral("id"), layer.id}, {QStringLiteral("name"), layer.name},
+                                       {QStringLiteral("visible"), layer.visible}, {QStringLiteral("strokes"), layer.strokes}});
+        layout.insert(QStringLiteral("layers"), layers);
+        layout.insert(QStringLiteral("activeLayer"), page.activeLayer);
+    }
+    return layout;
+}
+
 QJsonArray Notebook::writePages(const Book &book)
 {
     QJsonArray pages;
-    for (const Page &page : book.pages) {
-        const QJsonArray ink = QJsonArray::fromVariantList(page.strokes);
-        if (page.hasLayout()) {
-            QJsonObject layout{
-                {QStringLiteral("template"), page.paper},
-                {QStringLiteral("strokes"), ink},
-                {QStringLiteral("items"), QJsonArray::fromVariantList(page.items)},
-            };
-            if (!page.background.isEmpty())
-                layout.insert(QStringLiteral("background"), QString::fromLatin1(page.background.toBase64()));
-            if (!page.tags.isEmpty())
-                layout.insert(QStringLiteral("tags"), QJsonArray::fromStringList(page.tags));
-            if (!page.pdfText.isEmpty())
-                layout.insert(QStringLiteral("pdfText"), page.pdfText);
-            if (!page.markdownBlockId.isEmpty())
-                layout.insert(QStringLiteral("markdownBlockId"), page.markdownBlockId);
-            if (!page.transcripts.isEmpty())
-                layout.insert(QStringLiteral("transcripts"), QJsonArray::fromStringList(page.transcripts));
-            if (page.bookmarked)
-                layout.insert(QStringLiteral("bookmarked"), true);
-            if (!page.layers.isEmpty()) {
-                QJsonArray layers;
-                for (const InkLayer &layer : page.layers) {
-                    layers.append(QJsonObject{{QStringLiteral("id"), layer.id}, {QStringLiteral("name"), layer.name},
-                                               {QStringLiteral("visible"), layer.visible},
-                                               {QStringLiteral("strokes"), QJsonArray::fromVariantList(layer.strokes)}});
-                }
-                layout.insert(QStringLiteral("layers"), layers);
-                layout.insert(QStringLiteral("activeLayer"), page.activeLayer);
-            }
-            pages.append(layout);
-        } else {
-            pages.append(ink);
-        }
-    }
+    for (const Page &page : book.pages)
+        pages.append(QJsonValue::fromVariant(pageStorageValue(page)));
     return pages;
 }
 
@@ -2892,21 +4063,44 @@ QByteArray Notebook::revisionOf(const Book &book)
         page.remove(QStringLiteral("markdownBlockId"));
         pages.replace(index, page);
     }
-    return fileRevision(QJsonDocument(QJsonArray{book.title, pages}).toJson(QJsonDocument::Compact));
+    QJsonArray content{book.title, pages};
+    if (book.handwritingLanguage != QStringLiteral("it") || !book.sourceDocuments.isEmpty()) {
+        content.append(book.handwritingLanguage);
+        content.append(QJsonArray::fromStringList(book.sourceDocuments.keys()));
+    }
+    return fileRevision(QJsonDocument(content).toJson(QJsonDocument::Compact));
 }
 
 QString Notebook::load()
 {
-    QByteArray contents;
-    const QString readError = readFile(m_filePath, contents);
-    if (!readError.isEmpty() || contents.isNull())
-        return readError;
+    const auto stored = PageStore::read(m_filePath);
+    if (!stored.error.isEmpty() || stored.payload.isNull())
+        return stored.error;
 
     State loaded;
-    const QString error = readState(contents, loaded);
+    const QString error = readState(stored.payload, loaded);
     if (!error.isEmpty())
         return error;
-    m_fileRevision = fileRevision(contents);
+    m_fileRevision = fileRevision(stored.currentBytes);
+    m_recoveredStorage = stored.recovered;
+    // Builds that saved reading positions separately left this sidecar next to
+    // the portable library. Import it once only when it matches that snapshot.
+    QFile positionsFile(m_filePath + QStringLiteral(".reading.json"));
+    if (!stored.recovered && positionsFile.open(QIODevice::ReadOnly) && positionsFile.size() <= 1024 * 1024) {
+        const auto positions = QJsonDocument::fromJson(positionsFile.readAll()).object();
+        if (positions.value(QStringLiteral("libraryRevision")).toString().toLatin1() == m_fileRevision.toHex()) {
+            const auto pages = positions.value(QStringLiteral("positions")).toObject();
+            for (Book &book : loaded.books) {
+                const QString id = pages.value(book.id).toString();
+                if (findPage(book, id) >= 0) book.lastViewedPageId = id;
+            }
+            const int active = findBook(loaded, positions.value(QStringLiteral("activeBook")).toString());
+            if (active >= 0 && !loaded.books.at(active).trashed) {
+                loaded.activeBook = active;
+                loaded.page = resumePage(loaded.books.at(active));
+            }
+        }
+    }
     m_state = std::move(loaded);
     return {};
 }
@@ -2920,7 +4114,7 @@ QString Notebook::readState(const QByteArray &contents, State &loaded)
 
     const QJsonObject root = document.object();
     const int version = root.value(QStringLiteral("version")).toInt();
-    if (version < LegacyFileVersion || version > ImageFileVersion)
+    if (version < LegacyFileVersion || version > NotebookFormat::maximumSupportedVersion)
         return tr("La versione del file dei quaderni non è supportata.");
     if (!root.value(QStringLiteral("books")).isArray())
         return invalidFile;
@@ -2961,6 +4155,34 @@ QString Notebook::readState(const QByteArray &contents, State &loaded)
         Book book;
         book.id = bookObject.value(QStringLiteral("id")).toString();
         book.title = bookObject.value(QStringLiteral("title")).toString();
+        book.handwritingLanguage = bookObject.value(QStringLiteral("handwritingLanguage")).toString(QStringLiteral("it"));
+        const QJsonValue workspace = bookObject.value(QStringLiteral("workspace"));
+        if (!workspace.isUndefined() && (!workspace.isString() || workspace.toString() != QStringLiteral("diagrams")))
+            return invalidFile;
+        book.workspace = workspace.toString();
+        if (book.handwritingLanguage != QStringLiteral("it") && book.handwritingLanguage != QStringLiteral("en"))
+            return invalidFile;
+        const auto sourceData = bookObject.value(QStringLiteral("sourceDocuments"));
+        if (!sourceData.isUndefined()) {
+            if (version < ExtendedFileVersion || !sourceData.isObject() || sourceData.toObject().size() > 1000)
+                return invalidFile;
+            const auto sources = sourceData.toObject();
+            for (auto it = sources.begin(); it != sources.end(); ++it) {
+                const auto entry = it.value().toObject();
+                const QString kind = entry.value(QStringLiteral("kind")).toString();
+                const QString data = entry.value(QStringLiteral("data")).toString();
+                const QByteArray hash = it.key().toLatin1();
+                if ((kind != QStringLiteral("pdf") && kind != QStringLiteral("epub"))
+                    || data.isEmpty() || data.size() > ((kind == QStringLiteral("epub") ? 64LL : 48LL) * 1024 * 1024 + 2) / 3 * 4 || hash.size() != 64
+                    || QByteArray::fromHex(hash).toHex() != hash)
+                    return invalidFile;
+                const QByteArray decoded = QByteArray::fromBase64(data.toLatin1(), QByteArray::AbortOnBase64DecodingErrors);
+                if (decoded.isEmpty() || decoded.size() > (kind == QStringLiteral("epub") ? 64LL : 48LL) * 1024 * 1024
+                    || QCryptographicHash::hash(decoded, QCryptographicHash::Sha256).toHex() != hash)
+                    return invalidFile;
+                book.sourceDocuments.insert(it.key(), QVariantMap{{QStringLiteral("kind"), kind}, {QStringLiteral("data"), data}});
+            }
+        }
         const QByteArray importedRevision = bookObject.value(QStringLiteral("importedRevision")).toString().toLatin1();
         if (importedRevision.size() == 64) {
             const QByteArray decoded = QByteArray::fromHex(importedRevision);
@@ -3020,16 +4242,33 @@ QString Notebook::readState(const QByteArray &contents, State &loaded)
                     const QString encoded = background.toString();
                     if (version < LibraryFileVersion || encoded.isEmpty() || encoded.size() > maxEncodedBackground)
                         return invalidFile;
-                    page.background = QByteArray::fromBase64(encoded.toLatin1(), QByteArray::AbortOnBase64DecodingErrors);
-                    if (!validBackground(page.background))
+                    page.encodedBackground = encoded;
+                    if (!validBackground(page.backgroundData()))
                         return invalidFile;
+                }
+                const auto source = layout.value(QStringLiteral("source"));
+                if (!source.isUndefined()) {
+                    const auto descriptor = source.toObject();
+                    const QString asset = descriptor.value(QStringLiteral("asset")).toString();
+                    const auto origin = descriptor.value(QStringLiteral("origin"));
+                    const int pageNumber = descriptor.value(QStringLiteral("page")).toInt(-1);
+                    if (version < ExtendedFileVersion || !source.isObject() || !page.encodedBackground.isEmpty()
+                        || descriptor.value(QStringLiteral("kind")) != QStringLiteral("pdf")
+                        || pageNumber < 0 || pageNumber >= 100000 || descriptor.value(QStringLiteral("page")).toDouble(-1) != pageNumber
+                        || !book.sourceDocuments.contains(asset)
+                        || book.sourceDocuments.value(asset).toMap().value(QStringLiteral("kind")) != QStringLiteral("pdf")
+                        || (!origin.isUndefined() && (!origin.isString() || !book.sourceDocuments.contains(origin.toString()))))
+                        return invalidFile;
+                    page.source = {{QStringLiteral("kind"), QStringLiteral("pdf")}, {QStringLiteral("asset"), asset},
+                                   {QStringLiteral("page"), pageNumber}};
+                    if (!origin.isUndefined()) page.source.insert(QStringLiteral("origin"), origin.toString());
                 }
                 const QJsonValue layerData = layout.value(QStringLiteral("layers"));
                 const QJsonValue indexedText = layout.value(QStringLiteral("pdfText"));
                 const QJsonValue markdownBlock = layout.value(QStringLiteral("markdownBlockId"));
                 const QJsonValue transcripts = layout.value(QStringLiteral("transcripts"));
                 const QJsonValue bookmark = layout.value(QStringLiteral("bookmarked"));
-                if ((!indexedText.isUndefined() && (!indexedText.isString() || page.background.isEmpty()))
+                if ((!indexedText.isUndefined() && (!indexedText.isString() || !page.hasBackground()))
                     || (!markdownBlock.isUndefined() && (!markdownBlock.isString() || markdownBlock.toString().isEmpty()))
                     || (!transcripts.isUndefined() && !transcripts.isArray())
                     || (!bookmark.isUndefined() && !bookmark.isBool()))
@@ -3135,6 +4374,15 @@ QString Notebook::readState(const QByteArray &contents, State &loaded)
 int Notebook::dataVersion(const State &state)
 {
     int version = state.folders.isEmpty() ? LegacyFileVersion : LibraryFileVersion;
+    for (const auto &book : state.books) {
+        if (!book.sourceDocuments.isEmpty() || book.handwritingLanguage != QStringLiteral("it"))
+            version = qMax(version, ExtendedFileVersion);
+        for (const auto &page : book.pages) {
+            if (!page.source.isEmpty()) version = qMax(version, ExtendedFileVersion);
+            for (const auto &item : page.items)
+                version = qMax(version, requiredItemVersion(item.toMap()));
+        }
+    }
     for (const Book &book : state.books) {
         if (!book.tags.isEmpty() || book.favorite || book.trashed || !book.folderId.isEmpty())
             version = qMax(version, LibraryFileVersion);
@@ -3150,7 +4398,7 @@ int Notebook::dataVersion(const State &state)
                 version = ReadingFileVersion;
             if (page.hasLayout())
                 version = qMax(version, LayoutFileVersion);
-            if (!page.background.isEmpty() || !page.layers.isEmpty() || !page.tags.isEmpty()
+            if (page.hasBackground() || !page.layers.isEmpty() || !page.tags.isEmpty()
                 || std::any_of(page.strokes.cbegin(), page.strokes.cend(), [](const QVariant &stroke) {
                     return stroke.toMap().contains(QStringLiteral("tool"));
                 }))
@@ -3186,6 +4434,11 @@ QByteArray Notebook::serialize(const State &state)
             {QStringLiteral("pages"), writePages(book)},
             {QStringLiteral("pageIds"), pageIds},
         };
+        if (!book.workspace.isEmpty()) object.insert(QStringLiteral("workspace"), book.workspace);
+        if (book.handwritingLanguage != QStringLiteral("it"))
+            object.insert(QStringLiteral("handwritingLanguage"), book.handwritingLanguage);
+        if (!book.sourceDocuments.isEmpty())
+            object.insert(QStringLiteral("sourceDocuments"), QJsonObject::fromVariantMap(book.sourceDocuments));
         if (!book.lastViewedPageId.isEmpty())
             object.insert(QStringLiteral("lastViewedPageId"), book.lastViewedPageId);
         if (!book.importedRevision.isEmpty())
@@ -3222,6 +4475,7 @@ QByteArray Notebook::serialize(const State &state)
 
 bool Notebook::commit(State next, int changes, bool enforceSizeLimit)
 {
+    const QString previousBookId = bookId();
     if (!m_loadError.isEmpty())
         return fail(m_loadError);
     if (!QDir().mkpath(QFileInfo(m_filePath).absolutePath()))
@@ -3240,15 +4494,62 @@ bool Notebook::commit(State next, int changes, bool enforceSizeLimit)
 
     if (next.activeBook >= 0)
         next.books[next.activeBook].lastViewedPageId = next.books.at(next.activeBook).pages.at(next.page).id;
-    const QByteArray contents = serialize(next);
-    if (enforceSizeLimit && contents.size() > maxImportBytes)
-        return fail(tr("Il documento porterebbe la libreria oltre 64 MB."));
-    QSaveFile file(m_filePath);
-    if (!file.open(QIODevice::WriteOnly) || file.write(contents) != contents.size() || !file.commit())
-        return fail(tr("Impossibile salvare il file dei quaderni. %1").arg(file.errorString()));
+    // Reuse untouched page objects and shared immutable assets. Portable JSON
+    // is materialized only for import/export and initial library loading.
+    PageStore::Builder builder(previousContents, &m_storageBlobs);
+    QVariantList books;
+    QString storageError;
+    for (const Book &book : std::as_const(next.books)) {
+        const int previousBookIndex = findBook(m_state, book.id);
+        QHash<QString, const Page *> previousPages;
+        if (previousBookIndex >= 0)
+            for (const Page &old : m_state.books.at(previousBookIndex).pages) previousPages.insert(old.id, &old);
+        QVariantList pages;
+        QStringList pageIds;
+        for (const Page &page : book.pages) {
+            const Page *old = previousPages.value(page.id, nullptr);
+            QString hash;
+            if (old && *old == page && old->activeLayer == page.activeLayer && old->markdownBlockId == page.markdownBlockId)
+                hash = builder.reusePage(book.id, page.id);
+            if (hash.isEmpty()) hash = builder.addPage(pageStorageValue(page), &storageError);
+            if (hash.isEmpty()) return fail(storageError);
+            pages.append(hash);
+            pageIds.append(page.id);
+        }
+        QVariantMap metadata{{QStringLiteral("id"), book.id}, {QStringLiteral("title"), book.title},
+            {QStringLiteral("pages"), pages}, {QStringLiteral("pageIds"), pageIds},
+            {QStringLiteral("handwritingLanguage"), book.handwritingLanguage}};
+        if (!book.workspace.isEmpty()) metadata.insert(QStringLiteral("workspace"), book.workspace);
+        if (!book.sourceDocuments.isEmpty()) metadata.insert(QStringLiteral("sourceDocuments"), book.sourceDocuments);
+        if (!book.lastViewedPageId.isEmpty()) metadata.insert(QStringLiteral("lastViewedPageId"), book.lastViewedPageId);
+        if (!book.importedRevision.isEmpty()) metadata.insert(QStringLiteral("importedRevision"), QString::fromLatin1(book.importedRevision.toHex()));
+        if (!book.folderId.isEmpty()) metadata.insert(QStringLiteral("folderId"), book.folderId);
+        if (!book.tags.isEmpty()) metadata.insert(QStringLiteral("tags"), book.tags);
+        if (book.favorite) metadata.insert(QStringLiteral("favorite"), true);
+        if (book.trashed) metadata.insert(QStringLiteral("trashed"), true);
+        books.append(metadata);
+    }
+    QVariantList folders;
+    for (const Folder &folder : std::as_const(next.folders))
+        folders.append(QVariantMap{{QStringLiteral("id"), folder.id}, {QStringLiteral("title"), folder.title},
+                                   {QStringLiteral("parentId"), folder.parentId}});
+    const QVariantMap metadata{{QStringLiteral("version"), NotebookFormat::maximumSupportedVersion},
+        {QStringLiteral("books"), books}, {QStringLiteral("folders"), folders},
+        {QStringLiteral("activeBook"), next.activeBook >= 0 ? next.books.at(next.activeBook).id : QString{}},
+        {QStringLiteral("page"), next.page}};
+    PageStore::Update update;
+    if (!builder.finish(metadata, &update, &storageError)) return fail(storageError);
+    // The local object store has its own bounded budget. The 64 MiB cap applies
+    // to explicit portable transfers, not to unrelated pages already saved.
+    Q_UNUSED(enforceSizeLimit)
+    QByteArray manifest;
+    if (!PageStore::writeUpdate(m_filePath, update, previousContents, &manifest, &storageError, m_recoveredStorage))
+        return fail(tr("Impossibile salvare il file dei quaderni. %1").arg(storageError));
 
-    m_fileRevision = fileRevision(contents);
+    m_recoveredStorage = false;
+    m_fileRevision = fileRevision(manifest);
     m_state = std::move(next);
+    if (previousBookId != bookId()) emit localReadingPreferencesChanged();
     if (changes & ResetInkHistory) {
         m_undo.clear();
         m_redo.clear();

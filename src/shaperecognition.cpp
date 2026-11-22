@@ -43,7 +43,7 @@ QPolygonF spacedSamples(const QPolygonF &path, qreal pathLength)
     return samples;
 }
 
-bool looksLikeLine(const QPolygonF &samples, qreal pathLength)
+bool looksLikeLine(const QPolygonF &samples, qreal pathLength, qreal sensitivity)
 {
     const QPointF start = samples.first();
     const QPointF chord = samples.last() - start;
@@ -52,7 +52,7 @@ bool looksLikeLine(const QPolygonF &samples, qreal pathLength)
         return false;
 
     const QPointF direction = chord / chordLength;
-    const qreal tolerance = std::clamp(chordLength * 0.053, 0.0022, 0.010);
+    const qreal tolerance = std::clamp(chordLength * 0.053, 0.0022, 0.010) * sensitivity;
     qreal squaredError = 0;
     qreal previous = 0;
     qreal backtracking = 0;
@@ -89,14 +89,14 @@ bool followsClosedOutline(const QPolygonF &samples, const QRectF &bounds, qreal 
     return qAbs(sweep) >= fullTurn * 0.98 && totalSweep <= fullTurn * 1.19;
 }
 
-bool looksLikeRectangle(const QPolygonF &samples, const QRectF &box, qreal areaRatio)
+bool looksLikeRectangle(const QPolygonF &samples, const QRectF &box, qreal areaRatio, qreal sensitivity)
 {
     if (areaRatio < 0.86 || areaRatio > 1.02)
         return false;
 
     const qreal shortSide = qMin(box.width(), box.height());
     const std::array<QPointF, 4> corners{box.topLeft(), box.topRight(), box.bottomRight(), box.bottomLeft()};
-    const qreal tolerance = shortSide * 0.16;
+    const qreal tolerance = shortSide * 0.16 * sensitivity;
     std::array<bool, 4> visited{};
     qreal meanError = 0;
     for (const QPointF &point : samples) {
@@ -110,11 +110,11 @@ bool looksLikeRectangle(const QPolygonF &samples, const QRectF &box, qreal areaR
                 visited[index] = true;
         }
     }
-    return meanError / samples.size() <= shortSide * 0.06
+    return meanError / samples.size() <= shortSide * 0.06 * sensitivity
         && std::all_of(visited.cbegin(), visited.cend(), [](bool corner) { return corner; });
 }
 
-bool looksLikeEllipse(const QPolygonF &samples, const QRectF &box, qreal areaRatio)
+bool looksLikeEllipse(const QPolygonF &samples, const QRectF &box, qreal areaRatio, qreal sensitivity)
 {
     if (areaRatio < 0.65 || areaRatio > 0.87 || qMax(box.width(), box.height()) > 6 * qMin(box.width(), box.height()))
         return false;
@@ -124,17 +124,17 @@ bool looksLikeEllipse(const QPolygonF &samples, const QRectF &box, qreal areaRat
         const QPointF centered = point - box.center();
         const qreal radius = std::hypot(2 * centered.x() / box.width(), 2 * centered.y() / box.height());
         const qreal error = qAbs(radius - 1);
-        if (error > 0.21)
+        if (error > 0.21 * sensitivity)
             return false;
         squaredError += error * error;
     }
-    return std::sqrt(squaredError / samples.size()) <= 0.09;
+    return std::sqrt(squaredError / samples.size()) <= 0.09 * sensitivity;
 }
 }
 
-std::optional<RecognizedShape> recognizeInkShape(const QList<InkPoint> &points, QSizeF pageSize)
+std::optional<RecognizedShape> recognizeInkShape(const QList<InkPoint> &points, QSizeF pageSize, qreal tolerance)
 {
-    if (points.size() < 2 || pageSize.isEmpty())
+    if (points.size() < 2 || pageSize.isEmpty() || !std::isfinite(tolerance) || tolerance < 0.5 || tolerance > 1.5)
         return std::nullopt;
 
     const qreal ratio = pageSize.height() / pageSize.width();
@@ -159,7 +159,7 @@ std::optional<RecognizedShape> recognizeInkShape(const QList<InkPoint> &points, 
         return std::nullopt;
 
     const QPolygonF samples = spacedSamples(path, pathLength);
-    if (looksLikeLine(samples, pathLength))
+    if (looksLikeLine(samples, pathLength, tolerance))
         return RecognizedShape{InkTool::Line, {asAnchor(samples.first()), asAnchor(samples.last())}};
 
     const QRectF bounds = samples.boundingRect();
@@ -173,9 +173,9 @@ std::optional<RecognizedShape> recognizeInkShape(const QList<InkPoint> &points, 
         return std::nullopt;
 
     const QList<InkPoint> anchors{asAnchor(bounds.topLeft()), asAnchor(bounds.bottomRight())};
-    if (looksLikeRectangle(samples, bounds, areaRatio))
+    if (looksLikeRectangle(samples, bounds, areaRatio, tolerance))
         return RecognizedShape{InkTool::Rectangle, anchors};
-    if (looksLikeEllipse(samples, bounds, areaRatio))
+    if (looksLikeEllipse(samples, bounds, areaRatio, tolerance))
         return RecognizedShape{InkTool::Ellipse, anchors};
     return std::nullopt;
 }

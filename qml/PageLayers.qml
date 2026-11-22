@@ -7,6 +7,7 @@ import Quaderno
 
 Dialog {
     id: layerDialog
+    objectName: "pageLayersDialog"
 
     required property Notebook notebook
     required property real uiScale
@@ -25,6 +26,8 @@ Dialog {
     readonly property bool naming: action === "add" || action === "rename"
     readonly property bool confirmingDelete: action === "delete"
     readonly property bool managing: action === ""
+    readonly property var activeLayer: notebook.layers.find(layer => layer.id === notebook.activeLayer)
+    readonly property bool activeLayerHidden: Boolean(activeLayer && !activeLayer.visible)
 
     parent: Overlay.overlay
     anchors.centerIn: parent
@@ -141,6 +144,31 @@ Dialog {
 
             width: scroll.availableWidth
             spacing: 7 * layerDialog.uiScale
+
+            Rectangle {
+                visible: layerDialog.managing && layerDialog.activeLayerHidden
+                Layout.fillWidth: true
+                implicitHeight: hiddenNotice.implicitHeight + 16 * layerDialog.uiScale
+                color: "#fff4d9"
+                radius: 8 * layerDialog.uiScale
+                ColumnLayout {
+                    id: hiddenNotice
+                    anchors.fill: parent
+                    anchors.margins: 8 * layerDialog.uiScale
+                    LayerLabel {
+                        objectName: "hiddenLayerNotice"
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        text: layerDialog.activeLayerHidden
+                            ? qsTr("Il livello attivo «%1» è nascosto. Mostralo per scrivere, oppure scegli un livello visibile.").arg(layerDialog.activeLayer.name) : ""
+                    }
+                    LayerButton {
+                        objectName: "showActiveLayer"
+                        text: qsTr("Mostra livello attivo")
+                        onClicked: layerDialog.finish(layerDialog.notebook.setLayerVisible(layerDialog.notebook.activeLayer, true))
+                    }
+                }
+            }
 
             Repeater {
                 model: layerDialog.managing ? Array.from(layerDialog.notebook.layers).reverse() : []

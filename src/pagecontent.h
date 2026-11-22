@@ -14,6 +14,9 @@ inline constexpr int maxTableRows = 12;
 inline constexpr int maxTableColumns = 8;
 inline constexpr qsizetype maxTableCellLength = 500;
 inline constexpr int maxImagesPerPage = 12;
+inline constexpr qsizetype maxNoteTextLength = 4000;
+inline constexpr qsizetype maxNoteStrokes = 2000;
+inline constexpr qsizetype maxNotePoints = 60000;
 
 bool isTemplate(const QString &key);
 QVariantMap imageFromFile(const QUrl &file, QString &error);
@@ -25,5 +28,6 @@ qreal preferredItemHeight(const QVariantMap &item, qreal width);
 QRectF textRectAtInk(const QString &text, const QRectF &inkBounds);
 void paintTemplate(QPainter &painter, QSizeF pageSize, const QString &key);
 void paintChart(QPainter &painter, QSizeF size, const QVariantMap &chart);
+void paintNoteMarker(QPainter &painter, const QRectF &rect, const QVariantMap &note, int number);
 void paintItems(QPainter &painter, QSizeF pageSize, const QVariantList &items);
 }

@@ -27,6 +27,16 @@ Quaderno è un’applicazione C++17 e Qt Quick. Il progetto genera `quaderno.app
 
 La piattaforma Qt `epaper` attiva i servizi del dispositivo. L’opzione `--tablet` abilita il layout tablet e la tastiera a schermo anche su macOS. Durante la configurazione, CMake adatta le proprietà QML di accessibilità al kit Qt del firmware. [Modulo QML con CMake](https://doc.qt.io/qt-6/qt-add-qml-module.html) · [Qt Quick sui tablet reMarkable](https://developer.remarkable.com/documentation/qt_epaper)
 
+## Implementazione di diagrammi e orientamento (0.2.8)
+
+Il modello [Notebook](../src/notebook.cpp) indicizza i diagrammi insieme a grafici e tabelle. `createDiagramBook()` crea una pagina realmente vuota e il metadato facoltativo `workspace: "diagrams"`. `diagramBook` identifica quel quaderno. `openLibraryItem()` restituisce `workspace: true` per la voce sintetica vuota; la navigazione apre la pagina senza creare un oggetto diagramma vuoto o aprirne l’editor. Gli aggiornamenti conservano la classificazione locale esistente se un’app precedente omette il campo.
+
+[`DiagramRecognition`](../src/diagramrecognizer.cpp) analizza la geometria in modo locale e deterministico. `Notebook::diagramHandwritingPlan()` aggiunge identità di quaderno/pagina/livello e revisione corrente dell’indice. `applyDiagramHandwriting()` verifica nuovamente sorgente e struttura rivista prima di una sola modifica atomica a tratti e oggetti. Sono ammesse solo le modifiche previste al testo delle etichette. La sostituzione rimuove l’unione degli indici riconosciuti e delle etichette accettate non vuote, deduplicando i candidati sovrapposti. I tratti non assegnati rimangono. Il campo limitato `handwritingSource` permette il recupero dopo la riapertura; l’annullamento di sessione è separato. Le copie indipendenti dalla libreria omettono tale sorgente. [`DiagramExport`](../src/diagramexport.cpp) condivide la scrittura QIODevice fra `.drawio` singolo e allegati Markdown preparati in una cartella temporanea.
+
+[`ScreenOrientation`](../src/screenorientation.cpp) legge l’accelerometro IIO supportato sul Paper Pro attraverso un worker, verifica la matrice di montaggio e filtra campioni ambigui o instabili. Una sola lettura può essere in corso. Un errore azzera la stabilità del candidato; errori ripetuti ritentano il rilevamento senza inventare un orientamento. Non serve Qt Sensors. Main abilita il campionamento solo con preferenza attiva, app sveglia e PIN sbloccato. La rotazione esistente di scena logica e overlay gestisce coordinate di penna e tocco. L’orientamento di lettura fisso ha precedenza; il cambio attende durante un’interazione o operazione modale. Scegliere un angolo manuale disattiva la rotazione automatica, inizialmente spenta.
+
+Le proposte automatiche dei diagrammi sono separate dai salvataggi: una pausa può mostrare un suggerimento richiudibile solo nel quaderno Diagrammi. Rimane obbligatoria la revisione esplicita. Vedi [Diagrammi](DIAGRAMMI.md) e [impostazioni](IMPOSTAZIONI.md). La prima build 0.2.8 ha superato tutte le 15 suite Mac e ARM, regressioni geometriche/UI, controlli dei pacchetti e avvio nativo. L’utente ha confermato la rotazione automatica da verticale a orizzontale, poi un disegno reale ha evidenziato un riconoscimento geometrico troppo restrittivo. Le tolleranze riviste coprono imperfezioni limitate dei contorni e ulteriori gesti per le punte delle frecce; la geometria ambigua resta inchiostro. Una correzione separata delle notifiche di sincronizzazione ha superato le tre suite interessate su ogni piattaforma. Le suite corrette Mac e ARM di geometria/UI sono superate 2/2 (34 e 17 verifiche), con avvii rigorosi; la build corretta è installata sul Paper Pro e ha superato l’avvio rigoroso nativo/AppLoad a 1620 × 2160 senza errori QML. Il 18 novembre 2026 l’utente ha confermato che riconoscimento, applicazione del risultato e apertura dell’editor per modificarlo funzionano nel diagramma di prova sul Paper Pro; vedi lo [stato delle verifiche](IMPOSTAZIONI.md#ambito-delle-verifiche).
+
 ## Compilare su Mac
 
 Servono CMake 3.21.1 o successivo, gli strumenti di compilazione di Xcode, OpenSSL 3, zlib e Qt 6.5 o successivo compatibile con il compilatore e con l’SDK Apple in uso. Installa Qt Quick, Qt Quick Controls, Qt Quick Dialogs, Qt Network, Qt D-Bus e Qt Linguist Tools. La build Mac verificata usa Apple Silicon, SDK macOS 27.2 e Qt 6.8.3 con la correzione al collegamento di AGL. Lo ZIP ottenuto ha come requisito minimo macOS 27.2. Se OpenSSL è fuori dai percorsi di ricerca predefiniti, imposta `OPENSSL_ROOT_DIR` in CMake.
@@ -77,7 +87,7 @@ Per attivare la trascrizione offline in italiano sul Paper Pro, compila il motor
 
 ## Verificare le modifiche
 
-Il repository contiene i sorgenti e gli script di installazione. Le verifiche funzionali sono riproducibili con i passaggi qui sotto. Per i test usa quaderni, immagini e credenziali di prova.
+Il repository contiene i sorgenti e gli script di installazione. Le verifiche funzionali sono riproducibili con i passaggi qui sotto. Per i test usa quaderni, immagini e credenziali di prova. I target di regressione 0.2.8 includono `diagramrecognition_tests`, `diagramsintegration_tests` e `screenorientation_tests` per geometria, conversione/recupero atomici, flussi di libreria/interfaccia e filtro del sensore. La loro presenza non attesta il superamento del collaudo sul dispositivo.
 
 GitHub Actions compila l’app desktop su Linux e controlla l’avvio nei layout desktop e tablet. Per ripetere il controllo degli script in locale, installa ShellCheck ed esegui il comando seguente.
 
@@ -106,6 +116,8 @@ python3 scripts/check-startup.py build-ci/quaderno
 | Penna e livelli | Scrivi, cancella, annulla e ripeti. Nascondi e mostra un livello. Verifica le forme intelligenti, il lazo e il ripristino del tratto originale dopo la riapertura. |
 | Grafici e documenti | Seleziona due assi e una curva o barre. Correggi i dati, imposta la scala e confronta il CSV con l’anteprima. Importa un PDF e un EPUB senza DRM, aggiungi annotazioni e controlla il PDF esportato. |
 | Trascrizione | Usa un breve campione scritto a mano. Verifica che l’anteprima compaia in automatico sul Paper Pro. Rivedi il testo, salvalo su una nuova pagina, cercalo e verifica che i tratti originali siano ancora disponibili. |
+| Diagrammi | Crea un quaderno Diagrammi vuoto e riaprilo; disegna e rivedi un flusso, escludi un’etichetta, applica, annulla/ripeti e recupera i tratti dopo il riavvio. Inserisci una copia in Scrittura e verifica indipendenza, PNG/`.drawio` nel Markdown e trasferimento del quaderno. |
+| Orientamento automatico | Con sensore supportato verifica quattro angoli stabili, posizioni piatte/ambigue, allineamento degli ingressi, attesa con finestre, PIN/sospensione, scelta manuale e orientamento fisso del libro. Un errore di lettura non deve generare un nuovo angolo. |
 | Paper Pro fisico | Verifica coordinate e pressione del Marker, allineamento touch, refresh e leggibilità e‑ink, luce di lettura e Wi‑Fi. Prova **Esci** e la scadenza della sessione. Verifica il ritorno dell’interfaccia reMarkable in entrambi i casi. |
 
 La build per il firmware è stata verificata anche in una VM Linux AArch64 e su un Paper Pro fisico. Ripeti le prove sul dispositivo per ogni pacchetto scaricabile. [Stato del rilascio e del collaudo](RILASCIO.md) · [Prova via USB](INSTALLAZIONE.md)
@@ -159,3 +171,7 @@ sh scripts/package-paper-pro.sh build-paper-pro/quaderno build-paper-pro/package
 Per includere il motore di trascrizione offline, esegui lo script nell’ambiente dell’SDK corrispondente e passa l’archivio WritePad della revisione indicata come terzo argomento. Distribuisci l’archivio dei sorgenti che lo script crea insieme allo ZIP. [Compilazione e pacchetto WritePad](../tools/writepad/README.md)
 
 Per verificare il pacchetto, estrailo su una macchina di prova ed esegui l’installazione USB con `--install-only`. Poi avvia una sessione temporanea e verifica il ritorno all’interfaccia reMarkable. Per ogni build distribuita indica il commit, la versione del firmware collaudata e lo SHA‑256 dello ZIP.
+
+## Protocollo di sincronizzazione incrementale
+
+Consulta [Sincronizzazione wireless incrementale](PROTOCOLLO_SYNC.md) per negoziazione, manifesti di pagine e risorse, conferme delle parti salvate, ripresa, limiti della cache e test.

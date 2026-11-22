@@ -5,12 +5,16 @@ import Quaderno
 
 Dialog {
     id: dialog
+    objectName: "wirelessSyncDialog"
     required property WirelessSync wireless
     required property Notebook notebook
     required property real uiScale
     property string syncLabel: ""
+    property var preferences: null
+    property string automationStatus: ""
     property bool bluetoothOnly: false
     signal resumeOpened()
+    signal automaticSyncRequested()
     readonly property BleSync transfer: wireless.transfer
     readonly property var summary: transfer.previewInfo
     readonly property string action: summary.action || ""
@@ -20,6 +24,7 @@ Dialog {
         return notebook.bookId.length ? transfer.bookStatus(notebook.bookId) : ({})
     }
     readonly property bool codeVisible: !wireless.paired && (!wireless.tablet || wireless.code.length > 0)
+    readonly property bool wifiAddressValid: wireless.tablet || wireless.validWifiAddress(addressInput.text)
 
     parent: Overlay.overlay
     anchors.centerIn: parent
@@ -35,6 +40,8 @@ Dialog {
 
     function begin(bluetooth = false) {
         bluetoothOnly = bluetooth && (!wireless.active || wireless.bluetoothActive)
+        if (!addressInput.text.length)
+            addressInput.text = wireless.savedWifiAddress
         open()
         scroll.contentItem.contentY = 0
         if (!bluetooth && wireless.tablet && !wireless.paired && !wireless.active && !wireless.code)
@@ -83,6 +90,19 @@ Dialog {
             id: body
             width: scroll.availableWidth
             spacing: 9 * dialog.uiScale
+
+            Note {
+                objectName: "wirelessConnectionState"
+                font.weight: Font.DemiBold
+                text: dialog.transfer.connected
+                      ? qsTr("Connesso · %1").arg(dialog.wireless.bluetoothActive ? qsTr("Bluetooth") : qsTr("Wi-Fi locale"))
+                      : dialog.wireless.active ? qsTr("Collegamento in corso…")
+                      : dialog.wireless.paired ? qsTr("Abbinato · Disconnesso") : qsTr("Da abbinare")
+            }
+            Note {
+                visible: dialog.wireless.paired && !dialog.wireless.active
+                text: qsTr("L’abbinamento è salvato. Per il Wi-Fi, avvia il collegamento anche sul Paper Pro e verifica che entrambi siano sulla stessa rete.")
+            }
 
             Note {
                 visible: Boolean(dialog.offer.pageId)
@@ -137,20 +157,41 @@ Dialog {
                 selectByMouse: true
                 enabled: !dialog.wireless.active
                 inputMethodHints: Qt.ImhSensitiveData | Qt.ImhNoPredictiveText
+                onAccepted: {
+                    if (dialog.bluetoothOnly && bluetoothConnect.enabled)
+                        bluetoothConnect.clicked()
+                    else if (wifiConnect.enabled)
+                        wifiConnect.clicked()
+                    else
+                        addressInput.forceActiveFocus()
+                }
             }
             TextField {
                 id: addressInput
+                objectName: "wirelessAddressInput"
                 visible: !dialog.bluetoothOnly && !dialog.wireless.tablet && !dialog.wireless.active
                 Layout.fillWidth: true
                 placeholderText: qsTr("Indirizzo Wi-Fi del Paper Pro")
                 maximumLength: 15
                 selectByMouse: true
+                inputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhPreferNumbers
+                onAccepted: if (wifiConnect.enabled) wifiConnect.clicked()
+            }
+            Note {
+                visible: addressInput.visible && addressInput.text.trim().length > 0 && !dialog.wifiAddressValid
+                color: "#87332c"
+                text: qsTr("Usa un IPv4 della rete locale, per esempio 192.168.1.20. L’indirizzo USB e gli indirizzi Internet non sono accettati.")
+            }
+            Note {
+                visible: addressInput.visible && dialog.wireless.savedWifiAddress.length > 0
+                text: qsTr("Ultimo indirizzo Wi-Fi: %1. Puoi modificarlo se è cambiato.").arg(dialog.wireless.savedWifiAddress)
             }
             RowLayout {
                 visible: !dialog.wireless.active
                 Layout.fillWidth: true
 
                 SyncButton {
+                    id: bluetoothConnect
                     Layout.fillWidth: true
                     text: dialog.bluetoothOnly
                           ? (dialog.wireless.tablet ? qsTr("Avvia Bluetooth") : qsTr("Collega il Paper Pro"))
@@ -160,12 +201,14 @@ Dialog {
                     onClicked: dialog.wireless.startBluetooth(codeInput.text)
                 }
                 SyncButton {
+                    id: wifiConnect
+                    objectName: "wirelessWifiConnect"
                     Layout.fillWidth: true
                     visible: !dialog.bluetoothOnly
                     text: qsTr("Wi-Fi locale")
                     enabled: !dialog.wireless.activatingBluetooth
                              && (dialog.wireless.paired || (dialog.wireless.tablet ? dialog.codeVisible : codeInput.length > 0))
-                             && (dialog.wireless.tablet || addressInput.length > 0)
+                             && dialog.wifiAddressValid && !dialog.wireless.active
                     onClicked: dialog.wireless.startWifi(addressInput.text, codeInput.text)
                 }
             }
@@ -185,11 +228,64 @@ Dialog {
                 onClicked: dialog.wireless.stop()
             }
 
+            Note { visible: dialog.wireless.paired && dialog.preferences !== null; text: qsTr("Quando sincronizzare") }
+            ComboBox {
+                visible: dialog.wireless.paired && dialog.preferences !== null
+                objectName: "wirelessAutomaticSync"
+                Layout.fillWidth: true
+                Layout.minimumHeight: 44 * dialog.uiScale
+                font.pixelSize: 15 * dialog.uiScale
+                model: [ { value: "manual", label: qsTr("Solo manualmente") },
+                         { value: "onChange", label: qsTr("Dopo le modifiche") },
+                         { value: "onOpen", label: qsTr("All’apertura di un quaderno") },
+                         { value: "interval", label: qsTr("A intervalli regolari") } ]
+                textRole: "label"
+                valueRole: "value"
+                currentIndex: model.findIndex(option => option.value === dialog.preferences?.wifiAutoSync)
+                onActivated: dialog.preferences.wifiAutoSync = currentValue
+                Accessible.name: qsTr("Quando sincronizzare")
+            }
+            Note { visible: dialog.wireless.paired && dialog.preferences !== null; text: qsTr("Collegamento automatico") }
+            ComboBox {
+                objectName: "wirelessAutomaticTransport"
+                visible: dialog.wireless.paired && dialog.preferences !== null
+                Layout.fillWidth: true
+                Layout.minimumHeight: 44 * dialog.uiScale
+                font.pixelSize: 15 * dialog.uiScale
+                model: [ { value: "auto", label: qsTr("Preferisci Wi-Fi, altrimenti Bluetooth") },
+                         { value: "wifi", label: qsTr("Solo Wi-Fi") },
+                         { value: "bluetooth", label: qsTr("Solo Bluetooth") } ]
+                textRole: "label"
+                valueRole: "value"
+                currentIndex: model.findIndex(option => option.value === dialog.preferences?.syncTransport)
+                onActivated: dialog.preferences.syncTransport = currentValue
+                Accessible.name: qsTr("Collegamento automatico")
+            }
             CheckBox {
-                visible: dialog.wireless.paired
+                visible: dialog.wireless.paired && !dialog.preferences
                 text: qsTr("Sincronizza automaticamente")
                 checked: dialog.transfer.autoSync
                 onClicked: dialog.transfer.autoSync = checked
+            }
+            Note {
+                objectName: "wirelessAutomationStatus"
+                visible: dialog.automationStatus.length > 0
+                text: dialog.automationStatus
+                color: "#555b67"
+            }
+            SyncButton {
+                objectName: "wirelessResumeConnection"
+                visible: dialog.wireless.paired && !dialog.wireless.active
+                    && dialog.preferences !== null && dialog.preferences.wifiAutoSync !== "manual"
+                text: dialog.wireless.connectionPaused ? qsTr("Riprendi collegamento") : qsTr("Riprova collegamento")
+                onClicked: dialog.wireless.resumeAutomaticConnection()
+            }
+            SyncButton {
+                objectName: "wirelessSyncSelectedNow"
+                visible: dialog.wireless.paired && dialog.preferences !== null && dialog.preferences.wifiAutoSync !== "manual"
+                text: qsTr("Sincronizza i quaderni selezionati ora")
+                enabled: dialog.transfer.pinnedBooks.length > 0 && !dialog.transfer.busy && dialog.action.length === 0
+                onClicked: dialog.automaticSyncRequested()
             }
             CheckBox {
                 visible: dialog.wireless.paired && dialog.notebook.bookId.length > 0
@@ -242,6 +338,28 @@ Dialog {
                 visible: text.length > 0
                 text: dialog.transfer.status
                 color: "#555b67"
+            }
+            ProgressBar {
+                Layout.fillWidth: true
+                visible: dialog.transfer.busy && !dialog.transfer.applying && dialog.transfer.incremental
+                value: dialog.transfer.transferProgress
+            }
+            Note {
+                visible: dialog.transfer.busy && !dialog.transfer.applying && dialog.transfer.incremental
+                text: qsTr("Invio delle sole pagine e risorse mancanti · %1%").arg(Math.round(dialog.transfer.transferProgress * 100))
+                color: "#555b67"
+            }
+            SyncButton {
+                visible: dialog.transfer.connected && dialog.transfer.hasPendingTransfer
+                         && !dialog.transfer.busy && dialog.action.length === 0
+                text: qsTr("Riprendi trasferimento")
+                onClicked: dialog.transfer.retryPendingTransfer()
+            }
+            SyncButton {
+                visible: (dialog.transfer.busy || dialog.transfer.hasPendingTransfer)
+                         && !dialog.transfer.applying && dialog.action.length === 0
+                text: qsTr("Annulla trasferimento")
+                onClicked: dialog.transfer.cancel()
             }
             Note {
                 visible: dialog.action.length > 0

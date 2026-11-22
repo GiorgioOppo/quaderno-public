@@ -7,10 +7,12 @@ import Quaderno
 
 Dialog {
     id: overview
+    objectName: "pageOverview"
 
     required property Notebook notebook
     required property real uiScale
     property bool tabletMode: false
+    property bool showTouchKeyboard: tabletMode
     readonly property real hairline: Math.max(1, Math.round(uiScale))
     readonly property color ink: "#24262c"
     readonly property color border: "#d9dce2"
@@ -20,6 +22,13 @@ Dialog {
         .sort((a, b) => a.title.localeCompare(b.title))
     property int selectedPage: 0
     property int previewRevision: 0
+    property string pageFilter: "all"
+    readonly property var summaries: previewRevision > 0 ? notebook.pageSummaries() : []
+    readonly property var visiblePages: summaries.filter(page => pageFilter === "all"
+        || (pageFilter === "bookmarks" ? page.bookmarked : page.annotated))
+    readonly property int bookmarkCount: summaries.filter(page => page.bookmarked).length
+    readonly property int annotatedCount: summaries.filter(page => page.annotated).length
+    readonly property bool selectionAvailable: visiblePages.some(page => page.index === selectedPage)
     property bool confirmingDelete: false
     property bool choosingDestination: false
     property string errorText: ""
@@ -39,6 +48,8 @@ Dialog {
 
     onAboutToShow: {
         selectedPage = notebook.page
+        pageFilter = "all"
+        pageNumber.text = String(selectedPage + 1)
         previewRevision++
         confirmingDelete = false
         choosingDestination = false
@@ -47,19 +58,51 @@ Dialog {
     }
 
     onOpened: {
-        grid.positionViewAtIndex(selectedPage, GridView.Contain)
+        positionSelected()
         grid.forceActiveFocus()
     }
 
     function selectPage(index: int) {
         selectedPage = Math.min(notebook.pageCount - 1, Math.max(0, index))
+        pageNumber.text = String(selectedPage + 1)
         errorText = ""
         transferStatus = ""
         confirmingDelete = false
-        grid.positionViewAtIndex(selectedPage, GridView.Contain)
+        positionSelected()
+    }
+
+    function positionSelected() {
+        const index = visiblePages.findIndex(page => page.index === selectedPage)
+        if (index >= 0)
+            grid.positionViewAtIndex(index, GridView.Contain)
+    }
+
+    function selectVisible(offset: int) {
+        if (visiblePages.length === 0)
+            return
+        const current = visiblePages.findIndex(page => page.index === selectedPage)
+        const next = Math.max(0, Math.min(visiblePages.length - 1, current < 0 ? 0 : current + offset))
+        selectPage(visiblePages[next].index)
+    }
+
+    function jumpToNumber() {
+        if (!pageNumber.acceptableInput)
+            return
+        pageFilter = "all"
+        selectPage(Number(pageNumber.text) - 1)
+        grid.forceActiveFocus()
+    }
+
+    function setPageFilter(value: string) {
+        pageFilter = value
+        if (!visiblePages.some(page => page.index === selectedPage) && visiblePages.length > 0)
+            selectPage(visiblePages[0].index)
+        Qt.callLater(positionSelected)
     }
 
     function openPage() {
+        if (!selectionAvailable)
+            return
         if (notebook.goToPage(selectedPage))
             overview.close()
         else
@@ -170,7 +213,7 @@ Dialog {
 
         PaperButton {
             visible: !overview.choosingDestination && !overview.confirmingDelete
-            enabled: overview.destinations.length > 0
+            enabled: overview.selectionAvailable && overview.destinations.length > 0
             Layout.topMargin: 8 * overview.uiScale
             uiScale: overview.uiScale
             leftPadding: 9 * uiScale
@@ -186,6 +229,7 @@ Dialog {
             leftPadding: 9 * uiScale
             rightPadding: leftPadding
             text: qsTr("Tag pagina")
+            enabled: overview.selectionAvailable
             onClicked: overview.editPageTags(overview.selectedPage)
         }
 
@@ -204,6 +248,107 @@ Dialog {
     contentItem: ColumnLayout {
         spacing: 8 * overview.uiScale
 
+        RowLayout {
+            visible: !overview.choosingDestination
+            Layout.fillWidth: true
+            spacing: 4 * overview.uiScale
+            Repeater {
+                model: [
+                    {key: "all", label: qsTr("Tutte (%1)").arg(overview.summaries.length)},
+                    {key: "bookmarks", label: qsTr("Segnalibri (%1)").arg(overview.bookmarkCount)},
+                    {key: "annotated", label: qsTr("Annotate (%1)").arg(overview.annotatedCount)}
+                ]
+                PaperButton {
+                    required property var modelData
+                    uiScale: overview.uiScale
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    leftPadding: 5 * uiScale
+                    rightPadding: leftPadding
+                    text: modelData.label
+                    filled: overview.pageFilter === modelData.key
+                    onClicked: overview.setPageFilter(modelData.key)
+                }
+            }
+        }
+
+        RowLayout {
+            visible: !overview.choosingDestination
+            Layout.fillWidth: true
+            spacing: 5 * overview.uiScale
+            PaperButton {
+                uiScale: overview.uiScale
+                text: qsTr("Prima")
+                enabled: overview.notebook.pageCount > 0
+                onClicked: { overview.pageFilter = "all"; overview.selectPage(0) }
+            }
+            TextField {
+                id: pageNumber
+                objectName: "overviewPageNumber"
+                Layout.fillWidth: true
+                Layout.minimumWidth: 40 * overview.uiScale
+                font.pixelSize: 15 * overview.uiScale
+                horizontalAlignment: TextInput.AlignHCenter
+                inputMethodHints: Qt.ImhDigitsOnly
+                validator: IntValidator { bottom: 1; top: Math.max(1, overview.notebook.pageCount) }
+                Accessible.name: qsTr("Numero di pagina")
+                selectByMouse: true
+                onActiveFocusChanged: if (activeFocus) selectAll()
+                onAccepted: overview.jumpToNumber()
+            }
+            Label {
+                text: qsTr("di %1").arg(overview.notebook.pageCount)
+                font.pixelSize: 14 * overview.uiScale
+                color: overview.ink
+            }
+            PaperButton {
+                uiScale: overview.uiScale
+                text: qsTr("Vai")
+                enabled: pageNumber.acceptableInput
+                onClicked: overview.jumpToNumber()
+            }
+            PaperButton {
+                uiScale: overview.uiScale
+                text: qsTr("Ultima")
+                enabled: overview.notebook.pageCount > 0
+                onClicked: { overview.pageFilter = "all"; overview.selectPage(overview.notebook.pageCount - 1) }
+            }
+        }
+
+        GridLayout {
+            visible: !overview.choosingDestination && overview.showTouchKeyboard && pageNumber.activeFocus
+            Layout.fillWidth: true
+            columns: 6
+            Repeater {
+                model: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "⌫", "✓"]
+                PaperButton {
+                    required property string modelData
+                    uiScale: overview.uiScale
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    focusPolicy: Qt.NoFocus
+                    text: modelData
+                    Accessible.name: modelData === "⌫" ? qsTr("Cancella cifra") : modelData === "✓" ? qsTr("Vai alla pagina") : modelData
+                    onClicked: {
+                        if (modelData === "✓") { overview.jumpToNumber(); return }
+                        const start = pageNumber.selectionStart
+                        const end = pageNumber.selectionEnd
+                        if (end > start) pageNumber.remove(start, end)
+                        else if (modelData === "⌫" && start > 0) pageNumber.remove(start - 1, start)
+                        if (modelData !== "⌫") pageNumber.insert(pageNumber.cursorPosition, modelData)
+                    }
+                }
+            }
+        }
+
+        Label {
+            visible: !overview.choosingDestination && overview.visiblePages.length === 0
+            Layout.fillWidth: true
+            text: qsTr("Nessuna pagina corrisponde al filtro.")
+            wrapMode: Text.WordWrap
+            color: overview.ink
+        }
+
         GridView {
             id: grid
 
@@ -218,13 +363,13 @@ Dialog {
             cellWidth: Math.floor(width / columns)
             cellHeight: Math.round(cellWidth * 1.28)
             keyNavigationEnabled: false
-            model: overview.visible ? overview.notebook.pageCount : 0
+            model: overview.visible ? overview.visiblePages : []
             ScrollBar.vertical: ScrollBar { }
 
-            Keys.onLeftPressed: overview.selectPage(overview.selectedPage - 1)
-            Keys.onRightPressed: overview.selectPage(overview.selectedPage + 1)
-            Keys.onUpPressed: overview.selectPage(overview.selectedPage - columns)
-            Keys.onDownPressed: overview.selectPage(overview.selectedPage + columns)
+            Keys.onLeftPressed: overview.selectVisible(-1)
+            Keys.onRightPressed: overview.selectVisible(1)
+            Keys.onUpPressed: overview.selectVisible(-columns)
+            Keys.onDownPressed: overview.selectVisible(columns)
             Keys.onReturnPressed: if (!overview.confirmingDelete) overview.openPage()
             Keys.onEnterPressed: if (!overview.confirmingDelete) overview.openPage()
 
@@ -232,21 +377,23 @@ Dialog {
                 id: tile
 
                 required property int index
+                required property var modelData
+                readonly property int pageIndex: modelData.index
                 width: grid.cellWidth
                 height: grid.cellHeight
 
                 ItemDelegate {
                     id: card
 
-                    readonly property bool selected: overview.selectedPage === tile.index
+                    readonly property bool selected: overview.selectedPage === tile.pageIndex
                     anchors.fill: parent
                     anchors.margins: 4 * overview.uiScale
                     padding: 8 * overview.uiScale
-                    text: qsTr("Pagina %1").arg(tile.index + 1)
+                    text: qsTr("Pagina %1").arg(tile.pageIndex + 1)
                     focusPolicy: Qt.NoFocus
-                    onClicked: overview.selectPage(tile.index)
+                    onClicked: overview.selectPage(tile.pageIndex)
                     onDoubleClicked: {
-                        overview.selectPage(tile.index)
+                        overview.selectPage(tile.pageIndex)
                         overview.openPage()
                     }
 
@@ -277,7 +424,7 @@ Dialog {
                                     anchors.fill: parent
                                     anchors.margins: overview.hairline
                                     content: overview.previewRevision > 0
-                                             ? overview.notebook.pagePreview(tile.index) : ({})
+                                             ? overview.notebook.pagePreview(tile.pageIndex) : ({})
                                 }
                             }
                         }
@@ -403,7 +550,7 @@ Dialog {
                 text: qsTr("Sposta indietro")
                 iconName: "left"
                 iconOnly: true
-                enabled: overview.selectedPage > 0
+                enabled: overview.selectionAvailable && overview.selectedPage > 0
                 ToolTip.visible: !overview.tabletMode && hovered
                 ToolTip.text: text
                 onClicked: overview.moveSelected(-1)
@@ -415,7 +562,7 @@ Dialog {
                 text: qsTr("Sposta avanti")
                 iconName: "right"
                 iconOnly: true
-                enabled: overview.selectedPage + 1 < overview.notebook.pageCount
+                enabled: overview.selectionAvailable && overview.selectedPage + 1 < overview.notebook.pageCount
                 ToolTip.visible: !overview.tabletMode && hovered
                 ToolTip.text: text
                 onClicked: overview.moveSelected(1)
@@ -425,6 +572,7 @@ Dialog {
                 visible: !overview.confirmingDelete
                 uiScale: overview.uiScale
                 text: qsTr("Duplica")
+                enabled: overview.selectionAvailable
                 onClicked: overview.duplicateSelected()
             }
 
@@ -432,7 +580,7 @@ Dialog {
                 visible: !overview.confirmingDelete
                 uiScale: overview.uiScale
                 text: qsTr("Elimina")
-                enabled: overview.notebook.pageCount > 1
+                enabled: overview.selectionAvailable && overview.notebook.pageCount > 1
                 onClicked: overview.confirmingDelete = true
             }
 
@@ -442,6 +590,7 @@ Dialog {
                 visible: !overview.confirmingDelete
                 uiScale: overview.uiScale
                 text: qsTr("Apri")
+                enabled: overview.selectionAvailable
                 filled: true
                 onClicked: overview.openPage()
             }

@@ -50,6 +50,16 @@ MacDocumentExchange::MacDocumentExchange(Notebook *notebook, bool tablet, QObjec
 {
     if (available())
         QCoreApplication::instance()->installEventFilter(this);
+    connect(m_notebook, &Notebook::documentImported, this, [this](const QString &id) {
+        if (m_importing && m_waitingImport) m_lastImportedBook = id;
+    });
+    connect(m_notebook, &Notebook::importFinished, this, [this](bool success) {
+        if (!m_importing || !m_waitingImport)
+            return;
+        m_waitingImport = false;
+        finishImportEntry(success);
+        QTimer::singleShot(0, this, &MacDocumentExchange::importNext);
+    });
 }
 
 MacDocumentExchange::~MacDocumentExchange() = default;
@@ -67,6 +77,16 @@ void MacDocumentExchange::setLocked(bool locked)
 {
     m_locked = locked;
     if (locked) {
+        if (m_importing && m_waitingImport && m_notebook)
+            m_notebook->cancelDocumentImport();
+        m_importing = false;
+        m_waitingImport = false;
+        m_importFiles.clear();
+        m_importRows.clear();
+        m_importReport.clear();
+        m_reportFiles.clear();
+        m_activeImportRow = -1;
+        emit importReportChanged();
         m_finderFiles.clear();
         m_exports.clear();
         m_dragLocked = m_dragging;
@@ -87,78 +107,208 @@ void MacDocumentExchange::setImportPaused(bool paused)
 bool MacDocumentExchange::canImport() const
 {
     return available() && m_notebook && !m_locked && !m_importPaused && !m_appleBooksPanelOpen
-        && !m_importing && !m_dragging;
+        && !m_importing && !m_notebook->importing() && !m_dragging;
 }
 
 bool MacDocumentExchange::hasSupportedFiles(const QList<QUrl> &files) const
 {
-    if (!canImport() || files.size() > maximumFiles)
-        return false;
-    for (const QUrl &file : files) {
-        if (isDocument(file))
-            return true;
+    const auto preview = importPreview(files);
+    return preview.value(QStringLiteral("allowed")).toBool() && preview.value(QStringLiteral("accepted")).toInt() > 0;
+}
+
+QVariantMap MacDocumentExchange::importPreview(const QList<QUrl> &files) const
+{
+    QSet<QString> seen;
+    QVariantList entries;
+    int accepted = 0, duplicates = 0, unsupported = 0, unreadable = 0;
+    // A drag can contain arbitrary URLs. Inspect only bounded local metadata, never file contents.
+    for (const QUrl &file : files.mid(0, maximumFiles)) {
+        const QFileInfo info(file.toLocalFile());
+        QString state, message;
+        QUrl canonicalUrl = file;
+        const bool package = info.isDir() && info.suffix().compare(QStringLiteral("epub"), Qt::CaseInsensitive) == 0;
+        if (!isDocument(file)) {
+            state = QStringLiteral("unsupported");
+            message = tr("Formato non supportato. Scegli PDF, EPUB o Markdown locali.");
+            ++unsupported;
+        } else if ((!info.isFile() && !package) || !info.isReadable()) {
+            state = QStringLiteral("failed");
+            message = tr("Il file non è leggibile o non è disponibile sul Mac.");
+            ++unreadable;
+        } else {
+            const QString canonical = info.canonicalFilePath();
+            canonicalUrl = QUrl::fromLocalFile(canonical);
+            if (seen.contains(canonical)) {
+                state = QStringLiteral("duplicate");
+                message = tr("File già presente in questa importazione.");
+                ++duplicates;
+            } else {
+                seen.insert(canonical);
+                state = QStringLiteral("queued");
+                ++accepted;
+            }
+        }
+        entries.append(QVariantMap{{QStringLiteral("name"), file.fileName()}, {QStringLiteral("state"), state},
+            {QStringLiteral("message"), message}, {QStringLiteral("url"), canonicalUrl}});
     }
-    return false;
+    const bool allowed = canImport() && files.size() <= maximumFiles;
+    return {{QStringLiteral("allowed"), allowed}, {QStringLiteral("accepted"), accepted},
+        {QStringLiteral("duplicates"), duplicates}, {QStringLiteral("unsupported"), unsupported},
+        {QStringLiteral("unreadable"), unreadable}, {QStringLiteral("entries"), entries},
+        {QStringLiteral("message"), files.size() > maximumFiles ? tr("Importa al massimo %1 documenti alla volta.").arg(maximumFiles)
+            : !canImport() ? tr("Attendi il termine dell’operazione in corso.") : QString{}}};
 }
 
 bool MacDocumentExchange::importFiles(const QList<QUrl> &files, const QString &folderId)
 {
-    if (!canImport())
-        return false;
-    if (!hasSupportedFiles(files)) {
-        setStatus(files.size() > maximumFiles ? tr("Importa al massimo %1 documenti alla volta.").arg(maximumFiles)
-                                             : tr("Scegli un file PDF, EPUB o Markdown locale."));
+    const auto preview = importPreview(files);
+    if (!preview.value(QStringLiteral("allowed")).toBool()) {
+        setStatus(preview.value(QStringLiteral("message")).toString());
         return false;
     }
-
-    QScopedValueRollback importing(m_importing, true);
-    QSet<QString> seen;
-    QString lastBook;
-    QString error;
-    int importedCount = 0;
-    int skippedCount = 0;
-    for (const QUrl &file : files) {
-        if (m_locked || !m_notebook)
-            return false;
-        if (!isDocument(file)) {
-            ++skippedCount;
-            continue;
-        }
-        const QFileInfo info(file.toLocalFile());
-        const bool epubPackage = info.isDir() && info.suffix().compare(QStringLiteral("epub"), Qt::CaseInsensitive) == 0;
-        if ((!info.isFile() && !epubPackage) || !info.isReadable()) {
-            ++skippedCount;
-            if (error.isEmpty())
-                error = tr("Impossibile leggere uno dei documenti selezionati.");
-            continue;
-        }
-        const QString canonical = info.canonicalFilePath();
-        if (seen.contains(canonical)) {
-            ++skippedCount;
-            continue;
-        }
-        seen.insert(canonical);
-        if (m_notebook->importDocument(file, folderId)) {
-            ++importedCount;
-            lastBook = m_notebook->bookId();
-        } else {
-            ++skippedCount;
-            if (error.isEmpty())
-                error = m_notebook->error();
+    m_importFiles.clear();
+    m_importRows.clear();
+    m_importReport.clear();
+    m_reportFiles.clear();
+    m_importError.clear();
+    const auto entries = preview.value(QStringLiteral("entries")).toList();
+    for (const auto &value : entries) {
+        auto entry = value.toMap();
+        const auto file = entry.take(QStringLiteral("url")).toUrl();
+        const int row = m_importReport.size();
+        m_importReport.append(entry);
+        m_reportFiles.append(file);
+        if (entry.value(QStringLiteral("state")) == QStringLiteral("queued")) {
+            m_importFiles.append(file);
+            m_importRows.append(row);
         }
     }
-    if (m_locked)
-        return false;
-    if (lastBook.isEmpty()) {
-        setStatus(error.isEmpty() ? tr("Impossibile importare i documenti selezionati.") : error);
+    m_importFolder = folderId;
+    m_importFileCount = m_importFiles.size();
+    m_importedCount = 0;
+    m_lastImportedBook.clear();
+    m_importCancelled = false;
+    m_activeImportRow = -1;
+    if (m_importFiles.isEmpty()) {
+        setStatus(tr("Nessun documento importabile. Apri il rapporto per i dettagli."));
+        emit importReportChanged();
         return false;
     }
-    if (skippedCount == 0)
-        setStatus(importedCount == 1 ? tr("Documento importato.") : tr("%1 documenti importati.").arg(importedCount));
-    else
-        setStatus(tr("Importati %1 documenti su %2. %3").arg(importedCount).arg(files.size()).arg(error).trimmed());
-    emit imported(lastBook);
+    m_importing = true;
+    emit importReportChanged();
+    setStatus(tr("Preparazione dell’importazione…"));
+    QTimer::singleShot(0, this, &MacDocumentExchange::importNext);
     return true;
+}
+
+void MacDocumentExchange::importNext()
+{
+    if (!m_importing || m_waitingImport || m_locked || !m_notebook)
+        return;
+    if (m_importFiles.isEmpty()) {
+        m_importing = false;
+        m_activeImportRow = -1;
+        int importedCount = 0, failed = 0, skipped = 0, cancelled = 0;
+        for (const auto &value : std::as_const(m_importReport)) {
+            const QString state = value.toMap().value(QStringLiteral("state")).toString();
+            importedCount += state == QStringLiteral("imported");
+            failed += state == QStringLiteral("failed");
+            skipped += state == QStringLiteral("duplicate") || state == QStringLiteral("unsupported");
+            cancelled += state == QStringLiteral("cancelled");
+        }
+        setStatus(tr("Importati: %1 · Non riusciti: %2 · Ignorati: %3 · Annullati: %4")
+            .arg(importedCount).arg(failed).arg(skipped).arg(cancelled));
+        emit importReportChanged();
+        if (!m_lastImportedBook.isEmpty())
+            emit imported(m_lastImportedBook);
+        return;
+    }
+    const QUrl file = m_importFiles.takeFirst();
+    m_activeImportRow = m_importRows.takeFirst();
+    updateImportEntry(m_activeImportRow, QStringLiteral("importing"));
+    setStatus(tr("Importazione di %1…").arg(QFileInfo(file.toLocalFile()).fileName()));
+    m_waitingImport = true;
+    if (!m_notebook->startDocumentImport(file, m_importFolder) && m_waitingImport) {
+        m_waitingImport = false;
+        finishImportEntry(false);
+        QTimer::singleShot(0, this, &MacDocumentExchange::importNext);
+    }
+}
+
+void MacDocumentExchange::updateImportEntry(int index, const QString &state, const QString &message)
+{
+    if (index < 0 || index >= m_importReport.size()) return;
+    auto entry = m_importReport.at(index).toMap();
+    entry.insert(QStringLiteral("state"), state);
+    entry.insert(QStringLiteral("message"), message);
+    m_importReport[index] = entry;
+    emit importReportChanged();
+}
+
+void MacDocumentExchange::finishImportEntry(bool success)
+{
+    if (success) {
+        ++m_importedCount;
+        updateImportEntry(m_activeImportRow, QStringLiteral("imported"));
+    } else {
+        const bool cancelled = m_importCancelled || (m_notebook && m_notebook->error().isEmpty());
+        m_importError = m_notebook ? m_notebook->error() : QString{};
+        updateImportEntry(m_activeImportRow, cancelled ? QStringLiteral("cancelled") : QStringLiteral("failed"),
+                          cancelled ? tr("Importazione annullata.") : m_importError);
+        if (cancelled) cancelImports();
+    }
+    m_activeImportRow = -1;
+}
+
+bool MacDocumentExchange::canRetryImports() const
+{
+    if (m_importing || m_locked) return false;
+    for (const auto &value : m_importReport)
+        if (value.toMap().value(QStringLiteral("state")) == QStringLiteral("failed")) return true;
+    return false;
+}
+
+bool MacDocumentExchange::retryFailedImports()
+{
+    if (!canImport() || !canRetryImports()) return false;
+    m_importFiles.clear();
+    m_importRows.clear();
+    for (int row = 0; row < m_importReport.size(); ++row) {
+        if (m_importReport.at(row).toMap().value(QStringLiteral("state")) != QStringLiteral("failed")) continue;
+        m_importFiles.append(m_reportFiles.at(row));
+        m_importRows.append(row);
+        updateImportEntry(row, QStringLiteral("queued"));
+    }
+    m_importFileCount = m_importFiles.size();
+    m_importedCount = 0;
+    m_importCancelled = false;
+    m_importError.clear();
+    m_lastImportedBook.clear();
+    m_importing = true;
+    emit importReportChanged();
+    QTimer::singleShot(0, this, &MacDocumentExchange::importNext);
+    return true;
+}
+
+void MacDocumentExchange::cancelImports()
+{
+    if (!m_importing) return;
+    m_importCancelled = true;
+    for (const int row : std::as_const(m_importRows))
+        updateImportEntry(row, QStringLiteral("cancelled"), tr("Importazione annullata."));
+    m_importFiles.clear();
+    m_importRows.clear();
+    if (m_waitingImport && m_notebook) m_notebook->cancelDocumentImport();
+    else QTimer::singleShot(0, this, &MacDocumentExchange::importNext);
+}
+
+void MacDocumentExchange::clearImportReport()
+{
+    if (m_importing) return;
+    m_importReport.clear();
+    m_reportFiles.clear();
+    setStatus({});
+    emit importReportChanged();
 }
 
 void MacDocumentExchange::openAppleBooks()

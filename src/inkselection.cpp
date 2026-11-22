@@ -1,6 +1,8 @@
 #include "inkselection.h"
 
 #include "inkrender.h"
+#include "pagecontent.h"
+#include <QLineF>
 
 #include <QPainter>
 #include <QtMath>
@@ -237,6 +239,131 @@ QVariantList InkSelectionGeometry::transformed(const QVariantList &strokes, QPoi
     return encode(mapSelection(strokes, pivot, scale, angle), offset, true);
 }
 
+bool InkSelectionGeometry::intersectsStroke(const QPolygonF &polygon, const QList<QPointF> &points, bool contained)
+{
+    if (points.isEmpty() || polygon.size() < 3)
+        return false;
+    const auto inside = [&polygon](QPointF p) {
+        if (polygon.containsPoint(p, Qt::OddEvenFill))
+            return true;
+        // Include the boundary so a point or an accent exactly on the outline is selectable.
+        for (qsizetype i = 0; i < polygon.size(); ++i) {
+            const QPointF a = polygon.at(i), d = polygon.at((i + 1) % polygon.size()) - a;
+            const qreal length2 = QPointF::dotProduct(d, d);
+            const qreal t = length2 > 0 ? qBound(0.0, QPointF::dotProduct(p - a, d) / length2, 1.0) : 0;
+            if (QLineF(p, a + t * d).length() <= 1e-8)
+                return true;
+        }
+        return false;
+    };
+    if (points.size() == 1)
+        return inside(points.first());
+    bool touched = false;
+    for (qsizetype i = 1; i < points.size(); ++i) {
+        const QLineF segment(points.at(i - 1), points.at(i));
+        const bool aInside = inside(segment.p1()), bInside = inside(segment.p2());
+        if (contained && (!aInside || !bInside))
+            return false;
+        if (!contained && (aInside || bInside))
+            return true;
+        QList<qreal> cuts{0, 1};
+        for (qsizetype edge = 0; edge < polygon.size(); ++edge) {
+            QPointF crossing;
+            const QLineF border(polygon.at(edge), polygon.at((edge + 1) % polygon.size()));
+            if (segment.intersects(border, &crossing) == QLineF::BoundedIntersection) {
+                if (!contained)
+                    return true;
+                const QPointF d = segment.p2() - segment.p1();
+                const qreal length2 = QPointF::dotProduct(d, d);
+                if (length2 > 0)
+                    cuts.append(qBound(0.0, QPointF::dotProduct(crossing - segment.p1(), d) / length2, 1.0));
+            }
+        }
+        std::sort(cuts.begin(), cuts.end());
+        for (qsizetype part = 1; part < cuts.size(); ++part) {
+            const bool midpointInside = inside(segment.pointAt((cuts.at(part - 1) + cuts.at(part)) / 2));
+            if (contained && !midpointInside)
+                return false;
+            touched |= midpointInside;
+        }
+    }
+    return contained || touched;
+}
+
+QPolygonF InkSelectionGeometry::itemOutline(const QVariantMap &item)
+{
+    const QRectF rect(item.value(xKey).toDouble(), item.value(yKey).toDouble(),
+                      item.value(QStringLiteral("width")).toDouble(), item.value(QStringLiteral("height")).toDouble());
+    const qreal radians = qDegreesToRadians(item.value(QStringLiteral("rotation")).toDouble());
+    const Transform transform{rect.center(), 1, std::sin(radians), std::cos(radians), false};
+    QPolygonF polygon;
+    for (QPointF p : {rect.topLeft(), rect.topRight(), rect.bottomRight(), rect.bottomLeft(), rect.topLeft()})
+        polygon.append(transform.map(p));
+    return polygon;
+}
+
+QRectF InkSelectionGeometry::boundsOf(const QVariantList &strokes, const QVariantList &items)
+{
+    Extents extents;
+    for (const QVariant &entry : strokes) {
+        for (const auto &point : storedInkPoints(entry.toMap()))
+            extents.add(point.position);
+    }
+    for (const QVariant &entry : items) {
+        for (QPointF point : itemOutline(entry.toMap()))
+            extents.add(point);
+    }
+    return extents.empty ? QRectF{} : extents.rect();
+}
+
+QVariantList InkSelectionGeometry::transformedItems(const QVariantList &items, QPointF pivot, QPointF offset,
+                                                   qreal scale, qreal angle)
+{
+    if (!finite(pivot) || !finite(offset) || !std::isfinite(scale) || scale < .15 || scale > 6 || !std::isfinite(angle))
+        return {};
+    const qreal radians = qDegreesToRadians(std::remainder(angle, 360.0));
+    const Transform transform{pivot, scale, std::sin(radians), std::cos(radians), false};
+    QVariantList result;
+    for (const QVariant &entry : items) {
+        QVariantMap item = entry.toMap();
+        const qreal width = item.value(QStringLiteral("width")).toDouble();
+        const qreal height = item.value(QStringLiteral("height")).toDouble();
+        const QPointF center = transform.map({item.value(xKey).toDouble() + width / 2,
+                                               item.value(yKey).toDouble() + height / 2}) + offset;
+        item.insert(xKey, center.x() - width * scale / 2);
+        item.insert(yKey, center.y() - height * scale / 2);
+        item.insert(QStringLiteral("width"), width * scale);
+        item.insert(QStringLiteral("height"), height * scale);
+        item.insert(QStringLiteral("rotation"), std::remainder(item.value(QStringLiteral("rotation")).toDouble() + angle, 360.0));
+        item.insert(QStringLiteral("textScale"), item.value(QStringLiteral("textScale"), 1.0).toDouble() * scale);
+        if (item.contains(QStringLiteral("handwritingSource"))) {
+            QVariantMap source = item.value(QStringLiteral("handwritingSource")).toMap();
+            const QVariantList original = source.value(QStringLiteral("strokes")).toList();
+            const QVariantList moved = transformed(original, pivot, offset, scale, angle);
+            if (moved.size() != original.size())
+                return {};
+            source.insert(QStringLiteral("strokes"), moved);
+            if (source.contains(QStringLiteral("baseDiagram"))) {
+                const QVariantMap base = source.value(QStringLiteral("baseDiagram")).toMap();
+                if (base.value(QStringLiteral("handwritingSource")).toMap().contains(QStringLiteral("baseDiagram")))
+                    return {};
+                const QVariantList movedBase = transformedItems({base}, pivot, offset, scale, angle);
+                if (movedBase.size() != 1) return {};
+                source.insert(QStringLiteral("baseDiagram"), movedBase.first());
+            }
+            item.insert(QStringLiteral("handwritingSource"), source);
+        }
+        const QRectF bounds = itemOutline(item).boundingRect();
+        if (bounds.left() < -tolerance || bounds.top() < -tolerance || bounds.right() > 1 + tolerance || bounds.bottom() > 1 + tolerance)
+            return {};
+        item = PageContent::validatedItem(item);
+        if (item.isEmpty())
+            return {};
+        result.append(item);
+    }
+    return result;
+}
+
 InkSelectionPreview::InkSelectionPreview(QQuickItem *parent) : QQuickPaintedItem(parent)
 {
     setFillColor(Qt::transparent);
@@ -304,4 +431,16 @@ void InkSelectionPreview::place()
 void InkSelectionPreview::paint(QPainter *painter)
 {
     paintStoredStrokes(*painter, size(), m_preview);
+}
+
+SelectionContentItem::SelectionContentItem(QQuickItem *parent) : QQuickPaintedItem(parent)
+{
+    setFillColor(Qt::transparent);
+    connect(this, &SelectionContentItem::contentChanged, this, [this] { update(); });
+}
+
+void SelectionContentItem::paint(QPainter *painter)
+{
+    PageContent::paintItems(*painter, size(), m_content.value(QStringLiteral("items")).toList());
+    paintStoredStrokes(*painter, size(), m_content.value(QStringLiteral("strokes")).toList());
 }

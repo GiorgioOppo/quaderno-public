@@ -7,6 +7,7 @@ import Quaderno
 
 Dialog {
     id: editor
+    objectName: "chartEditor"
 
     required property real uiScale
     required property bool tabletMode
@@ -44,8 +45,9 @@ Dialog {
         if (calibrated.checked && validScale) {
             item.xMax = parseNumber(maximumX.text)
             item.yMax = parseNumber(maximumY.text)
-            if (existing && originalItem.minimum)
-                item.minimum = originalItem.minimum
+            const lowX = parseNumber(minimumX.text)
+            const lowY = parseNumber(minimumY.text)
+            if (lowX < 0 || lowY < 0) item.minimum = {x: lowX, y: lowY}
         }
         if (existing) {
             item.id = originalItem.id
@@ -58,6 +60,8 @@ Dialog {
     }
     readonly property bool validScale: parseNumber(maximumX.text) > 0 && parseNumber(maximumX.text) <= maximumScale
         && parseNumber(maximumY.text) > 0 && parseNumber(maximumY.text) <= maximumScale
+        && parseNumber(minimumX.text) <= 0 && parseNumber(minimumX.text) >= -maximumScale
+        && parseNumber(minimumY.text) <= 0 && parseNumber(minimumY.text) >= -maximumScale
     readonly property bool keyboardOpen: showTouchKeyboard && keyboardTarget !== null
 
     parent: Overlay.overlay
@@ -103,6 +107,8 @@ Dialog {
         calibrated.checked = Boolean(item && item.xMax > 0 && item.yMax > 0)
         maximumX.text = calibrated.checked ? String(item.xMax) : ""
         maximumY.text = calibrated.checked ? String(item.yMax) : ""
+        minimumX.text = String(item && item.minimum ? item.minimum.x : 0)
+        minimumY.text = String(item && item.minimum ? item.minimum.y : 0)
         errorText = ""
         recognitionError = failure
         notice = ""
@@ -130,7 +136,7 @@ Dialog {
 
     function parseNumber(value: string): real {
         const number = value.trim().replace(",", ".")
-        return /^[+]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(number) ? Number(number) : NaN
+        return /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(number) ? Number(number) : NaN
     }
 
     function formatPercent(value: real): string {
@@ -465,7 +471,7 @@ Dialog {
 
                     ChartLabel {
                         Layout.fillWidth: true
-                        text: qsTr("Con origine 0, inserisci il valore all’estremità di ogni asse.")
+                        text: qsTr("Imposta il minimo e il massimo degli assi. Il minimo può essere negativo o zero; il massimo deve essere positivo.")
                         color: editor.muted
                     }
 
@@ -474,9 +480,29 @@ Dialog {
                         spacing: 6 * editor.uiScale
 
                         ChartField {
+                            id: minimumX
+                            objectName: "chartMinimumX"
+                            inputMethodHints: Qt.ImhFormattedNumbersOnly
+                            placeholderText: qsTr("Minimo X")
+                            Accessible.name: placeholderText
+                        }
+
+                        ChartField {
                             id: maximumX
                             inputMethodHints: Qt.ImhFormattedNumbersOnly
                             placeholderText: qsTr("Massimo X")
+                        }
+
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 6 * editor.uiScale
+                        ChartField {
+                            id: minimumY
+                            objectName: "chartMinimumY"
+                            inputMethodHints: Qt.ImhFormattedNumbersOnly
+                            placeholderText: qsTr("Minimo Y")
+                            Accessible.name: placeholderText
                         }
 
                         ChartField {

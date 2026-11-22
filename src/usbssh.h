@@ -10,6 +10,7 @@
 #include <QtQml/qqmlregistration.h>
 
 class Notebook;
+Q_MOC_INCLUDE("notebook.h")
 
 #ifdef Q_OS_MACOS
 namespace UsbConnection {

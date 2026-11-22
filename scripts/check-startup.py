@@ -24,19 +24,25 @@ def check_startup(binary, mode, arguments, profile):
     )
     try:
         result = subprocess.run(
-            [str(binary), *arguments],
+            [str(binary), *arguments, "--check-startup"],
             cwd=profile,
             env=environment,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            timeout=5,
+            timeout=12,
         )
-    except subprocess.TimeoutExpired:
-        print(f"{mode} startup passed")
-        return
+    except subprocess.TimeoutExpired as error:
+        output = (error.stdout or b"").decode(errors="replace").rstrip()
+        raise SystemExit(f"{mode} startup timed out before readiness\n{output}")
 
     output = result.stdout.decode(errors="replace").rstrip()
-    raise SystemExit(f"{mode} startup exited early ({result.returncode})\n{output}")
+    if result.returncode != 0 or "QUADERNO_READY" not in output.splitlines():
+        raise SystemExit(f"{mode} startup did not render a ready UI ({result.returncode})\n{output}")
+    if "failed to load component" in output.lower() or any(
+        marker in output for marker in ("ReferenceError:", "TypeError:", "Binding loop detected", "Unable to assign", "Cannot assign")
+    ):
+        raise SystemExit(f"{mode} startup reported a QML error\n{output}")
+    print(f"{mode} rendered startup passed")
 
 
 def main():

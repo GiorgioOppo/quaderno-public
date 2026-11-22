@@ -41,7 +41,7 @@ fi
 handwriting=0
 if [ -e "$bundle/quaderno-handwriting" ] || [ -e "$bundle/quaderno-handwriting-it.dct" ]; then
     handwriting=1
-    set -- "$@" quaderno-handwriting quaderno-handwriting-it.dct
+    set -- "$@" quaderno-handwriting quaderno-handwriting-it.dct quaderno-handwriting-en.dct
 fi
 for item do
     [ -f "$bundle/$item" ] && [ ! -L "$bundle/$item" ] ||
@@ -100,7 +100,7 @@ if [ "$mode" = appload ]; then
     set -- "$@" install-appload-quaderno.sh appload-quaderno-entry.sh quaderno-appload.png
 fi
 if [ "$handwriting" = 1 ]; then
-    set -- "$@" quaderno-handwriting quaderno-handwriting-it.dct
+    set -- "$@" quaderno-handwriting quaderno-handwriting-it.dct quaderno-handwriting-en.dct
 fi
 
 umask 077

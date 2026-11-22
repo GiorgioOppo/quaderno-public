@@ -45,9 +45,11 @@ QString singleLineLabel(QString text)
     return text;
 }
 
-qreal diagramScale(const QRectF &bounds)
+qreal diagramScale(const QRectF &bounds, const QVariantMap &diagram)
 {
-    return qMax<qreal>(0.1, qMin(bounds.width(), bounds.height()) / 350.0);
+    const qreal style = diagram.value(QStringLiteral("styleScale"), 1.0).toDouble();
+    return qMax<qreal>(0.1, qMin(bounds.width(), bounds.height()) / 350.0)
+        * (std::isfinite(style) && style >= 0.001 && style <= 1000.0 ? style : 1.0);
 }
 
 QFont labelFont(qreal scale, bool edge)
@@ -301,7 +303,7 @@ void paintDiagram(QPainter &painter, const QRectF &bounds, const QVariantMap &di
 {
     if (bounds.isEmpty())
         return;
-    const qreal scale = diagramScale(bounds);
+    const qreal scale = diagramScale(bounds, diagram);
     const auto layout = layoutDiagram(diagram, bounds, scale);
     painter.save();
     painter.setClipRect(bounds, Qt::IntersectClip);
@@ -437,7 +439,7 @@ QString DiagramItem::nodeAt(qreal x, qreal y) const
     if (!boundingRect().contains(point) || !bounds.contains(point))
         return {};
     const auto nodes = m_diagram.value(QStringLiteral("nodes")).toList();
-    const qreal scale = diagramScale(bounds);
+    const qreal scale = diagramScale(bounds, m_diagram);
     for (auto it = nodes.crbegin(); it != nodes.crend(); ++it) {
         const Node node = layoutNode(it->toMap(), bounds, scale);
         if (node.outline.contains(point))
@@ -452,7 +454,7 @@ QString DiagramItem::edgeAt(qreal x, qreal y) const
     const QPointF point(x, y);
     if (!boundingRect().contains(point) || !bounds.contains(point))
         return {};
-    const qreal scale = diagramScale(bounds);
+    const qreal scale = diagramScale(bounds, m_diagram);
     const auto layout = layoutDiagram(m_diagram, bounds, scale);
     const QFontMetricsF metrics(labelFont(scale, true));
     QPainterPathStroker hit;
@@ -484,7 +486,7 @@ QStringList DiagramItem::nodesInLasso(const QVariantList &points) const
     }
 
     QStringList selected;
-    const qreal scale = diagramScale(bounds);
+    const qreal scale = diagramScale(bounds, m_diagram);
     const auto nodes = m_diagram.value(QStringLiteral("nodes")).toList();
     for (const QVariant &entry : nodes) {
         const Node node = layoutNode(entry.toMap(), bounds, scale);

@@ -278,6 +278,20 @@ void UsbSsh::importFromPaperPro(Notebook *notebook)
     m_importCompleted = false;
     const QString remote = UsbConnection::deviceCheck() + QStringLiteral(R"SH(file=/home/root/.local/share/Quaderno/quaderni.json
 [ -f "$file" ] && [ ! -L "$file" ] && [ -r "$file" ] || exit 42
+base=/home/root/quaderno
+pointer="$base/usb-transfer-installation"
+if [ -f "$pointer" ] && [ ! -L "$pointer" ]; then
+    IFS= read -r release < "$pointer" || exit 42
+    case "$release" in "$base"/installation-?*) ;; *) exit 42 ;; esac
+    suffix=${release#"$base"/installation-}
+    case "$suffix" in *[!a-zA-Z0-9]*) exit 42 ;; esac
+    app="$release/quaderno"
+    if [ -x "$app" ] && [ ! -L "$app" ]; then
+        export HOME=/home/root XDG_DATA_HOME=/home/root/.local/share
+        unset QUADERNO_USB_ASKPASS
+        "$app" --usb-transfer-export && exit 0
+    fi
+fi
 exec cat "$file"
 )SH");
     const QStringList arguments = UsbConnection::arguments(remote);

@@ -7,6 +7,7 @@
 #include <memory>
 
 class WifiSyncLinkPrivate;
+class QTcpSocket;
 
 class WifiSyncLink : public QObject
 {
@@ -18,6 +19,7 @@ public:
 
     void listen();
     void connectTo(const QString &ipv4);
+    static bool isSupportedAddress(const QString &ipv4);
     void stop();
     void send(const QByteArray &data);
     bool active() const;
@@ -31,5 +33,8 @@ signals:
     void changed();
 
 private:
+    friend class WifiSyncLinkPrivate;
+    friend class WirelessSyncTests;
+    static void configureConnectedSocket(QTcpSocket &socket);
     std::unique_ptr<WifiSyncLinkPrivate> m_private;
 };

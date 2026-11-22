@@ -4,9 +4,9 @@
 
 Quaderno stores your notebooks locally and lets you write by hand, organize notes, and annotate documents. Set up your Mac or Paper Pro with the [installation guide](INSTALLATION.md). For transfers and backups, see [Data and backups](DATA.md).
 
-[Sections and file workflows](FEATURES.md) explains what you can create in Books, Writing, Charts, and Tables and how to reuse content across sections.
+[Sections and file workflows](FEATURES.md) explains what you can create in Books, Writing, Charts, Tables, and Diagrams and how to reuse content across sections.
 
-To use the labels in this guide, open **Impostazioni** (Settings) in the library and select **English** under **Lingua dell’app** (App language). Quaderno remembers your choice when you reopen it.
+To use the labels in this guide, open **Impostazioni → Lingua e tastiera** (Settings → Language and keyboard) in the library and select **English** under **Lingua dell’app** (App language). Quaderno remembers your choice when you reopen it. The [0.2.6 settings guide](SETTINGS.md) describes the updated navigation and its verification status.
 
 ## Create your first notebook
 
@@ -29,7 +29,8 @@ Choose a section to find what you need in the library.
 
 - **Books** contains imported PDFs and EPUBs.
 - **Writing** contains notebooks with Markdown text and freehand ink.
-- **Charts** and **Tables** list editable items saved on notebook pages. Choose an item to open its page. You can also start a notebook for a new chart or table from its section.
+- **Diagrams** lists editable diagrams and blank diagram notebooks. Choose **New diagram** to open a page for drawing; opening an existing entry shows its source page without automatically opening the editor. Tap a saved diagram to edit it, or use **Items**. This fifth section is part of 0.2.8 in development; see [Diagrams](DIAGRAMS.md).
+- **Charts** and **Tables** list editable items saved on notebook pages. Choose an item to open its page. The fix in development for **0.2.4** prevents the editor from opening automatically during this navigation: tap a table cell to edit it, or enable **Items** and tap a chart. Version 0.2.4 passed builds, six suites, and rendered startups on Mac and with the ARM SDK. It was installed on Paper Pro over USB on November 18, 2026, with native startup, backups, and notebook integrity verified; the installed Mac 0.2.0 app remains unchanged. That day, the user confirmed on Paper Pro that opening existing items from Tables and Charts shows the page without opening the editor. See the [validation status](LASSO.md#open-tables-and-charts-from-the-library). You can also start a notebook for a new chart or table from its section.
 
 ### Folders, favorites, tags, and trash
 
@@ -53,12 +54,18 @@ You can add up to 20 tags to each page or notebook. Each tag can contain up to 4
 - **Insert image** opens a local PNG or JPEG. The embedded copy opens on devices that receive the notebook.
 - **Insert from library** copies a chart or table to the current page. You can edit the copy independently.
 - **Text** inserts a multiline text block. Tap an existing block to open it and select or edit its text. On Paper Pro, the on-screen keyboard hides when the system detects a connected Bluetooth or USB keyboard.
-- To choose the QWERTY layout for the on-screen keyboard, tap **IT/EN** or open **Settings → Device → On-screen keyboard**. Switch between **Italiano** and **English (US)** as you type. Quaderno remembers the layout separately from the menu language.
-- **Table** inserts a table of up to 12 rows and 8 columns. Tap a cell to enter text. Press **Tab** to move to the next cell or **Enter** to move down a row.
+- To choose the QWERTY layout for the on-screen keyboard, tap **IT/EN** or open **Settings → Language and keyboard → On-screen keyboard**. Switch between **Italiano** and **English (US)** as you type. Quaderno remembers the layout separately from the menu language.
+- **Table** inserts a table of up to 12 rows and 8 columns. In the editor, tap a cell in the grid, edit the **Cell text** field, and choose **Save**. Press **Tab** to move to the next cell or **Enter** to move down a row.
 - **Items** lets you edit text blocks, tables, and charts. Tap an item to open its editor, where you can also delete it. Drag an item to move it on the page. Choose **Write** to return to pen input.
 - **Full page** hides the tools. Choose **Show tools** to restore the toolbar.
 
-On Paper Pro with firmware **3.29.1.0**, Quaderno uses the panel’s fast mode for the interface and the standard mode for pages with documents, images, charts, or diagrams. **Automatic refresh** requests a redraw only when the new page is slow to appear. You can turn it off in **Settings → Device → Display**. To clear residual images across the whole panel, tap **Refresh screen** in the bottom bar, including in **Full page** view. A full refresh can make the display flash.
+On Paper Pro with firmware **3.29.1.0**, Quaderno uses the panel’s fast mode for the interface and the standard mode for pages with documents, images, charts, or diagrams. **Automatic refresh** requests a redraw only when the new page is slow to appear. You can turn it off in **Settings → Display**. To clear residual images across the whole panel, tap **Refresh screen** in the bottom bar, including in **Full page** view. The 0.2.6 settings also expose manual refresh under **General** and **Display**. A full refresh can make the display flash.
+
+### Edit a cell on the page
+
+In 0.2.2, enable **Items**, tap the table, and select a cell in the editor grid. The fix in development for **0.2.3** lets you open a cell by tapping it directly on the page: finger taps and mouse clicks also work on empty cells; a brief pen/Marker tap opens an occupied cell. In empty cells, the pen continues writing, including single dots. Moving or holding the pen continues writing in occupied cells too. In Items mode, a tap opens the editor at the selected row and column.
+
+Edit the **Cell text** field, then choose **Save**. For formulas, the field shows the original editable expression and the grid shows the result. Converting handwriting with the lasso produces the same editable cells. Version 0.2.3 passed builds, six test suites, and startup checks on Mac and with the ARM SDK. It was installed over USB and started on Paper Pro on November 18, 2026, with backups and notebook integrity verified; the installed Mac 0.2.0 app remains unchanged. That day, the user confirmed opening the editor with finger and pen taps and correct editing and formula recalculation in the **QA Celle 0.2.2** test scenario. For the full procedure, test values, and validation scope, see the [lasso guide](LASSO.md#edit-a-table-cell-after-conversion).
 
 ### Create a table from a CSV file
 
@@ -78,18 +85,34 @@ Select an empty cell below the data and choose **Sum** or **Average** to suggest
 
 To start a standalone chart, choose **Charts → New chart** in the library. Choose lines or bars, edit the two starting points, and enter a title and axis labels.
 
-1. Create and save a table. Reopen it from **Items** and choose **Chart**.
-2. Choose **Line** or **Bar** and select two different numeric columns for X and Y. Use a comma or a period as the decimal separator. A line chart requires at least two rows of data. For bars, use a different X value in each row.
-3. Select **Use first row as headers** to use the column headings as axis labels. Review the preview and choose **Save**.
+1. Create and save a table with at least two columns. Tap a cell directly with your finger to open the editor; you can also enable **Items** and tap the table.
+2. Choose **Chart**. This saves the current table draft before opening the chart settings. Choosing **Cancel** in the chart dialog does not undo that table save.
+3. Choose **Line** or **Bar** and select two different numeric columns for X and Y. Use a comma or a period as the decimal separator. A line chart requires at least two rows of data. For bars, use a different X value in each row.
+4. Leave **Use first row as headers** enabled only if the first row contains column headings to use as axis labels. This option starts enabled: turn it off if the first row already contains numeric data so those values are included.
+5. Review the preview and choose **Save** to add the linked chart to the same page.
 
 The chart also uses numeric formula results and updates when you save changes to the table. If the selected columns contain incomplete or invalid values, correct the cells to restore the chart. An independent copy of the chart exports negative values through **Copy CSV** or **Save CSV**.
 
+### Edit a chart with a tap
+
+In **0.2.5** in development, open the editor by tapping the chart directly on the page with a finger, clicking with a mouse, or briefly tapping with the pen/Marker. A standalone chart opens its properties; a table-linked chart opens its settings and source-column selection, retaining its link when you save.
+
+Direct taps are intended for the pen, pencil, or marker tool with the lasso closed. Moving or holding the pen continues writing. Lasso, eraser, highlighter, and shape tools keep their existing behavior. You can still enable **Items** to edit or drag objects. Opening an entry from the Charts library still shows only the page, as in 0.2.4.
+
+Version 0.2.5 passed builds, all six suites, and rendered startups on Mac and with the ARM SDK, including eight new chart cases and the 0.2.4 navigation regressions. It was installed on Paper Pro over USB on November 18, 2026, with native startup, execution through AppLoad, backups, and notebook integrity verified; the installed Mac 0.2.0 app remains unchanged. That day, the user confirmed on Paper Pro that a finger tap and a brief pen tap open the tested chart’s editor without enabling Items. See the [gesture guide and validation status](LASSO.md#edit-a-chart-with-a-tap).
+
 ### Flowcharts
+
+In 0.2.8, **Diagrams → New diagram** creates a notebook with a blank drawing page. Draw a flowchart with clear shapes and arrowheads. With automatic recognition enabled, a pause can produce a suggestion without changing the page or opening a dialog. Open it to review; **Close** hides it until a later drawing change. Alternatively select ink with the lasso and request diagram recognition, including in other notebook sections.
+
+Review shapes, arrows and labels, correct or exclude OCR labels, and apply explicitly. You can keep all original ink or replace only recognized shapes/connections and accepted nonblank labels. Ambiguous and excluded ink remains. Page undo reverses the conversion together; stored original-handwriting recovery remains available after reopening when ink was replaced. **Insert from library** creates an independent editable copy in another notebook. See [Diagrams](DIAGRAMS.md) for the complete recognition and recovery workflow. The first 0.2.8 build passed automated/native checks and automatic portrait-to-landscape rotation was confirmed on the tablet. Revised recognition tolerances passed Mac and ARM geometry/UI and startup checks; the corrected build is installed on Paper Pro and passed strict native/AppLoad startup at 1620 × 2160 without QML errors. On November 18, 2026, the user confirmed that recognition, applying the result and opening the editor to modify it work on the tested flowchart on Paper Pro; see the [current verification status](SETTINGS.md#verification-boundary).
+
+The structured editor remains available:
 
 1. Open a page and choose **Diagram**. Add shapes or choose **Flowchart template** to start from an editable example. In an empty diagram, **Import .drawio** also accepts draw.io `.xml` files. Quaderno imports the first page and reports elements it omitted or simplified.
 2. Drag shapes to arrange them and use the corner handle to resize them. **Grid** snaps movement and resizing to the grid. Select a shape to duplicate it or edit its label.
 3. Choose **Connect**, then tap the starting shape and the destination shape. Arrows follow shapes when you move them. Select an arrow to label it, reverse it, or switch to a right-angle route. You can undo and redo changes made in the editor.
-4. Save the diagram to the notebook. To reopen it, choose **Items** and tap the diagram. PDF export includes the drawing. Use **More actions → Export .drawio** to save shapes and arrows that you can edit in draw.io.
+4. Save the diagram to the notebook. To reopen it, tap the saved diagram directly or choose **Items** and tap it. PDF export includes the drawing. Use **More actions → Export .drawio** to save shapes and arrows that you can edit in draw.io.
 
 Update Quaderno on Mac and Paper Pro to transfer diagrams with their editable elements. Each diagram supports up to 64 shapes and 128 connections. Imports accept files up to 2 MiB.
 
@@ -148,13 +171,17 @@ In the reading toolbar, choose **Highlight** and drag over a passage. Choose **U
 - Select the star to add or remove the current page's bookmark. Open **Bookmarks** to jump to a saved page.
 - Choose **Find text** at the bottom of the page to find words in the PDF’s embedded text. Select a result to open its page. Search uses the text available for extraction from the PDF. To search a PDF you imported in an earlier version of Quaderno, import the original file again.
 
-Imports are limited to 150 pages, with a file size limit of 48 MiB for PDFs or 64 MiB for EPUBs and a 30 MiB limit on the generated images. The library’s current size also affects how many documents you can import. To export an annotated copy, choose **Save PDF** on Paper Pro or **Share → Save PDF** on Mac. The PDF includes every page, with text, tables, charts, and visible ink layers.
+Imports run in the background with progress and cancellation, preserve the native source, and render only requested pages. There is no 150-page limit. Source limits are 48 MiB for PDF and 64 MiB for EPUB; an EPUB’s prepared PDF must fit within 48 MiB. Available library capacity and transfer limits still apply. Older raster imports keep their annotations; reimport the original as a separate copy to use the new reader. Choose **Save PDF** on Paper Pro or **Share → Save PDF** on Mac for an annotated PDF containing all pages, visible layers and page objects.
+
+Double-tap with a finger to zoom to 200% around the touched point; double-tap again to fit the whole page. The pen continues to annotate. Open the page counter for **Pages**, enter a page number and choose **Go**, then **Open**. **First** and **Last** select the ends of the document. Filter the overview by **All**, **Bookmarks** or **Annotated**; counts include annotations on hidden ink layers. The numeric keypad appears on Paper Pro when no hardware keyboard is connected.
+
+In the library, **Sort** provides A–Z, Z–A and page-count ordering, plus format filters. Earlier raster imports appear as previously imported documents rather than being guessed to be PDF or EPUB. On Mac, dragging up to 16 files shows the destination and accepted, duplicate, unsupported and unreadable counts. **Imports** opens the per-file report. **Retry failed** retries only failed files; **Cancel import** cancels pending work while keeping completed imports. The report covers the latest batch and clears when Quaderno locks or you clear it.
 
 ### Markdown and Obsidian
 
 - In the library, choose **Import document** and select a `.md` or `.markdown` file. On Mac, you can also drag it in from Finder or choose **Open With → Quaderno**. Quaderno preserves the Markdown syntax and splits the text into pages. Choose **Edit Markdown** to change the document text.
 - On Mac or Paper Pro, open **Markdown and Obsidian**. To import from the web, paste the file’s direct HTTPS URL, such as a repository’s **Raw** link, and choose **Import from URL**. Imports accept UTF-8 text up to 256 KiB and 200 pages.
-- In an open notebook, choose **Markdown and Obsidian → Export Markdown**. Quaderno saves ink, charts, and embedded images as separate files in a folder next to the Markdown and links them using relative paths. Keep the file and folder together when you move them. The Obsidian integration sends the Markdown text.
+- In an open notebook, choose **Markdown and Obsidian → Export Markdown**. Quaderno saves ink, charts, diagrams and embedded images as separate files in a folder next to the Markdown and links them using relative paths. Each diagram has a PNG preview and an editable `.drawio` companion. Reimporting the Markdown restores text and links; notebook transfer preserves the original editable objects. Keep the file and folder together when you move them. The Obsidian integration sends the Markdown text.
 - On Mac, choose the **Obsidian vault** folder and enter a filename or relative path, such as `Meetings/Minutes.md`. The subfolder must already exist. **Save to vault** creates a new note and rejects names already in use. After saving, choose **Open in Obsidian**. [Obsidian URI](https://obsidian.md/help/uri)
 - For a site that is already published, save its HTTPS address under **Obsidian Publish** and enter a published note path or permalink if you want to link to a specific note. **Copy link** is available on both devices, and **Open in browser** is available on Mac. Manage publication in Obsidian. [Obsidian Publish](https://obsidian.md/help/publish) · [Permalinks](https://obsidian.md/help/publish/permalinks)
 
@@ -175,7 +202,7 @@ The panel lists up to 3,000 UTF‑8 `.md` notes, with a limit of 256 KiB and 200
 3. Review the counts for new notebooks, updates, unchanged notebooks, and conflict copies. New folders appear in the preview when applicable. Choose **Import notebooks** to apply the preview or **Confirm** when there are no visible changes. If the Mac library changes while the preview is open, review it again before confirming.
 4. Open the imported notebook. Repeat the import after changing the notebook on the tablet. If you also changed the content of the Mac copy, Quaderno keeps both versions.
 
-Choose **Importa quaderni** (Import notebooks) to open a `quaderni.json` file already copied to the Mac. Transfers support Quaderno libraries up to 64 MiB. Native reMarkable notebooks and reMarkable Connect use separate storage. See [Data and backups](DATA.md) for file locations and backup steps.
+Choose **Importa quaderni** (Import notebooks) for a portable Quaderno export copied to the Mac, up to 64 MiB. A local incremental `quaderni.json` manifest alone is not a portable library: keep its `.objects` directory and sidecars for a complete backup, or export through Quaderno. Native reMarkable notebooks and reMarkable Connect use separate storage. See [Data and backups](DATA.md).
 
 ### Send a notebook from Mac to Paper Pro
 
@@ -192,7 +219,7 @@ Update Quaderno on both devices and keep both apps open and unlocked.
 #### Connect over Bluetooth
 
 1. On Paper Pro, go to **Settings → Bluetooth**, tap **Open Bluetooth sync**, and select **Start Bluetooth**. On firmware 3.29.1.0, Quaderno turns on the controller as needed and shows the code for the first pairing.
-2. On the Mac, open **Settings → Network → Open Bluetooth sync**. Enter the code shown on Paper Pro and select **Connect to Paper Pro**. Allow Bluetooth access if macOS asks.
+2. On the Mac, open **Settings → Bluetooth → Open Bluetooth sync**. Enter the code shown on Paper Pro and select **Connect to Paper Pro**. Allow Bluetooth access if macOS asks.
 
 Pairing links the two Quaderno apps. After restarting Paper Pro, use **Start Bluetooth** to bring the connection back up.
 
@@ -203,10 +230,10 @@ Pairing links the two Quaderno apps. After restarting Paper Pro, use **Start Blu
 
 #### Sync notebooks
 
-1. Open a notebook on the device you want to send from. Choose **Preview notebook transfer**, review the action, and select **Confirm transfer**. Each exported notebook can be up to 8 MiB over Bluetooth or 64 MiB over Wi-Fi.
-2. To send later edits automatically, enable **Sync automatically** and **Sync this notebook** on each device you want to send from. Automatic updates require both devices to recognize the same previous revision. A conflict needs confirmation and creates a separate copy. Deletions stay local.
+1. Open a notebook on the device you want to send from. Choose **Preview notebook transfer**, review the action, and select **Confirm transfer**. When both apps are updated, each exported notebook can be up to 64 MiB on either connection. Quaderno sends only missing pages and assets in 64 KiB chunks acknowledged after durable storage. With an older app, full transfers retain the 8 MiB Bluetooth and 64 MiB Wi-Fi limits; new document properties require both apps to be updated.
+2. To send later edits automatically, enable **Sync automatically** and **Sync this notebook** on each device you want to send from. With both apps updated to 0.2.9, select **After changes**, **On opening a notebook** or a regular interval, and choose automatic Wi-Fi/Bluetooth selection or a single connection. Manual remains the default. The first transfer requires review; conflicts follow **Ask** or **Keep both**, without overwriting an independently changed copy. Deletions stay local.
 
-With automatic sync enabled, Quaderno tries to restore the last connection type while both apps are open and unlocked. For Wi-Fi, the Mac uses the last saved address. **Disconnect** pauses the connection for the current session. **Forget pairing** removes the saved code and that device’s sync preferences.
+Keep both Quaderno apps open and unlocked. After-changes mode waits for a writing pause; enabling automation and reconnecting also check the selected notebooks. Automatic connection prefers permitted Wi-Fi and can fall back to paired Bluetooth, which must already be enabled. Trusted SSIDs restrict Wi-Fi only; charging-only applies to both connections. For Wi-Fi, the Mac uses the last saved address. **Disconnect** pauses reconnection until **Resume connection** or a manual connection. **Forget pairing** removes the saved code and that device’s sync preferences. See [automatic synchronization in 0.2.9](SYNC_PROTOCOL.md#automatic-synchronization-in-029) for recovery, limits and verification status.
 
 To continue on the other device, open the page and choose **Continue on Mac** or **Continue on Paper Pro**. If the current revision needs transferring, Quaderno first shows a preview. On the other device, select **Show request → Open page**. If the notebook changed after sending or has a conflict, review both versions and send a new request.
 
@@ -214,11 +241,13 @@ The library and editor show the sync state of shared notebooks. **Last shared ve
 
 You can unplug the cable after Quaderno starts. To reopen the app from the tablet menu, use AppLoad’s **Quaderno** entry if configured. The temporary USB session expires after 10 minutes. [Launch from AppLoad](INSTALLATION.md#start-from-the-appload-menu)
 
+If the connection drops, received chunks remain on the destination. Safely interrupted automatic work can retry with bounded waits and a fresh preview; **Resume transfer** also remains available. A previous approval is never reused, and an uncertain apply result needs review. Conflicting versions remain separate, and table formulas stay editable.
+
 ### Notes, Books, and iCloud on Mac
 
 To import a book, choose **Import from Apple Books** in Quaderno’s Mac library. **Open Apple Books** opens Books. Return to Quaderno and choose **Choose PDFs or EPUBs…** to select a local DRM-free copy. If a PDF from Books opens in Preview, use **File → Export** to save a copy. You can also select `.epub` packages that Finder shows as a single book. Apple Books handles access to its cloud library and protected Book Store titles. [PDFs in Books](https://support.apple.com/guide/books/ibkseed72068/mac) · [Export a PDF from Preview](https://support.apple.com/guide/preview/prvw0e8da223/mac)
 
-After importing, open the book in Quaderno. In **Wireless sync**, choose **Preview notebook transfer**, check the destination, and confirm the transfer. The size limit applies to the notebook prepared for transfer, including page images and annotations. If it exceeds the 8 MiB Bluetooth limit, switch to **Local Wi-Fi**, which supports notebooks up to 64 MiB. [Wireless sync](#wireless-sync)
+After importing, open the book in Quaderno. In **Wireless sync**, choose **Preview notebook transfer**, check the destination, and confirm the transfer. The size limit applies to the notebook prepared for transfer, including native sources, any older page images, and annotations. Updated apps transfer up to 64 MiB over either connection and resume missing parts after interruption. Wi-Fi is preferable for the first transfer of a large book. Older apps retain the 8 MiB Bluetooth limit. [Wireless sync](#wireless-sync)
 
 Drag a PDF or DRM-free EPUB from Finder into the Quaderno window to import it. You can also choose **Open With → Quaderno** in Finder. From an open notebook, choose **Share**, then drag **Current page** or **Entire notebook** to a Finder folder to export a PDF.
 
@@ -228,13 +257,18 @@ Drag a PDF or DRM-free EPUB from Finder into the Quaderno window to import it. Y
 
 ## Settings
 
-Open **Settings** from the library.
+Open **Settings** from the library. The 0.2.6 development version adds searchable categories; see [Settings, display and connected services](SETTINGS.md) for defaults, platform availability and validation status.
 
-- In **Network**, **Wi‑Fi** on Paper Pro scans for networks and uses the system service to join open networks or WPA/WPA2 Personal networks. Quaderno passes the password to the service to connect. On Mac, **Open Bluetooth sync** starts [pairing between the two apps](#connect-over-bluetooth).
-- On Paper Pro with firmware **3.29.1.0**, **Bluetooth** manages [nearby accessories](#connect-a-bluetooth-keyboard) and Quaderno sync.
+- **General** shows device and battery summaries, category shortcuts, and Paper Pro refresh, sleep and reading-light controls when available.
+- **Wi-Fi** on Paper Pro scans for networks and uses the system service to join open networks or WPA/WPA2 Personal networks. Quaderno passes the password to the service to connect. On Mac, the system manages Wi-Fi.
+- **Bluetooth** opens [pairing between the two apps](#connect-over-bluetooth). On Paper Pro with firmware **3.29.1.0**, it also manages [nearby accessories](#connect-a-bluetooth-keyboard).
+- **Display** controls manual tablet orientation, interface size, status indicators, full-page entry, book gestures and automatic/manual refresh. Version 0.2.8 adds optional automatic orientation when a supported sensor is available. It is off by default and waits for a stable angle and an idle interface. A fixed book reading orientation takes precedence; choosing a manual angle disables automatic rotation. See [rotation settings](SETTINGS.md#rotation-reading-and-full-page-view).
+- **Pen and battery** shows separate tablet/pen readings, screen-sleep timing and session reading-light controls. Staying awake while charging does not disable the PIN timeout.
+- **Accounts and services** opens the existing integrations and identifies services managed on Mac. Browser access and file import do not create a cloud account connection in Quaderno.
+- **Language and keyboard** separates interface language from the Italian or US English QWERTY layout.
 - In **USB‑C**, choose **Check** to see whether the SSH service responds at `10.11.99.1:22`. On Mac, you can also use **Copy command** and **Open in Terminal** when available.
 - In **Security**, choose **Quaderno PIN** to set a 4- to 8-digit PIN. You can change or remove the PIN, or use **Lock now**. With a PIN set, Quaderno locks at startup and after 1, 5, or 15 minutes of inactivity. The default is 5 minutes. The operating system handles device unlocking and file access.
-- **Device** shows the model, software version, and battery status when available. On Paper Pro, **Reading light** adjusts brightness for the current session when the driver exposes the required controls.
+- **About** shows device and software information. Battery and reading-light controls are under **Pen and battery**.
 
 ### Connect a Bluetooth keyboard
 

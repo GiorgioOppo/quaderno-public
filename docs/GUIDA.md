@@ -4,9 +4,9 @@
 
 Quaderno è una libreria locale per scrivere a mano, organizzare quaderni e annotare documenti. Per preparare il Mac o il Paper Pro, segui la [guida all’installazione](INSTALLAZIONE.md). Per trasferire o mettere al sicuro la libreria, consulta [Dati e backup](DATI.md).
 
-Le [sezioni di Quaderno e lo scambio dei file](FUNZIONALITA.md) descrivono cosa puoi creare in Libri, Scrittura, Grafici e Tabelle e come riusare i contenuti tra le sezioni.
+Le [sezioni di Quaderno e lo scambio dei file](FUNZIONALITA.md) descrivono cosa puoi creare in Libri, Scrittura, Grafici, Tabelle e Diagrammi e come riusare i contenuti tra le sezioni.
 
-In **Impostazioni**, scegli **Italiano** o **English** sotto **Lingua dell’app**. Quaderno ricorda la scelta alla riapertura.
+In **Impostazioni → Lingua e tastiera**, scegli **Italiano** o **English** sotto **Lingua dell’app**. Quaderno ricorda la scelta alla riapertura. La [guida alle impostazioni 0.2.6](IMPOSTAZIONI.md) descrive la navigazione aggiornata e lo stato delle verifiche.
 
 ## Il primo quaderno
 
@@ -29,7 +29,8 @@ Scegli una sezione della libreria per raggiungere il contenuto che ti serve.
 
 - **Libri** raccoglie i PDF e gli EPUB importati.
 - **Scrittura** raccoglie i quaderni con testo Markdown e annotazioni a mano libera.
-- **Grafici** e **Tabelle** raccolgono gli elementi modificabili già salvati nelle pagine. Scegli un elemento per aprire la sua pagina. Puoi anche creare un quaderno per un nuovo grafico o una nuova tabella dalla relativa sezione.
+- **Diagrammi** elenca diagrammi modificabili e quaderni Diagrammi vuoti. Scegli **Nuovo diagramma** per aprire una pagina da disegnare; aprire una voce esistente mostra la pagina sorgente senza aprire automaticamente l’editor. Tocca un diagramma salvato per modificarlo, oppure usa **Elementi**. La quinta sezione fa parte della 0.2.8 in sviluppo; vedi [Diagrammi](DIAGRAMMI.md).
+- **Grafici** e **Tabelle** raccolgono gli elementi modificabili già salvati nelle pagine. Scegli un elemento per aprire la sua pagina. La correzione in sviluppo nella **0.2.4** evita l’apertura automatica dell’editor durante questa navigazione: per modificare una tabella tocca una cella; per un grafico attiva **Elementi** e toccalo. La 0.2.4 ha superato compilazione, sei suite e avvii renderizzati su Mac e con l’SDK ARM. È stata installata sul Paper Pro tramite USB il 18 novembre 2026, con avvio nativo, backup e integrità dei quaderni verificati; l’app Mac 0.2.0 è rimasta invariata. Lo stesso giorno l’utente ha confermato sul Paper Pro che aprire elementi esistenti da Tabelle e Grafici mostra il foglio senza aprire l’editor. Consulta lo [stato della verifica](LASSO.md#aprire-tabelle-e-grafici-dalla-libreria). Puoi anche creare un quaderno per un nuovo grafico o una nuova tabella dalla relativa sezione.
 
 ### Cartelle, preferiti, tag e cestino
 
@@ -53,12 +54,18 @@ Puoi assegnare fino a 20 tag per pagina o quaderno, con un massimo di 40 caratte
 - **Inserisci immagine** apre un PNG o JPEG locale. La copia incorporata si apre anche sui dispositivi che ricevono il quaderno.
 - **Inserisci dalla libreria** copia un grafico o una tabella nella pagina corrente. Puoi modificare la copia indipendentemente dall’originale.
 - **Testo** inserisce un blocco su più righe. Tocca un blocco esistente per aprirlo e selezionare o modificare il testo. Sul Paper Pro, quando il sistema rileva una tastiera Bluetooth o USB collegata, la tastiera a schermo si nasconde.
-- Per scegliere il layout QWERTY della tastiera a schermo, tocca **IT/EN** oppure apri **Impostazioni → Dispositivo → Tastiera a schermo**. Puoi passare da **Italiano** a **English (US)** anche mentre scrivi. Quaderno ricorda il layout separatamente dalla lingua dei menu.
-- **Tabella** inserisce fino a 12 righe e 8 colonne. Tocca la cella da compilare. Con la tastiera, **Tab** passa alla cella successiva e **Invio** scende di una riga.
+- Per scegliere il layout QWERTY della tastiera a schermo, tocca **IT/EN** oppure apri **Impostazioni → Lingua e tastiera → Tastiera a schermo**. Puoi passare da **Italiano** a **English (US)** anche mentre scrivi. Quaderno ricorda il layout separatamente dalla lingua dei menu.
+- **Tabella** inserisce fino a 12 righe e 8 colonne. Nell’editor, tocca una cella nella griglia, modifica il campo **Testo della cella** e premi **Salva**. Con la tastiera, **Tab** passa alla cella successiva e **Invio** scende di una riga.
 - **Elementi** attiva la modifica di blocchi, tabelle e grafici. Tocca un elemento per aprirlo o eliminarlo dal suo editor. Trascinalo per spostarlo sulla pagina. Premi **Scrivi** per tornare alla penna.
 - **Pagina intera** nasconde gli strumenti. Usa **Mostra strumenti** per ripristinare la barra.
 
-Sul Paper Pro con firmware **3.29.1.0**, Quaderno usa la modalità rapida del pannello per l’interfaccia e mantiene quella standard per le pagine con documenti, immagini, grafici o diagrammi. **Aggiornamento automatico** chiede un ridisegno solo se la nuova pagina tarda a comparire. Puoi disattivarlo in **Impostazioni → Dispositivo → Schermo**. Per pulire eventuali immagini residue su tutto il pannello, tocca **Aggiorna schermo** nella barra in basso, anche in **Pagina intera**. La pulizia completa può far lampeggiare lo schermo.
+Sul Paper Pro con firmware **3.29.1.0**, Quaderno usa la modalità rapida del pannello per l’interfaccia e mantiene quella standard per le pagine con documenti, immagini, grafici o diagrammi. **Aggiornamento automatico** chiede un ridisegno solo se la nuova pagina tarda a comparire. Puoi disattivarlo in **Impostazioni → Schermo**. Per pulire eventuali immagini residue su tutto il pannello, tocca **Aggiorna schermo** nella barra in basso, anche in **Pagina intera**. Le impostazioni 0.2.6 espongono il comando manuale anche in **Generali** e **Schermo**. La pulizia completa può far lampeggiare lo schermo.
+
+### Modificare una cella sul foglio
+
+Nella 0.2.2, attiva **Elementi**, tocca la tabella e scegli la cella nella griglia dell’editor. La correzione in sviluppo per la **0.2.3** permette di aprire direttamente la cella toccandola sul foglio: dito e mouse funzionano anche sulle celle vuote; un tocco breve della penna/Marker apre una cella compilata. Nelle celle vuote la penna continua a scrivere, anche con singoli punti. Muovere o tenere appoggiata la penna continua la scrittura anche nelle celle compilate. In Elementi, il tocco apre l’editor sulla riga e colonna scelte.
+
+Modifica il campo **Testo della cella**, poi premi **Salva**. Per le formule, il campo mostra l’espressione originale modificabile e la griglia mostra il risultato. La conversione della scrittura con il lazo produce le stesse celle modificabili. La 0.2.3 ha superato compilazione, sei suite di test e prove di avvio su Mac e con l’SDK ARM. È stata installata tramite USB e avviata sul Paper Pro il 18 novembre 2026, con backup e integrità dei quaderni verificati; l’app Mac 0.2.0 è rimasta invariata. Lo stesso giorno l’utente ha confermato l’apertura con dito e penna e la corretta modifica con ricalcolo delle formule nel caso di prova **QA Celle 0.2.2**. Per la procedura completa, i valori della prova e i limiti del collaudo, consulta la [guida al lazo](LASSO.md#modificare-una-cella-dopo-la-conversione).
 
 ### Creare una tabella da un CSV
 
@@ -78,18 +85,34 @@ Seleziona una cella vuota sotto i valori e premi **Somma** o **Media** per propo
 
 Per creare un grafico indipendente, apri **Grafici → Nuovo grafico** nella libreria. Puoi scegliere linee o barre, modificare i due punti iniziali e impostare il titolo e le etichette degli assi.
 
-1. Crea e salva una tabella. Aprila da **Elementi** e scegli **Grafico**.
-2. Scegli **Linee** o **Barre** e due colonne numeriche distinte per X e Y. Per i decimali puoi usare la virgola o il punto. Per un grafico a linee servono almeno due righe di dati. Per le barre, usa un valore X distinto per ciascuna riga.
-3. Attiva **Prima riga come intestazione** se vuoi usare i titoli delle colonne come etichette degli assi. Controlla l’anteprima e premi **Salva**.
+1. Crea e salva una tabella con almeno due colonne. Tocca direttamente una cella con il dito per aprire l’editor; puoi anche usare **Elementi** e toccare la tabella.
+2. Premi **Grafico**. Il comando salva prima la bozza corrente della tabella, poi apre le impostazioni del grafico. **Annulla** nel dialogo del grafico non annulla questo salvataggio della tabella.
+3. Scegli **Linee** o **Barre** e due colonne numeriche distinte per X e Y. Per i decimali puoi usare la virgola o il punto. Per un grafico a linee servono almeno due righe di dati. Per le barre, usa un valore X distinto per ciascuna riga.
+4. Lascia attiva **Prima riga come intestazione** soltanto se la prima riga contiene i titoli delle colonne, da usare come etichette degli assi. L’opzione è attiva inizialmente: disattivala se la prima riga contiene già dati numerici, così quei valori vengono inclusi.
+5. Controlla l’anteprima e premi **Salva** per aggiungere il grafico collegato alla stessa pagina.
 
 Il grafico usa anche i risultati numerici delle formule e si aggiorna quando salvi una modifica alla tabella. Se le colonne selezionate contengono valori incompleti o non validi, correggi le celle per ripristinare il grafico. Una copia indipendente del grafico esporta anche i valori negativi con **Copia CSV** o **Salva CSV**.
 
+### Modificare un grafico con un tocco
+
+Nella **0.2.5** in sviluppo puoi aprire l’editor toccando direttamente il grafico sul foglio con il dito, con un clic del mouse o con un tocco breve della penna/Marker. Un grafico indipendente apre le proprie proprietà; un grafico collegato a una tabella apre le impostazioni e la scelta delle colonne sorgente, mantenendo il collegamento quando salvi.
+
+Il tocco diretto è previsto con penna, matita o pennarello selezionati e il lazo chiuso. Muovere o tenere appoggiata la penna continua la scrittura. Lazo, gomma, evidenziatore e strumenti per le forme conservano il proprio comportamento. Puoi ancora attivare **Elementi** per modificare o trascinare gli oggetti. Aprire una voce dalla libreria Grafici continua a mostrare soltanto il foglio, come nella 0.2.4.
+
+La 0.2.5 ha superato compilazione, tutte le sei suite e avvii renderizzati su Mac e con l’SDK ARM, comprese otto nuove prove dei grafici e le regressioni della navigazione 0.2.4. È stata installata sul Paper Pro tramite USB il 18 novembre 2026, con avvio nativo, esecuzione tramite AppLoad, backup e integrità dei quaderni verificati; l’app Mac 0.2.0 è rimasta invariata. Lo stesso giorno l’utente ha confermato sul Paper Pro l’apertura dell’editor del grafico provato con dito e tocco breve della penna, senza attivare Elementi. Consulta la [guida ai gesti e lo stato delle verifiche](LASSO.md#modificare-un-grafico-con-un-tocco).
+
 ### Diagrammi di flusso
+
+Nella 0.2.8 **Diagrammi → Nuovo diagramma** crea un quaderno con una pagina vuota da disegnare. Traccia un diagramma di flusso con forme e punte delle frecce ben distinguibili. Con il riconoscimento automatico attivo, una pausa può produrre un suggerimento senza cambiare la pagina o aprire una finestra. Aprilo per rivederlo; **Chiudi** lo nasconde fino a una successiva modifica del disegno. In alternativa seleziona i tratti con il lazo e richiedi il riconoscimento, anche nelle altre sezioni.
+
+Rivedi forme, frecce ed etichette, correggi o escludi le trascrizioni e applica esplicitamente. Puoi conservare tutto l’inchiostro oppure sostituire soltanto forme/collegamenti riconosciuti ed etichette accettate non vuote. Tratti ambigui ed esclusi restano. L’annullamento della pagina ripristina l’intera conversione; quando l’inchiostro è sostituito, il recupero degli originali resta disponibile dopo la riapertura. **Inserisci dalla libreria** crea una copia modificabile indipendente in un altro quaderno. Vedi [Diagrammi](DIAGRAMMI.md) per riconoscimento e recupero in dettaglio. La prima build 0.2.8 ha superato controlli automatici/nativi e la rotazione automatica da verticale a orizzontale è stata confermata sul tablet. Le tolleranze riviste del riconoscimento hanno superato verifiche geometriche/UI e avvii Mac e ARM; la build corretta è installata sul Paper Pro e ha superato l’avvio rigoroso nativo/AppLoad a 1620 × 2160 senza errori QML. Il 18 novembre 2026 l’utente ha confermato che riconoscimento, applicazione del risultato e apertura dell’editor per modificarlo funzionano nel diagramma di prova sul Paper Pro; vedi lo [stato attuale delle verifiche](IMPOSTAZIONI.md#ambito-delle-verifiche).
+
+Resta disponibile l’editor strutturato:
 
 1. Apri una pagina e scegli **Diagramma**. Aggiungi le forme che ti servono oppure usa **Modello di flusso** per partire da un esempio modificabile. Da un diagramma vuoto, **Importa .drawio** apre anche i file `.xml` di draw.io. Quaderno importa la prima pagina e segnala gli elementi che ha omesso o semplificato.
 2. Trascina le forme per disporle e usa il quadratino nell’angolo per ridimensionarle. **Griglia** allinea lo spostamento e il ridimensionamento ai punti della griglia. Seleziona una forma per duplicarla o per modificare la sua etichetta.
 3. Con **Collega**, tocca la forma di partenza e poi quella di arrivo. Le frecce seguono le forme quando le sposti. Seleziona una freccia per aggiungere un’etichetta, invertirla o passare al percorso ad angolo retto. Puoi annullare e ripristinare le modifiche fatte nell’editor.
-4. Salva il diagramma nel quaderno. Per riaprirlo, scegli **Elementi** e tocca il diagramma. L’esportazione PDF include il disegno. Dal menu **Altre azioni → Esporta .drawio** puoi salvare forme e frecce modificabili in draw.io.
+4. Salva il diagramma nel quaderno. Per riaprirlo, tocca direttamente il diagramma salvato oppure scegli **Elementi** e toccalo. L’esportazione PDF include il disegno. Dal menu **Altre azioni → Esporta .drawio** puoi salvare forme e frecce modificabili in draw.io.
 
 Aggiorna Quaderno su Mac e Paper Pro per trasferire i diagrammi mantenendoli modificabili. Ogni diagramma può contenere fino a 64 forme e 128 collegamenti. L’importazione accetta file fino a 2 MiB.
 
@@ -148,13 +171,17 @@ Nella barra di lettura scegli **Evidenzia** e trascina sulla pagina per segnare 
 - Tocca la stella per aggiungere o rimuovere il segnalibro della pagina corrente. Apri **Segnalibri** per tornare direttamente a una pagina salvata.
 - Scegli **Cerca testo** in fondo alla pagina per trovare parole nel testo incorporato del PDF. Seleziona un risultato per aprirne la pagina. La ricerca usa il testo che il PDF rende estraibile. Per cercare in un PDF importato con una versione precedente di Quaderno, importa nuovamente il file originale.
 
-L’importazione è limitata a 150 pagine, fino a 48 MiB per il PDF o 64 MiB per l’EPUB e fino a 30 MiB per le immagini prodotte. Lo spazio occupato dalla libreria influisce sulla possibilità di importare nuovi documenti. Sul Paper Pro, usa **Salva PDF** per esportare la copia annotata. Sul Mac, scegli **Condividi → Salva PDF**. Il PDF comprende tutte le pagine, con testo, tabelle, grafici e inchiostro dei livelli visibili.
+L’importazione lavora in background con avanzamento e annullamento, conserva la sorgente nativa e renderizza soltanto le pagine richieste. Non c’è più il limite di 150 pagine. La sorgente può occupare fino a 48 MiB per il PDF e 64 MiB per l’EPUB; il PDF preparato dall’EPUB deve rientrare in 48 MiB. Restano i limiti di capacità della libreria e di trasferimento. Le vecchie importazioni raster conservano le annotazioni; reimporta l’originale come copia separata per usare il nuovo lettore. Scegli **Salva PDF** sul Paper Pro o **Condividi → Salva PDF** sul Mac per esportare tutte le pagine, con i livelli visibili e gli oggetti della pagina.
+
+Tocca due volte con un dito per ingrandire al 200% intorno al punto toccato; ripeti per adattare l’intera pagina. La penna continua ad annotare. Apri il contatore delle pagine per vedere **Pagine**, inserisci un numero e scegli **Vai**, poi **Apri**. **Prima** e **Ultima** selezionano gli estremi del documento. Filtra la panoramica per **Tutte**, **Segnalibri** o **Annotate**; i conteggi includono annotazioni nei livelli nascosti. Il tastierino numerico compare sul Paper Pro quando non è collegata una tastiera fisica.
+
+Nella libreria, **Ordina** offre A–Z, Z–A e ordine per numero di pagine, oltre ai filtri per formato. Le vecchie importazioni raster sono indicate come documenti importati in precedenza senza presumere che siano PDF o EPUB. Sul Mac, trascinare fino a 16 file mostra destinazione e conteggi dei file accettati, duplicati, non supportati e non leggibili. **Importazioni** apre il rapporto per file. **Riprova non riusciti** riprova soltanto i file falliti; **Annulla importazione** interrompe il lavoro in attesa conservando le importazioni completate. Il rapporto riguarda l’ultimo gruppo e si cancella al blocco di Quaderno o con il comando dedicato.
 
 ### Markdown e Obsidian
 
 - In libreria, usa **Importa documento** e scegli un file `.md` o `.markdown`. Su Mac puoi anche trascinarlo dal Finder o scegliere **Apri con → Quaderno**. Quaderno conserva la sintassi Markdown e suddivide il testo in pagine. Per modificare il testo del documento, scegli **Modifica Markdown**.
 - Su Mac e Paper Pro, apri **Markdown e Obsidian**. Per importare dal web, incolla l’URL HTTPS diretto al file, per esempio il collegamento **Raw** di un repository, e premi **Importa da URL**. L’importazione accetta testo UTF-8 fino a 256 KiB e 200 pagine.
-- Dal quaderno aperto, scegli **Markdown e Obsidian → Esporta Markdown**. Quaderno salva inchiostro, grafici e immagini incorporate come file separati in una cartella accanto al Markdown, con collegamenti relativi. Per conservare i collegamenti, sposta insieme il file e la cartella. L’integrazione con Obsidian invia il testo Markdown.
+- Dal quaderno aperto, scegli **Markdown e Obsidian → Esporta Markdown**. Quaderno salva inchiostro, grafici, diagrammi e immagini incorporate come file separati in una cartella accanto al Markdown, con collegamenti relativi. Ogni diagramma ha un’anteprima PNG e un allegato `.drawio` modificabile. Reimportare il Markdown recupera testo e collegamenti; il trasferimento del quaderno conserva gli oggetti originali modificabili. Per conservare i collegamenti, sposta insieme il file e la cartella. L’integrazione con Obsidian invia il testo Markdown.
 - Su Mac, scegli la cartella del **Vault Obsidian** e inserisci il nome del file o un percorso relativo, per esempio `Riunioni/Verbale.md`. La sottocartella deve già esistere. **Salva nel vault** crea una nuova nota e rifiuta un nome già in uso. Dopo il salvataggio, usa **Apri in Obsidian**. [Obsidian URI](https://obsidian.md/help/uri)
 - Per un sito già pubblicato, salva l’indirizzo HTTPS in **Obsidian Publish** e, se vuoi collegare una nota specifica, inserisci il suo percorso pubblicato o il permalink. **Copia collegamento** è disponibile su entrambi i dispositivi e **Apri nel browser** su Mac. La pubblicazione delle note si gestisce in Obsidian. [Obsidian Publish](https://obsidian.md/help/publish) · [Permalink](https://obsidian.md/help/publish/permalinks)
 
@@ -175,7 +202,7 @@ Il pannello elenca fino a 3.000 note `.md` in UTF‑8, con un limite di 256 KiB 
 3. Controlla quanti quaderni saranno creati, aggiornati o lasciati invariati e quante copie in conflitto saranno aggiunte. L’anteprima indica anche le eventuali cartelle nuove. Scegli **Importa quaderni** per applicare l’anteprima o **Conferma** se non ci sono cambiamenti visibili. Se la libreria del Mac cambia con l’anteprima aperta, rivedila prima di confermare.
 4. Apri il quaderno importato. Ripeti l’importazione quando il quaderno sul tablet cambia. Se hai modificato anche il contenuto della copia Mac, Quaderno conserva entrambe le versioni.
 
-**Importa quaderni** consente di scegliere un file `quaderni.json` già copiato sul Mac. Il trasferimento importa la libreria di Quaderno fino a 64 MiB. I quaderni nativi reMarkable e reMarkable Connect usano un archivio separato. Consulta [Dati e backup](DATI.md) per i percorsi e le procedure di copia.
+**Importa quaderni** apre un’esportazione portabile di Quaderno copiata sul Mac, fino a 64 MiB. Il solo manifest locale incrementale `quaderni.json` non è una libreria portabile: conserva anche directory `.objects` e file accessori per un backup completo, oppure esporta attraverso Quaderno. I quaderni nativi reMarkable e reMarkable Connect usano un archivio separato. Consulta [Dati e backup](DATI.md).
 
 ### Inviare un quaderno dal Mac al Paper Pro
 
@@ -192,7 +219,7 @@ Aggiorna Quaderno su entrambi i dispositivi e tieni le app aperte e sbloccate.
 #### Collegare via Bluetooth
 
 1. Sul Paper Pro vai in **Impostazioni → Bluetooth**, tocca **Apri sincronizzazione Bluetooth** e scegli **Avvia Bluetooth**. Sul firmware 3.29.1.0, Quaderno attiva il controller se necessario e mostra il codice per il primo abbinamento.
-2. Sul Mac apri **Impostazioni → Rete → Apri sincronizzazione Bluetooth**. Inserisci il codice mostrato sul Paper Pro e scegli **Collega il Paper Pro**. Consenti l’accesso a Bluetooth se macOS lo richiede.
+2. Sul Mac apri **Impostazioni → Bluetooth → Apri sincronizzazione Bluetooth**. Inserisci il codice mostrato sul Paper Pro e scegli **Collega il Paper Pro**. Consenti l’accesso a Bluetooth se macOS lo richiede.
 
 L’abbinamento collega le due app Quaderno. Dopo un riavvio del Paper Pro, usa **Avvia Bluetooth** per riattivare il collegamento.
 
@@ -203,10 +230,10 @@ L’abbinamento collega le due app Quaderno. Dopo un riavvio del Paper Pro, usa 
 
 #### Sincronizzare i quaderni
 
-1. Apri un quaderno sul dispositivo da cui vuoi inviarlo. Scegli **Anteprima invio quaderno**, controlla l’azione e premi **Conferma invio**. Il limite per quaderno è 8 MiB via Bluetooth e 64 MiB via Wi-Fi, misurati sul quaderno esportato.
-2. Per inviare automaticamente le modifiche successive, attiva **Sincronizza automaticamente** e **Sincronizza questo quaderno** su ciascun dispositivo che vuoi usare come sorgente. Gli aggiornamenti automatici richiedono una versione precedente riconosciuta da entrambi. Un conflitto richiede conferma e crea una copia separata. Le eliminazioni restano locali.
+1. Apri un quaderno sul dispositivo da cui vuoi inviarlo. Scegli **Anteprima invio quaderno**, controlla l’azione e premi **Conferma invio**. Con entrambe le app aggiornate, il limite è 64 MiB per quaderno esportato su entrambi i collegamenti. Quaderno invia solo le pagine e le risorse mancanti, in parti da 64 KiB confermate dopo il salvataggio. Con un’app precedente, il trasferimento completo conserva il limite di 8 MiB via Bluetooth e 64 MiB via Wi-Fi; le nuove proprietà richiedono entrambe le app aggiornate.
+2. Per inviare automaticamente le modifiche successive, attiva **Sincronizza automaticamente** e **Sincronizza questo quaderno** su ciascun dispositivo che vuoi usare come sorgente. Con entrambe le app aggiornate alla 0.2.9, scegli **Dopo le modifiche**, **All’apertura di un quaderno** oppure un intervallo e seleziona il collegamento automatico Wi-Fi/Bluetooth o un solo tipo. La modalità predefinita resta manuale. Il primo trasferimento richiede revisione; i conflitti seguono **Chiedi cosa fare** o **Conserva entrambe le copie**, senza sovrascrivere una copia modificata indipendentemente. Le eliminazioni restano locali.
 
-Con la sincronizzazione automatica attiva, Quaderno tenta di ristabilire l’ultimo tipo di collegamento mentre le due app sono aperte e sbloccate. Per il Wi-Fi usa l’ultimo indirizzo salvato sul Mac. **Disconnetti** sospende il collegamento nella sessione corrente. **Rimuovi abbinamento** cancella il codice salvato e le preferenze di sincronizzazione per quel dispositivo.
+Tieni entrambe le app Quaderno aperte e sbloccate. La modalità dopo le modifiche attende una pausa nella scrittura; anche attivazione dell’automatismo e riconnessione ricontrollano i quaderni selezionati. Il collegamento automatico preferisce il Wi-Fi consentito e può ripiegare sul Bluetooth abbinato, che deve essere già acceso. Gli SSID attendibili limitano soltanto il Wi-Fi; il vincolo di ricarica vale per entrambi. Sul Mac il Wi-Fi usa l’ultimo indirizzo salvato. **Disconnetti** sospende la riconnessione fino a **Riprendi collegamento** o a un collegamento manuale. **Rimuovi abbinamento** cancella il codice salvato e le preferenze di sincronizzazione per quel dispositivo. Vedi [sincronizzazione automatica nella 0.2.9](PROTOCOLLO_SYNC.md#sincronizzazione-automatica-nella-029) per recupero, limiti e stato delle verifiche.
 
 Per continuare sull’altro dispositivo, apri la pagina e scegli **Continua sul Mac** o **Continua sul Paper Pro**. Se serve trasferire la versione corrente, Quaderno mostra prima l’anteprima. Sull’altro dispositivo scegli **Mostra richiesta → Apri pagina**. Se il quaderno è cambiato dopo l’invio o è in conflitto, verifica le due versioni e invia una nuova richiesta.
 
@@ -214,11 +241,13 @@ La libreria e l’editor mostrano lo stato dei quaderni già condivisi. **Ultima
 
 Puoi scollegare il cavo dopo aver avviato Quaderno. Per riaprire l’app dal menu del tablet, usa la voce **Quaderno** di AppLoad se configurata. La sessione USB temporanea scade dopo 10 minuti. [Avvio dal menu AppLoad](INSTALLAZIONE.md#avviare-dal-menu-appload)
 
+Se il collegamento si interrompe, le parti ricevute restano sul dispositivo. Il lavoro automatico interrotto prima dell’applicazione può riprovare con attese limitate e una nuova anteprima; resta disponibile anche **Riprendi trasferimento**. La conferma precedente non viene riutilizzata e un esito di applicazione incerto richiede revisione. Le versioni in conflitto restano separate e le formule delle tabelle rimangono modificabili.
+
 ### Note, Libri e iCloud sul Mac
 
 Per importare un libro, scegli **Importa da Apple Books** dalla libreria di Quaderno sul Mac. **Apri Apple Books** apre Libri. Torna in Quaderno e scegli **Scegli PDF o EPUB…** per selezionare una copia locale senza DRM. Se apri un PDF di Libri in Anteprima, puoi salvarne una copia con **File → Esporta**. Puoi selezionare anche i pacchetti `.epub` che Finder mostra come un singolo libro. L’accesso alla libreria nel cloud e ai titoli protetti del Book Store resta in Apple Books. [PDF in Libri](https://support.apple.com/it-it/guide/books/ibkseed72068/mac) · [Esportare un PDF da Anteprima](https://support.apple.com/it-it/guide/preview/prvw0e8da223/mac)
 
-Dopo l’importazione apri il libro in Quaderno. Da **Sincronizzazione wireless**, scegli **Anteprima invio quaderno**, controlla la destinazione e conferma l’invio. Il limite riguarda il quaderno preparato per il trasferimento, che comprende le immagini delle pagine e le annotazioni. Se supera 8 MiB via Bluetooth, usa **Wi-Fi locale**, che accetta fino a 64 MiB. [Sincronizzazione wireless](#sincronizzazione-wireless)
+Dopo l’importazione apri il libro in Quaderno. Da **Sincronizzazione wireless**, scegli **Anteprima invio quaderno**, controlla la destinazione e conferma l’invio. Il limite riguarda il quaderno preparato per il trasferimento, che comprende sorgenti native, eventuali vecchie immagini delle pagine e annotazioni. Le app aggiornate trasferiscono fino a 64 MiB anche via Bluetooth, riprendendo le parti mancanti dopo un’interruzione. Il Wi-Fi resta preferibile per il primo invio di libri grandi. Con un’app precedente, Bluetooth mantiene il limite di 8 MiB. [Sincronizzazione wireless](#sincronizzazione-wireless)
 
 Trascina un PDF o EPUB senza DRM dal Finder alla finestra di Quaderno per importarlo. Puoi anche scegliere **Apri con → Quaderno** dal Finder. Dal quaderno aperto scegli **Condividi**, poi trascina **Pagina corrente** o **Intero quaderno** in una cartella del Finder per ottenere un PDF.
 
@@ -228,13 +257,18 @@ Trascina un PDF o EPUB senza DRM dal Finder alla finestra di Quaderno per import
 
 ## Impostazioni
 
-Apri **Impostazioni** dalla libreria.
+Apri **Impostazioni** dalla libreria. La versione 0.2.6 in sviluppo aggiunge categorie con ricerca; consulta [Impostazioni, schermo e servizi collegati](IMPOSTAZIONI.md) per valori iniziali, disponibilità per piattaforma e stato delle verifiche.
 
-- In **Rete**, **Wi‑Fi** sul Paper Pro cerca le reti e usa il servizio del sistema per collegarsi a reti aperte o WPA/WPA2 personali. Quaderno passa la password al servizio per la connessione. Sul Mac, **Apri sincronizzazione Bluetooth** avvia l’[abbinamento tra le due app](#collegare-via-bluetooth).
-- Sul Paper Pro con firmware **3.29.1.0**, **Bluetooth** gestisce gli [accessori nelle vicinanze](#collegare-una-tastiera-bluetooth) e la sincronizzazione Quaderno.
+- **Generali** riassume dispositivo e batterie, offre collegamenti alle categorie e, sul Paper Pro, refresh, sospensione e luce di lettura quando disponibili.
+- **Wi-Fi** sul Paper Pro cerca le reti e usa il servizio del sistema per collegarsi a reti aperte o WPA/WPA2 personali. Quaderno passa la password al servizio per la connessione. Sul Mac il Wi-Fi viene gestito dal sistema.
+- **Bluetooth** apre l’[abbinamento tra le due app](#collegare-via-bluetooth). Sul Paper Pro con firmware **3.29.1.0** gestisce anche gli [accessori nelle vicinanze](#collegare-una-tastiera-bluetooth).
+- **Schermo** controlla orientamento manuale del tablet, dimensione, indicatori di stato, ingresso a pagina intera, gesture dei libri e refresh automatico/manuale. La 0.2.8 aggiunge l’orientamento automatico opzionale con sensore supportato. È disattivato inizialmente e attende un angolo stabile e la conclusione delle interazioni. Un orientamento di lettura fisso del libro ha precedenza; scegliere un angolo manuale disattiva la rotazione automatica. Vedi [impostazioni di rotazione](IMPOSTAZIONI.md#rotazione-lettura-e-schermo-intero).
+- **Penna e batteria** mostra letture separate per tablet e penna, intervallo di sospensione e luce di lettura della sessione. Restare attivi durante la ricarica non disabilita il timeout del PIN.
+- **Account e servizi** apre le integrazioni esistenti e identifica i servizi gestiti sul Mac. Aprire un browser o importare un file non crea un collegamento all’account cloud in Quaderno.
+- **Lingua e tastiera** separa la lingua dell’interfaccia dal layout QWERTY italiano o inglese USA.
 - In **USB‑C**, premi **Verifica** per controllare se il servizio SSH risponde a `10.11.99.1:22`. Sul Mac trovi anche **Copia comando** e, quando disponibile, **Apri in Terminale**.
 - In **Sicurezza**, **PIN di Quaderno** imposta un PIN da 4 a 8 cifre. Puoi cambiarlo, rimuoverlo oppure usare **Blocca ora**. Con il PIN attivo, Quaderno si blocca all’apertura e dopo 1, 5 o 15 minuti di inattività. Il valore iniziale è 5 minuti. Il sistema operativo gestisce lo sblocco del dispositivo e l’accesso ai file.
-- **Dispositivo** mostra modello, versione software e stato della batteria se rilevabili. Sul Paper Pro, **Luce di lettura** regola la luminosità per la sessione corrente quando il driver espone i controlli richiesti.
+- **Informazioni** mostra i dati del dispositivo e del software. Batteria e luce di lettura si trovano in **Penna e batteria**.
 
 ### Collegare una tastiera Bluetooth
 

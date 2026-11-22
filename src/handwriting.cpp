@@ -7,6 +7,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QOperatingSystemVersion>
+#include <QRegularExpression>
 
 namespace {
 constexpr qsizetype maxPoints = 120'000;
@@ -102,7 +103,7 @@ Handwriting::Handwriting(QObject *parent) : QObject(parent)
             complete({}, tr("Il riconoscimento ha impiegato troppo tempo. Riprova con una selezione più piccola."));
             return;
         }
-        if (status != QProcess::NormalExit || code != 0 || output.size() > 32 * 1024) {
+        if (status != QProcess::NormalExit || code != 0 || output.size() > 64 * 1024) {
             complete({}, tr("Il riconoscimento della scrittura si è interrotto."));
             return;
         }
@@ -116,6 +117,14 @@ Handwriting::Handwriting(QObject *parent) : QObject(parent)
         } else if (text.isEmpty()) {
             complete({}, error.isEmpty() ? tr("Non è stato riconosciuto alcun testo.") : error);
         } else {
+            m_alternatives = {text};
+            for (const QJsonValue &entry : response.value(QStringLiteral("alternatives")).toArray()) {
+                const QString candidate = entry.toString().trimmed();
+                if (!candidate.isEmpty() && candidate.size() <= maxResultLength && !m_alternatives.contains(candidate))
+                    m_alternatives.append(candidate);
+                if (m_alternatives.size() >= 3)
+                    break;
+            }
             complete(text, {});
         }
     });
@@ -135,23 +144,33 @@ QString Handwriting::helperPath()
     return QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("quaderno-handwriting"));
 }
 
-bool Handwriting::available() const
+QStringList Handwriting::availableLanguages() const
 {
     const QFileInfo helper(helperPath());
     if (!helper.isFile() || !helper.isExecutable())
-        return false;
+        return {};
 #ifdef Q_OS_MACOS
-    return QOperatingSystemVersion::current().majorVersion() >= 27;
+    return QOperatingSystemVersion::current().majorVersion() >= 27 ? QStringList{QStringLiteral("it"), QStringLiteral("en")} : QStringList{};
 #elif defined(Q_OS_LINUX)
-    const QFileInfo dictionary(QDir(QCoreApplication::applicationDirPath())
-        .filePath(QStringLiteral("quaderno-handwriting-it.dct")));
-    return dictionary.isFile() && dictionary.isReadable() && dictionary.size() > 0;
+    QStringList result;
+    for (const QString &language : {QStringLiteral("it"), QStringLiteral("en")}) {
+        const QFileInfo dictionary(QDir(QCoreApplication::applicationDirPath())
+            .filePath(QStringLiteral("quaderno-handwriting-%1.dct").arg(language)));
+        if (dictionary.isFile() && dictionary.isReadable() && dictionary.size() > 0)
+            result.append(language);
+    }
+    return result;
 #else
-    return false;
+    return {};
 #endif
 }
 
-void Handwriting::recognize(const QVariantList &strokes)
+bool Handwriting::available() const
+{
+    return !availableLanguages().isEmpty();
+}
+
+void Handwriting::recognize(const QVariantList &strokes, const QString &language)
 {
     if (m_busy)
         return;
@@ -164,6 +183,13 @@ void Handwriting::recognize(const QVariantList &strokes)
         return;
     }
 
+    if (!availableLanguages().contains(language)) {
+        m_alternatives.clear();
+        complete({}, tr("Il dizionario per la lingua scelta non è installato."));
+        return;
+    }
+    m_language = language;
+    m_alternatives.clear();
     QString error;
     const QJsonArray ink = validatedInk(strokes, error);
     if (ink.isEmpty()) {
@@ -179,6 +205,8 @@ void Handwriting::recognize(const QVariantList &strokes)
     m_timedOut = false;
     m_error.clear();
     m_result.clear();
+    m_originalResult.clear();
+    m_alternatives.clear();
     m_busy = true;
     m_waitingForExit = m_process.state() != QProcess::NotRunning;
     if (!m_waitingForExit)
@@ -191,7 +219,10 @@ void Handwriting::startProcess()
     m_waitingForExit = false;
     m_process.setStandardErrorFile(QProcess::nullDevice());
     m_timeout.start(60'000);
-    m_process.start(helperPath(), {});
+    // No arguments retains compatibility with the previous Italian-only helper.
+    const QStringList arguments = m_language == QStringLiteral("it") ? QStringList{}
+        : QStringList{QStringLiteral("--language"), m_language};
+    m_process.start(helperPath(), arguments);
 }
 
 void Handwriting::cancel()
@@ -204,6 +235,8 @@ void Handwriting::cancel()
     m_input.clear();
     m_error.clear();
     m_result.clear();
+    m_originalResult.clear();
+    m_alternatives.clear();
     if (m_process.state() != QProcess::NotRunning)
         m_process.kill();
     if (wasBusy || hadResult)
@@ -215,8 +248,59 @@ void Handwriting::complete(const QString &text, const QString &error)
     m_timeout.stop();
     m_busy = false;
     m_input.clear();
-    m_result = text;
+    m_originalResult = text;
+    m_result = applyTextPreferences(text);
+    if (!text.isEmpty() && m_result != text) {
+        m_alternatives.removeAll(m_result);
+        m_alternatives.prepend(m_result);
+        if (!m_alternatives.contains(text)) m_alternatives.append(text);
+    }
     m_error = error;
+    if (!error.isEmpty()) m_alternatives.clear();
     emit changed();
     emit finished(!text.isEmpty());
+}
+
+QString Handwriting::applyTextPreferences(const QString &text) const
+{
+    if (text.size() > maxResultLength) return text;
+    QString result = text;
+    // Literal, whole-word corrections only. Replacement text never becomes a
+    // regular expression/backreference and the source transcript stays available.
+    const auto replaceWord = [](QString input, const QString &word, const QString &replacement, bool insensitive) {
+        if (word.isEmpty() || word.size() > 80 || replacement.isEmpty() || replacement.size() > 120)
+            return input;
+        QRegularExpression pattern(QStringLiteral("(?<![\\p{L}\\p{N}_])") + QRegularExpression::escape(word)
+            + QStringLiteral("(?![\\p{L}\\p{N}_])"), insensitive ? QRegularExpression::CaseInsensitiveOption : QRegularExpression::NoPatternOption);
+        QString output;
+        qsizetype offset = 0;
+        auto matches = pattern.globalMatch(input);
+        while (matches.hasNext()) {
+            const auto match = matches.next();
+            output += input.mid(offset, match.capturedStart() - offset) + replacement;
+            offset = match.capturedEnd();
+            if (output.size() > maxResultLength) return input;
+        }
+        output += input.mid(offset);
+        return output.size() <= maxResultLength ? output : input;
+    };
+    for (const QString &word : m_wordList.mid(0, 100))
+        result = replaceWord(result, word.trimmed(), word.trimmed(), true);
+    for (const QString &rule : m_corrections.mid(0, 100)) {
+        const qsizetype split = rule.indexOf(QLatin1Char('='));
+        if (split > 0)
+            result = replaceWord(result, rule.left(split).trimmed(), rule.mid(split + 1).trimmed(), false);
+    }
+    if (m_numericMode) {
+        QStringList lines = result.split(QLatin1Char('\n'));
+        const QRegularExpression numeric(QStringLiteral("^[0-9OoIl|.,+\\-/%()=\\s]+$"));
+        for (QString &line : lines) {
+            if (numeric.match(line).hasMatch())
+                line.replace(QLatin1Char('O'), QLatin1Char('0')).replace(QLatin1Char('o'), QLatin1Char('0'))
+                    .replace(QLatin1Char('I'), QLatin1Char('1')).replace(QLatin1Char('l'), QLatin1Char('1'))
+                    .replace(QLatin1Char('|'), QLatin1Char('1'));
+        }
+        result = lines.join(QLatin1Char('\n'));
+    }
+    return result;
 }

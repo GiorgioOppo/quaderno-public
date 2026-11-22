@@ -7,6 +7,7 @@ import Quaderno
 
 Dialog {
     id: dialog
+    objectName: "usbImportDialog"
 
     required property Notebook notebook
     required property UsbSsh usbSsh
@@ -22,6 +23,7 @@ Dialog {
     padding: 16 * uiScale
     spacing: 12 * uiScale
     modal: true
+    focus: true
     closePolicy: Popup.CloseOnEscape
     title: qsTr("Importa dal Paper Pro")
 
@@ -55,42 +57,60 @@ Dialog {
         bottomPadding: 0
     }
 
-    contentItem: ColumnLayout {
-        spacing: 10 * dialog.uiScale
+    contentItem: ScrollView {
+        id: reviewScroll
+        objectName: "usbImportReview"
+        clip: true
+        implicitHeight: Math.min(reviewBody.implicitHeight, Math.max(80, (dialog.parent ? dialog.parent.height : 700) - 180 * dialog.uiScale))
+        contentWidth: availableWidth
+        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
-        ImportLabel {
-            text: qsTr("Paper Pro → Mac via USB-C")
-            color: "#555b67"
-            font.weight: Font.DemiBold
-        }
+        ColumnLayout {
+            id: reviewBody
+            width: reviewScroll.availableWidth
+            spacing: 10 * dialog.uiScale
 
-        GridLayout {
-            columns: dialog.width < 360 * dialog.uiScale ? 1 : 2
-            columnSpacing: 24 * dialog.uiScale
-            rowSpacing: 6 * dialog.uiScale
-            visible: dialog.hasPreview
-            Layout.fillWidth: true
+            ProgressBar {
+                Layout.fillWidth: true
+                visible: dialog.usbSsh.importBusy
+                indeterminate: visible
+                Accessible.name: qsTr("Lettura dal Paper Pro in corso")
+            }
 
-            ImportLabel { text: qsTr("Quaderni nuovi: %1").arg(dialog.preview.created || 0) }
-            ImportLabel { text: qsTr("Quaderni aggiornati: %1").arg(dialog.preview.updated || 0) }
-            ImportLabel { text: qsTr("Quaderni invariati: %1").arg(dialog.preview.unchanged || 0) }
-            ImportLabel { text: qsTr("Copie in conflitto: %1").arg(dialog.preview.conflicts || 0) }
-        }
+            ImportLabel {
+                text: qsTr("Paper Pro → Mac via USB-C")
+                color: "#555b67"
+                font.weight: Font.DemiBold
+            }
 
-        ImportLabel {
-            visible: dialog.hasPreview && dialog.preview.foldersCreated > 0
-            text: qsTr("Cartelle nuove: %1").arg(dialog.preview.foldersCreated || 0)
-        }
+            GridLayout {
+                columns: dialog.width < 360 * dialog.uiScale ? 1 : 2
+                columnSpacing: 24 * dialog.uiScale
+                rowSpacing: 6 * dialog.uiScale
+                visible: dialog.hasPreview
+                Layout.fillWidth: true
 
-        ImportLabel {
-            visible: dialog.hasPreview && dialog.preview.conflicts > 0
-            text: qsTr("Quaderno conserverà le versioni sul Mac e aggiungerà le copie dal Paper Pro.")
-        }
+                ImportLabel { text: qsTr("Quaderni nuovi: %1").arg(dialog.preview.created || 0) }
+                ImportLabel { text: qsTr("Quaderni aggiornati: %1").arg(dialog.preview.updated || 0) }
+                ImportLabel { text: qsTr("Quaderni invariati: %1").arg(dialog.preview.unchanged || 0) }
+                ImportLabel { text: qsTr("Copie in conflitto: %1").arg(dialog.preview.conflicts || 0) }
+            }
 
-        ImportLabel {
-            visible: dialog.usbSsh.importStatus.length > 0
-            text: dialog.usbSsh.importStatus
-            color: dialog.usbSsh.importBusy || dialog.usbSsh.importCompleted ? "#24262c" : "#87332c"
+            ImportLabel {
+                visible: dialog.hasPreview && dialog.preview.foldersCreated > 0
+                text: qsTr("Cartelle nuove: %1").arg(dialog.preview.foldersCreated || 0)
+            }
+
+            ImportLabel {
+                visible: dialog.hasPreview && dialog.preview.conflicts > 0
+                text: qsTr("Quaderno conserverà le versioni sul Mac e aggiungerà le copie dal Paper Pro.")
+            }
+
+            ImportLabel {
+                visible: dialog.usbSsh.importStatus.length > 0
+                text: dialog.usbSsh.importStatus
+                color: dialog.usbSsh.importBusy || dialog.usbSsh.importCompleted ? "#24262c" : "#87332c"
+            }
         }
     }
 
@@ -109,6 +129,7 @@ Dialog {
 
         PaperButton {
             id: confirm
+            objectName: "usbImportConfirm"
             uiScale: dialog.uiScale
             Layout.bottomMargin: dialog.padding
             Layout.rightMargin: dialog.padding
@@ -116,6 +137,8 @@ Dialog {
             text: !dialog.hasPreview ? qsTr("Riprova")
                 : dialog.hasChanges ? qsTr("Importa quaderni") : qsTr("Conferma")
             filled: true
+            Keys.onReturnPressed: if (visible && enabled) clicked()
+            Keys.onEnterPressed: if (visible && enabled) clicked()
             onClicked: {
                 if (dialog.hasPreview)
                     dialog.usbSsh.confirmImport()

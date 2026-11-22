@@ -471,5 +471,137 @@
             <source>Controlla le forme, le etichette e i collegamenti del diagramma.</source>
             <translation>Check the diagram’s shapes, labels, and connections.</translation>
         </message>
+        <message><source>Recuperata l’ultima versione valida della libreria. Il salvataggio danneggiato verrà conservato.</source><translation>Recovered the last valid library version. The damaged save will be kept.</translation></message>
+    <message><source>Impossibile leggere lo sfondo della pagina.</source><translation>Could not read the page background.</translation></message>
+    <message><source>La libreria supera 64 MB. Trasferisci un quaderno alla volta.</source><translation>The library exceeds 64 MB. Transfer one notebook at a time.</translation></message>
+    <message><source>La cartella di destinazione non esiste più. Ripeti l’importazione.</source><translation>The destination folder no longer exists. Import the document again.</translation></message>
+    <message><source>Attendi o annulla l’importazione in corso.</source><translation>Wait for the current import or cancel it.</translation></message>
+    <message><source>Preparazione di %1…</source><translation>Preparing %1…</translation></message>
+    <message><source>Importazione annullata.</source><translation>Import cancelled.</translation></message>
+    <message><source>Documento importato.</source><translation>Document imported.</translation></message>
+    <message><source>Annullamento dell’importazione…</source><translation>Cancelling import…</translation></message>
+    <message><source>Il contorno è troppo complesso. Disegna un lazo più semplice.</source><translation>The outline is too complex. Draw a simpler lasso.</translation></message>
+    <message><source>La selezione è cambiata o la trasformazione supera i bordi della pagina.</source><translation>The selection changed or the transform extends beyond the page.</translation></message>
+    <message><source>La selezione non è più valida.</source><translation>The selection is no longer valid.</translation></message>
+    <message><source>L’elemento è cambiato. Rinnova la selezione prima di modificarlo.</source><translation>The item changed. Select it again before editing.</translation></message>
+    <message><source>Questo testo non contiene la scrittura originale.</source><translation>This text does not contain original handwriting.</translation></message>
+    <message><source>Seleziona e mostra il livello originale per ripristinare la scrittura.</source><translation>Select and show the original layer to restore the handwriting.</translation></message>
+    <message><source>La scrittura originale contiene dati non validi.</source><translation>The original handwriting contains invalid data.</translation></message>
+    <message><source>Seleziona una tabella presente sulla pagina.</source><translation>Select a table on the page.</translation></message>
+    <message><source>La tabella è cambiata. Rinnova la selezione prima di aggiornarla.</source><translation>The table has changed. Make a fresh selection before updating it.</translation></message>
+    <message><source>Scegli almeno una cella con testo da inserire.</source><translation>Choose at least one cell with text to insert.</translation></message>
+    <message><source>Controlla le celle e il testo della trascrizione.</source><translation>Check the cells and the transcribed text.</translation></message>
+    <message><source>Conferma la sostituzione dei valori o delle formule già presenti.</source><translation>Confirm replacement of existing values or formulas.</translation></message>
+        <message>
+            <source>Le preferenze di lettura locali non sono leggibili. I quaderni restano disponibili.</source>
+            <translation>Local reading preferences cannot be read. Notebooks remain available.</translation>
+        </message>
+        <message>
+            <source>Le preferenze di lettura sono in uso. Riprova.</source>
+            <translation>Reading preferences are in use. Try again.</translation>
+        </message>
+        <message>
+            <source>Impossibile leggere le preferenze di lettura.</source>
+            <translation>Could not read reading preferences.</translation>
+        </message>
+        <message>
+            <source>Le preferenze di lettura sono cambiate. Riapri Quaderno.</source>
+            <translation>Reading preferences have changed. Reopen Quaderno.</translation>
+        </message>
+        <message>
+            <source>Le preferenze di lettura superano il limite locale.</source>
+            <translation>Reading preferences exceed the local limit.</translation>
+        </message>
+        <message>
+            <source>Impossibile salvare le preferenze di lettura.</source>
+            <translation>Could not save reading preferences.</translation>
+        </message>
+        <message>
+            <source>Le preferenze di lettura non sono valide.</source>
+            <translation>Reading preferences are invalid.</translation>
+        </message>
+        <message>
+            <source>Il file locale dei quaderni supera 256 MB.</source>
+            <translation>The local notebook file exceeds 256 MB.</translation>
+        </message>
+        <message>
+            <source>Diagramma</source>
+            <translation>Diagram</translation>
+        </message>
+        <message>
+            <source>Modifica il diagramma (.drawio)</source>
+            <translation>Edit the diagram (.drawio)</translation>
+        </message>
+        <message>
+            <source>Il disegno è cambiato. Rinnova la selezione prima di convertirlo.</source>
+            <translation>The drawing has changed. Select it again before converting.</translation>
+        </message>
+        <message>
+            <source>Le forme o i collegamenti della proposta sono cambiati. Riconosci di nuovo il disegno.</source>
+            <translation>The proposed shapes or connections have changed. Recognize the drawing again.</translation>
+        </message>
+        <message>
+            <source>Controlla le etichette riconosciute prima di applicare il diagramma.</source>
+            <translation>Review the recognized labels before applying the diagram.</translation>
+        </message>
+        <message>
+            <source>Inserisci o correggi il testo delle etichette selezionate.</source>
+            <translation>Enter or correct the text of the selected labels.</translation>
+        </message>
+        <message>
+            <source>Conferma le etichette da inserire oppure lascia il testo originale.</source>
+            <translation>Confirm the labels to insert or keep the original text.</translation>
+        </message>
+        <message>
+            <source>Questo elemento non contiene la scrittura originale.</source>
+            <translation>This item does not contain the original handwriting.</translation>
+        </message>
+        <message><source>Diagramma %1</source><translation>Diagram %1</translation></message>
+        <message><source>Il diagramma scelto non è più presente sulla pagina.</source><translation>The selected diagram is no longer on the page.</translation></message>
+        <message><source>Seleziona il livello delle aggiunte precedenti per aggiornare questo diagramma.</source><translation>Select the layer used for earlier additions to update this diagram.</translation></message>
+        <message><source>Scegli il diagramma da aggiornare oppure crea un diagramma separato.</source><translation>Choose the diagram to update or create a separate diagram.</translation></message>
+        <message><source>Non ci sono nuove forme o nuovi collegamenti da applicare.</source><translation>There are no new shapes or connections to apply.</translation></message>
+        <message><source>Le etichette del diagramma esistente devono restare invariate durante il riconoscimento.</source><translation>Existing diagram labels must remain unchanged during recognition.</translation></message>
+        <message><source>Il diagramma originale contiene dati non validi.</source><translation>The original diagram contains invalid data.</translation></message>
+        <message>
+            <source>Nota %1 · Pagina %2</source>
+            <translation>Note %1 · Page %2</translation>
+        </message>
+        <message>
+            <source>Scrittura della nota</source>
+            <translation>Note handwriting</translation>
+        </message>
+        <message>
+            <source>Testo · %1 / %2</source>
+            <translation>Text · %1 / %2</translation>
+        </message>
+        <message>
+            <source>La pagina della nota è cambiata. Riapri la nota prima di salvarla.</source>
+            <translation>The note’s page changed. Reopen the note before saving it.</translation>
+        </message>
+        <message>
+            <source>Mostra il livello attivo prima di modificare le note.</source>
+            <translation>Show the active layer before editing notes.</translation>
+        </message>
+        <message>
+            <source>La nota contiene dati non validi.</source>
+            <translation>The note contains invalid data.</translation>
+        </message>
+        <message>
+            <source>La nota è cambiata. Riaprila prima di salvarla.</source>
+            <translation>The note changed. Reopen it before saving.</translation>
+        </message>
+        <message>
+            <source>Aggiungi testo o scrittura alla nota e controlla che sia nei limiti della pagina.</source>
+            <translation>Add text or handwriting to the note and check that it is within the page boundaries.</translation>
+        </message>
+        <message>
+            <source>La pagina della nota è cambiata. Riapri la nota prima di eliminarla.</source>
+            <translation>The note’s page changed. Reopen the note before deleting it.</translation>
+        </message>
+        <message>
+            <source>La nota è cambiata. Riaprila prima di eliminarla.</source>
+            <translation>The note changed. Reopen it before deleting.</translation>
+        </message>
     </context>
 </TS>

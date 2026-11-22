@@ -27,6 +27,16 @@ Quaderno is a C++17 and Qt Quick application. The build produces `quaderno.app` 
 
 The Qt `epaper` platform enables the device services. The `--tablet` option enables the tablet layout and on-screen keyboard on macOS as well. During configuration, CMake adapts the QML accessibility properties to the firmware's Qt kit. [Qt QML modules with CMake](https://doc.qt.io/qt-6/qt-add-qml-module.html) · [Qt Quick on reMarkable tablets](https://developer.remarkable.com/documentation/qt_epaper)
 
+## Diagram and orientation implementation (0.2.8)
+
+The [Notebook model](../../src/notebook.cpp) treats diagrams as indexed library items alongside charts and tables. `createDiagramBook()` creates a genuine blank page and optional `workspace: "diagrams"` metadata. `diagramBook` identifies that workspace. `openLibraryItem()` returns `workspace: true` for its synthetic empty entry; navigation opens the page without creating an empty diagram object or opening its editor. Notebook updates preserve existing workspace metadata when older peers omit it.
+
+[`DiagramRecognition`](../../src/diagramrecognizer.cpp) performs deterministic local geometry analysis. `Notebook::diagramHandwritingPlan()` adds current notebook/page/layer identity and the current manifest revision. `applyDiagramHandwriting()` revalidates the source and reviewed topology before one atomic ink/item edit. Only supported label text edits are accepted. Replacement removes the union of recognized indices plus explicitly accepted nonblank labels; overlapping candidates are deduplicated. Unassigned strokes remain. A bounded `handwritingSource` supports recovery after reopening; in-session undo is separate. Independent library copies omit that recovery source. [`DiagramExport`](../../src/diagramexport.cpp) shares its QIODevice writer between standalone `.drawio` and staged Markdown asset export.
+
+[`ScreenOrientation`](../../src/screenorientation.cpp) reads the supported IIO accelerometer on Paper Pro through a worker, validates the mount matrix and filters ambiguous or unstable samples. Only one read is in flight. Failure resets candidate stability; repeated failures retry discovery without inventing an orientation. No Qt Sensors dependency is required. Main enables sampling only when automatic orientation is enabled, the app is awake and PIN-unlocked. Its existing logical scene/overlay rotation handles pen and touch coordinates. Fixed reading orientation takes precedence; changes defer while an interaction or modal operation is active. Manual angle selection disables automatic rotation. The preference defaults to off.
+
+Automatic diagram proposals are separate from commits: a pause can expose a dismissible suggestion only in a diagram workspace. Explicit review is still required. See [Diagrams](DIAGRAMS.md) and [settings](SETTINGS.md). The first 0.2.8 build passed all 15 suites on Mac and ARM, geometry/UI regressions, package checks and native startup. The user confirmed automatic portrait-to-landscape rotation, then a real drawing exposed overly strict geometry matching. Revised tolerances cover bounded contour imperfections and additional arrowhead gestures; ambiguous geometry remains ink. A separate sync-notification correction passed the three affected suites on each platform. The corrected Mac and ARM geometry/UI suites passed 2/2 (34 and 17 checks), with strict startup; the corrected build is installed on Paper Pro and passed strict native/AppLoad startup at 1620 × 2160 without QML errors. On November 18, 2026, the user confirmed that recognition, applying the result and opening the editor to modify it work on the tested flowchart on Paper Pro; see the [verification status](SETTINGS.md#verification-boundary).
+
 ## Build on macOS
 
 Install CMake 3.21.1 or later, the Xcode build tools, OpenSSL 3, zlib, and Qt 6.5 or later with support for your compiler and Apple SDK. Install Qt Quick, Qt Quick Controls, Qt Quick Dialogs, Qt Network, Qt D-Bus, and Qt Linguist Tools. The verified Mac build uses Apple silicon, the macOS 27.2 SDK, and Qt 6.8.3 with the AGL linking fix. The resulting ZIP requires macOS 27.2 or later. Set CMake’s `OPENSSL_ROOT_DIR` if OpenSSL is outside its default search paths.
@@ -77,7 +87,7 @@ To enable offline Italian transcription on Paper Pro, build the separate WritePa
 
 ## Test changes
 
-The repository includes the source code and installation scripts. Use sample notebooks, images, and test credentials when following the checks below.
+The repository includes the source code and installation scripts. Use sample notebooks, images, and test credentials when following the checks below. The 0.2.8 regression targets include `diagramrecognition_tests`, `diagramsintegration_tests` and `screenorientation_tests` for geometry, atomic conversion/recovery, library/UI workflows, and sensor filtering. Their presence is not a claim that a device acceptance run has passed.
 
 GitHub Actions compiles a desktop build on Linux and checks startup in both desktop and tablet layouts. To run the same script checks locally, install ShellCheck and run:
 
@@ -106,6 +116,8 @@ python3 scripts/check-startup.py build-ci/quaderno
 | Pen and layers | Write, erase, undo, and redo. Hide and show a layer. Check smart shapes, the lasso, and restoration of the original stroke after reopening the notebook. |
 | Charts and documents | Select two axes and either a curve or bars. Edit the data, set the scale, and compare the CSV with the preview. Import a PDF and a DRM-free EPUB, add annotations, and check the exported PDF. |
 | Handwriting transcription | Use a short sample. Check that the preview appears automatically on Paper Pro. Review the text, save it to a new page, search for it, and verify that the original ink is still available. |
+| Diagrams | Create an empty diagram notebook, reopen it, draw and review a flowchart, exclude one label, apply, undo/redo and recover original ink after restart. Insert a copy into Writing and verify its independence, Markdown PNG/`.drawio` and notebook transfer. |
+| Automatic orientation | With a supported sensor, test all four stable angles, flat/ambiguous positions, input alignment, popup deferral, PIN/sleep, manual override and fixed book orientation. No new angle should be inferred from a read failure. |
 | Physical Paper Pro | Check Marker coordinates and pressure, touch alignment, e-paper refresh and legibility, reading light, and Wi-Fi. Try **Esci** (Exit) and let a trial session expire. Check that the reMarkable interface returns in both cases. |
 
 The firmware build was also checked in a Linux AArch64 VM and on a physical Paper Pro. Repeat device checks for each downloadable build. [Release and test status](RELEASE.md) · [Run a USB trial](INSTALLATION.md)
@@ -159,3 +171,7 @@ sh scripts/package-paper-pro.sh build-paper-pro/quaderno build-paper-pro/package
 To include the offline transcription helper, run the packaging script in the matching SDK environment and pass the pinned WritePad tarball as its third argument. Distribute the source companion it creates alongside the ZIP. [WritePad build and packaging](../../tools/writepad/README.md)
 
 To verify the package, extract it on a test machine and run the USB installer with `--install-only`. Then start a trial session and check that the reMarkable interface returns when it ends. Record the commit, tested firmware version, and ZIP's SHA-256 checksum for each build you distribute.
+
+## Incremental sync protocol
+
+See [Incremental wireless sync](SYNC_PROTOCOL.md) for capability negotiation, page and asset manifests, durable chunk acknowledgments, resume behavior, cache limits and regression tests.

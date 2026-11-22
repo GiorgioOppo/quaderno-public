@@ -2,9 +2,12 @@
 
 #include <QObject>
 #include <QString>
+#include <QVariant>
 #include <QtQml/qqmlregistration.h>
 
 #include <optional>
+
+namespace MarkerBattery { struct Reading; }
 
 class DeviceInfo : public QObject
 {
@@ -19,6 +22,11 @@ class DeviceInfo : public QObject
     Q_PROPERTY(int batteryPercent READ batteryPercent NOTIFY changed)
     Q_PROPERTY(bool charging READ charging NOTIFY changed)
     Q_PROPERTY(QString batteryStatus READ batteryStatus NOTIFY changed)
+    Q_PROPERTY(bool markerAvailable READ markerAvailable NOTIFY changed)
+    Q_PROPERTY(bool markerPresent READ markerPresent NOTIFY changed)
+    Q_PROPERTY(int markerBatteryPercent READ markerBatteryPercent NOTIFY changed)
+    Q_PROPERTY(bool markerCharging READ markerCharging NOTIFY changed)
+    Q_PROPERTY(QString markerStatus READ markerStatus NOTIFY changed)
     Q_PROPERTY(bool bluetoothAvailable READ bluetoothAvailable NOTIFY changed)
     Q_PROPERTY(QString bluetoothStatus READ bluetoothStatus NOTIFY changed)
     Q_PROPERTY(bool frontlightAvailable READ frontlightAvailable NOTIFY changed)
@@ -37,6 +45,11 @@ public:
     int batteryPercent() const { return m_batteryPercent; }
     bool charging() const { return m_charging; }
     QString batteryStatus() const { return m_batteryStatus; }
+    bool markerAvailable() const { return m_markerAvailable; }
+    bool markerPresent() const { return m_markerPresent; }
+    int markerBatteryPercent() const { return m_markerBatteryPercent; }
+    bool markerCharging() const { return m_markerCharging; }
+    QString markerStatus() const { return m_markerStatus; }
     bool bluetoothAvailable() const { return m_bluetoothAvailable; }
     QString bluetoothStatus() const { return m_bluetoothStatus; }
     bool frontlightAvailable() const { return m_frontlightAvailable; }
@@ -45,12 +58,15 @@ public:
     QString error() const { return m_error; }
 
     Q_INVOKABLE void refresh();
+    Q_INVOKABLE void refreshMarker();
     Q_INVOKABLE bool setFrontlightLevel(int level);
 
 signals:
     void changed();
 
 private:
+    void publishChanges();
+    void applyMarkerReading(const MarkerBattery::Reading &reading);
 #ifdef Q_OS_LINUX
     struct LightState {
         int brightness = -1;
@@ -74,10 +90,17 @@ private:
     int m_batteryPercent = -1;
     bool m_charging = false;
     QString m_batteryStatus;
+    bool m_markerAvailable = false;
+    bool m_markerPresent = false;
+    int m_markerBatteryPercent = -1;
+    bool m_markerCharging = false;
+    QString m_markerStatus;
+    bool m_markerRefreshPending = false;
     bool m_bluetoothAvailable = false;
     QString m_bluetoothStatus;
     bool m_frontlightAvailable = false;
     int m_frontlightLevel = -1;
     QString m_frontlightStatus;
     QString m_error;
+    QVariantList m_publishedState;
 };

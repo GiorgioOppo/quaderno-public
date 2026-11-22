@@ -1,8 +1,12 @@
-<?xml version='1.0' encoding='utf-8'?>
+<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
 <TS version="2.1" language="en" sourcelanguage="it">
     <context>
         <name>Main</name>
+        <message>
+            <source>Adatta il foglio alla vista</source>
+            <translation>Fit the sheet to view</translation>
+        </message>
         <message>
             <source>Libri (*.pdf *.PDF *.epub *.EPUB)</source>
             <translation>Books (*.pdf *.PDF *.epub *.EPUB)</translation>
@@ -652,6 +656,111 @@
             <source>Importa diagramma draw.io</source>
             <translation>Import draw.io diagram</translation>
         </message>
+        <message>
+            <source>Batteria %1%</source>
+            <translation>Battery %1%</translation>
+        </message>
+        <message>
+            <source> · in carica</source>
+            <translation> · charging</translation>
+        </message>
+        <message>
+            <source>Penna %1%</source>
+            <translation>Pen %1%</translation>
+        </message>
+        <message>
+            <source>Controlli rapidi</source>
+            <translation>Quick controls</translation>
+        </message>
+        <message>
+            <source>Forme</source>
+            <translation>Shapes</translation>
+        </message>
+        <message>
+            <source>Grafico</source>
+            <translation>Chart</translation>
+        </message>
+        <message>
+            <source>Carica una copia nel cloud</source>
+            <translation>Upload a copy to the cloud</translation>
+        </message>
+        <message>
+            <source>Documenti (*.pdf *.epub *.md *.csv *.quaderno *.png *.jpg *.jpeg *.webp)</source>
+            <translation>Documents (*.pdf *.epub *.md *.csv *.quaderno *.png *.jpg *.jpeg *.webp)</translation>
+        </message>
+        <message>
+            <source>Nuovo diagramma</source>
+            <translation>New diagram</translation>
+        </message>
+        <message>
+            <source>Diagramma senza titolo</source>
+            <translation>Untitled diagram</translation>
+        </message>
+        <message>
+            <source>Nessun diagramma</source>
+            <translation>No diagrams</translation>
+        </message>
+        <message>
+            <source>Riconosci diagramma</source>
+            <translation>Recognize diagram</translation>
+        </message>
+        <message>
+            <source>Inserisci forme</source>
+            <translation>Insert shapes</translation>
+        </message>
+        <message>
+            <source>Riconoscimento automatico</source>
+            <translation>Automatic recognition</translation>
+        </message>
+        <message>
+            <source>Forme: %1 · Collegamenti: %2</source>
+            <translation>Shapes: %1 · Connections: %2</translation>
+        </message>
+        <message>
+            <source>Rivedi</source>
+            <translation>Review</translation>
+        </message>
+        <message>
+            <source>Diagrammi</source>
+            <translation>Diagrams</translation>
+        </message>
+            <message><source>Scegli il diagramma da aggiornare</source><translation>Choose the diagram to update</translation></message>
+        <message>
+            <source>Mac non collegato</source>
+            <translation>Mac not connected</translation>
+        </message>
+        <message>
+            <source>Paper Pro non collegato</source>
+            <translation>Paper Pro not connected</translation>
+        </message>
+        <message>
+            <source>Libro non selezionato per la sincronizzazione automatica</source>
+            <translation>Book not selected for automatic sync</translation>
+        </message>
+        <message>
+            <source>Sincronizzazione manuale</source>
+            <translation>Manual sync</translation>
+        </message>
+        <message>
+            <source>Modifiche in attesa della prossima apertura</source>
+            <translation>Changes waiting until the next opening</translation>
+        </message>
+        <message>
+            <source>Sincronizzazione dopo le modifiche</source>
+            <translation>Sync after changes</translation>
+        </message>
+        <message>
+            <source>Sincronizzazione all’apertura</source>
+            <translation>Sync on opening</translation>
+        </message>
+        <message>
+            <source>Sincronizzazione a intervalli</source>
+            <translation>Sync at intervals</translation>
+        </message>
+        <message>
+            <source>Tocca il punto della pagina in cui aggiungere il post-it.</source>
+            <translation>Tap the point on the page where you want to add the sticky note.</translation>
+        </message>
     </context>
     <context>
         <name>SettingsView</name>
@@ -995,6 +1104,87 @@
             <source>Rimuovi</source>
             <translation>Remove</translation>
         </message>
+    <message><source>Tutti</source><translation>All</translation></message><message><source>Tastiere</source><translation>Keyboards</translation></message><message><source>Abbinati</source><translation>Paired</translation></message><message><source>Dispositivi mostrati: %1 / %2</source><translation>Devices shown: %1 / %2</translation></message><message><source>Ricerca in corso. Tieni l’accessorio vicino al tablet.</source><translation>Searching. Keep the accessory near the tablet.</translation></message><message><source>Nessun dispositivo abbinato. Scegli Tutti per abbinare un accessorio.</source><translation>No paired devices. Choose All to pair an accessory.</translation></message><message><source>Nessuna tastiera trovata. Attiva la modalità di abbinamento e cerca di nuovo; se il tipo non è riconosciuto, controlla Tutti.</source><translation>No keyboards found. Enable pairing mode and search again. If the device type is not recognized, check All.</translation></message><message><source>Nessun dispositivo trovato. Attiva la modalità di abbinamento e avvia la ricerca.</source><translation>No devices found. Enable pairing mode and start searching.</translation></message>
+        <message>
+            <source>Generali</source>
+            <translation>General</translation>
+        </message>
+        <message>
+            <source>controlli rapidi stato</source>
+            <translation>quick controls status</translation>
+        </message>
+        <message>
+            <source>Wi-Fi</source>
+            <translation>Wi-Fi</translation>
+        </message>
+        <message>
+            <source>rete internet connessione</source>
+            <translation>network internet connection</translation>
+        </message>
+        <message>
+            <source>tastiere accessori abbinamento</source>
+            <translation>keyboards accessories pairing</translation>
+        </message>
+        <message>
+            <source>rotazione orientamento dimensione refresh orologio gesture</source>
+            <translation>rotation orientation size refresh clock gestures</translation>
+        </message>
+        <message>
+            <source>Penna e batteria</source>
+            <translation>Pen and battery</translation>
+        </message>
+        <message>
+            <source>ricarica carica luce sospensione riposo</source>
+            <translation>charging battery light sleep standby</translation>
+        </message>
+        <message>
+            <source>Account e servizi</source>
+            <translation>Accounts and services</translation>
+        </message>
+        <message>
+            <source>PIN accesso blocco password</source>
+            <translation>PIN access lock password</translation>
+        </message>
+        <message>
+            <source>Lingua e tastiera</source>
+            <translation>Language and keyboard</translation>
+        </message>
+        <message>
+            <source>dispositivo versione firmware</source>
+            <translation>device version firmware</translation>
+        </message>
+        <message>
+            <source>Cerca impostazioni</source>
+            <translation>Search settings</translation>
+        </message>
+        <message>
+            <source>Chiudi</source>
+            <translation>Close</translation>
+        </message>
+        <message>
+            <source>Nessuna impostazione trovata. Prova con schermo, penna, account o Wi-Fi.</source>
+            <translation>No settings found. Try display, pen, account or Wi-Fi.</translation>
+        </message>
+        <message>
+            <source>Penna e riconoscimento</source>
+            <translation>Pen and recognition</translation>
+        </message>
+        <message>
+            <source>pressione palmo lazo OCR forme correzioni</source>
+            <translation>pressure palm lasso OCR shapes corrections</translation>
+        </message>
+        <message>
+            <source>Archiviazione e backup</source>
+            <translation>Storage and backup</translation>
+        </message>
+        <message>
+            <source>cache spazio copie sicurezza conservazione</source>
+            <translation>cache space copies safety retention</translation>
+        </message>
+        <message>
+            <source>pressione palmo lazo OCR forme correzioni diagrammi riconoscimento automatico</source>
+            <translation>pressure palm lasso OCR shapes corrections diagrams automatic recognition</translation>
+        </message>
     </context>
     <context>
         <name>LibraryOrganizer</name>
@@ -1177,6 +1367,977 @@
         <message>
             <source>Salva</source>
             <translation>Save</translation>
+        </message>
+    <message><source>Nome da Z a A</source><translation>Name Z to A</translation></message><message><source>Meno pagine prima</source><translation>Fewest pages first</translation></message><message><source>Più pagine prima</source><translation>Most pages first</translation></message><message><source>Tutti i formati</source><translation>All formats</translation></message><message><source>Documenti importati in precedenza</source><translation>Previously imported documents</translation></message><message><source>Formati misti</source><translation>Mixed formats</translation></message><message><source>Quaderni</source><translation>Notebooks</translation></message><message><source>Rimuovi filtro formato</source><translation>Clear format filter</translation></message><message><source>Ordina e filtra</source><translation>Sort and filter</translation></message><message><source>Formato</source><translation>Format</translation></message>
+        <message>
+            <source>Diagrammi</source>
+            <translation>Diagrams</translation>
+        </message></context>
+    <context>
+        <name>TabletSettingsPanel</name>
+        <message>
+            <source>%1% · %2</source>
+            <translation>%1% · %2</translation>
+        </message>
+        <message>
+            <source>A colpo d’occhio</source>
+            <translation>At a glance</translation>
+        </message>
+        <message>
+            <source>Batteria: %1</source>
+            <translation>Battery: %1</translation>
+        </message>
+        <message>
+            <source>Penna: %1</source>
+            <translation>Pen: %1</translation>
+        </message>
+        <message>
+            <source>Wi-Fi gestito dal sistema</source>
+            <translation>Wi-Fi managed by the system</translation>
+        </message>
+        <message>
+            <source>Wi-Fi: %1</source>
+            <translation>Wi-Fi: %1</translation>
+        </message>
+        <message>
+            <source>Wi-Fi non connesso</source>
+            <translation>Wi-Fi disconnected</translation>
+        </message>
+        <message>
+            <source>Wi-Fi</source>
+            <translation>Wi-Fi</translation>
+        </message>
+        <message>
+            <source>Schermo</source>
+            <translation>Display</translation>
+        </message>
+        <message>
+            <source>Account e servizi</source>
+            <translation>Accounts and services</translation>
+        </message>
+        <message>
+            <source>Penna e batteria</source>
+            <translation>Pen and battery</translation>
+        </message>
+        <message>
+            <source>Controlli rapidi</source>
+            <translation>Quick controls</translation>
+        </message>
+        <message>
+            <source>Aggiorna schermo</source>
+            <translation>Refresh screen</translation>
+        </message>
+        <message>
+            <source>Riposa adesso</source>
+            <translation>Sleep now</translation>
+        </message>
+        <message>
+            <source>I controlli del display e della sospensione sono disponibili sul Paper Pro.</source>
+            <translation>Display and sleep controls are available on Paper Pro.</translation>
+        </message>
+        <message>
+            <source>Orientamento dello schermo</source>
+            <translation>Screen orientation</translation>
+        </message>
+        <message>
+            <source>Scegli come tenere il tablet. L’orientamento viene ricordato al prossimo avvio.</source>
+            <translation>Choose how to hold the tablet. Your orientation is remembered for the next launch.</translation>
+        </message>
+        <message>
+            <source>Verticale</source>
+            <translation>Portrait</translation>
+        </message>
+        <message>
+            <source>Orizzontale a destra</source>
+            <translation>Landscape right</translation>
+        </message>
+        <message>
+            <source>Verticale capovolto</source>
+            <translation>Upside-down portrait</translation>
+        </message>
+        <message>
+            <source>Orizzontale a sinistra</source>
+            <translation>Landscape left</translation>
+        </message>
+        <message>
+            <source>Sul Mac usa le dimensioni della finestra per adattare lo spazio di lavoro.</source>
+            <translation>On Mac, resize the window to adjust your workspace.</translation>
+        </message>
+        <message>
+            <source>Dimensione dell’interfaccia</source>
+            <translation>Interface size</translation>
+        </message>
+        <message>
+            <source>Standard</source>
+            <translation>Standard</translation>
+        </message>
+        <message>
+            <source>Grande</source>
+            <translation>Large</translation>
+        </message>
+        <message>
+            <source>Molto grande</source>
+            <translation>Extra large</translation>
+        </message>
+        <message>
+            <source>Mostra barra di stato</source>
+            <translation>Show status bar</translation>
+        </message>
+        <message>
+            <source>Mostra orologio</source>
+            <translation>Show clock</translation>
+        </message>
+        <message>
+            <source>Mostra batteria della penna</source>
+            <translation>Show pen battery</translation>
+        </message>
+        <message>
+            <source>Apri i fogli a schermo intero</source>
+            <translation>Open pages full screen</translation>
+        </message>
+        <message>
+            <source>Gesture per libri e fogli</source>
+            <translation>Gestures for books and sheets</translation>
+        </message>
+        <message>
+            <source>Aggiornamento del display</source>
+            <translation>Display refresh</translation>
+        </message>
+        <message>
+            <source>Aggiornamento automatico</source>
+            <translation>Automatic refresh</translation>
+        </message>
+        <message>
+            <source>Interviene se la nuova pagina tarda a comparire. Il pulsante manuale resta sempre disponibile.</source>
+            <translation>Refreshes if the next page is slow to appear. Manual refresh is always available.</translation>
+        </message>
+        <message>
+            <source>Ripristina visualizzazione</source>
+            <translation>Reset display settings</translation>
+        </message>
+        <message>
+            <source>Ripristina orientamento, dimensione, barra di stato e gesture. Quaderni, account e PIN vengono conservati.</source>
+            <translation>Reset orientation, size, status bar and gestures. Notebooks, accounts and PIN settings are kept.</translation>
+        </message>
+        <message>
+            <source>Batteria del tablet</source>
+            <translation>Tablet battery</translation>
+        </message>
+        <message>
+            <source>Penna e ricarica</source>
+            <translation>Pen and charging</translation>
+        </message>
+        <message>
+            <source>Aggancia la penna al lato magnetico per la ricarica. Se il firmware non fornisce una lettura corrente, la percentuale non viene mostrata.</source>
+            <translation>Attach the pen to the magnetic side to charge it. The percentage is hidden if the firmware does not provide a current reading.</translation>
+        </message>
+        <message>
+            <source>Aggiorna stato penna</source>
+            <translation>Refresh pen status</translation>
+        </message>
+        <message>
+            <source>Sospensione di Quaderno</source>
+            <translation>Quaderno sleep</translation>
+        </message>
+        <message>
+            <source>Metti in pausa lo schermo dopo %1 minuti di inattività.</source>
+            <translation>Put the screen to sleep after %1 minutes of inactivity.</translation>
+        </message>
+        <message>
+            <source>%1 min</source>
+            <translation>%1 min</translation>
+        </message>
+        <message>
+            <source>Mantieni attivo durante la ricarica</source>
+            <translation>Stay awake while charging</translation>
+        </message>
+        <message>
+            <source>Il blocco automatico con PIN mantiene il proprio intervallo, anche durante la ricarica.</source>
+            <translation>Automatic PIN locking keeps its own timeout, even while charging.</translation>
+        </message>
+        <message>
+            <source>Luce di lettura</source>
+            <translation>Reading light</translation>
+        </message>
+        <message>
+            <source>Riduci la luce</source>
+            <translation>Dim the light</translation>
+        </message>
+        <message>
+            <source>%1 / 5</source>
+            <translation>%1 / 5</translation>
+        </message>
+        <message>
+            <source>Aumenta la luce</source>
+            <translation>Brighten the light</translation>
+        </message>
+        <message>
+            <source>La regolazione vale per la sessione corrente.</source>
+            <translation>This adjustment applies to the current session.</translation>
+        </message>
+        <message>
+            <source>Lingua dell’app</source>
+            <translation>App language</translation>
+        </message>
+        <message>
+            <source>Tastiera a schermo</source>
+            <translation>On-screen keyboard</translation>
+        </message>
+        <message>
+            <source>Tastiera fisica connessa: la tastiera a schermo resta nascosta.</source>
+            <translation>A physical keyboard is connected: the on-screen keyboard stays hidden.</translation>
+        </message>
+        <message>
+            <source>La tastiera a schermo si nasconde automaticamente quando colleghi una tastiera fisica.</source>
+            <translation>The on-screen keyboard hides automatically when you connect a physical keyboard.</translation>
+        </message>
+        <message>
+            <source>Gestisci dispositivi Bluetooth</source>
+            <translation>Manage Bluetooth devices</translation>
+        </message>
+        <message>
+            <source>Penna</source>
+            <translation>Pen</translation>
+        </message>
+        <message>
+            <source>Evidenziatore</source>
+            <translation>Highlighter</translation>
+        </message>
+        <message>
+            <source>Gomma</source>
+            <translation>Eraser</translation>
+        </message>
+        <message>
+            <source>Lazo</source>
+            <translation>Lasso</translation>
+        </message>
+        <message>
+            <source>Forme</source>
+            <translation>Shapes</translation>
+        </message>
+        <message>
+            <source>Testo</source>
+            <translation>Text</translation>
+        </message>
+        <message>
+            <source>Tabella</source>
+            <translation>Table</translation>
+        </message>
+        <message>
+            <source>Grafico</source>
+            <translation>Chart</translation>
+        </message>
+        <message>
+            <source>%1 MiB</source>
+            <translation>%1 MiB</translation>
+        </message>
+        <message>
+            <source>Salva elenco</source>
+            <translation>Save list</translation>
+        </message>
+        <message>
+            <source>Elenco non salvato: controlla il formato e la lunghezza delle voci.</source>
+            <translation>List not saved: check the format and length of its entries.</translation>
+        </message>
+        <message>
+            <source>Mostra accesso ai controlli rapidi</source>
+            <translation>Show access to quick controls</translation>
+        </message>
+        <message>
+            <source>Ripristina schermo, orologio, strumenti, gesture e preferenze di lettura. Scrittura, sincronizzazione, backup, quaderni, account e PIN vengono conservati.</source>
+            <translation>Reset display, clock, tools, gestures and reading preferences. Writing, sync, backups, notebooks, accounts and PIN are preserved.</translation>
+        </message>
+        <message>
+            <source>Profili d’uso</source>
+            <translation>Usage profiles</translation>
+        </message>
+        <message>
+            <source>Applica insieme strumenti, schermo intero e gesture. Puoi poi personalizzare ogni opzione; i tuoi documenti restano invariati.</source>
+            <translation>Apply tools, full-page view and gestures together. You can customize each option afterward; your documents remain unchanged.</translation>
+        </message>
+        <message>
+            <source>Lettura</source>
+            <translation>Reading</translation>
+        </message>
+        <message>
+            <source>Scrittura</source>
+            <translation>Writing</translation>
+        </message>
+        <message>
+            <source>Disegno</source>
+            <translation>Drawing</translation>
+        </message>
+        <message>
+            <source>Mano preferita</source>
+            <translation>Preferred hand</translation>
+        </message>
+        <message>
+            <source>Destra</source>
+            <translation>Right</translation>
+        </message>
+        <message>
+            <source>Sinistra</source>
+            <translation>Left</translation>
+        </message>
+        <message>
+            <source>Orologio e accessibilità</source>
+            <translation>Clock and accessibility</translation>
+        </message>
+        <message>
+            <source>Fuso orario dell’orologio</source>
+            <translation>Clock time zone</translation>
+        </message>
+        <message>
+            <source>Usa quello del dispositivo</source>
+            <translation>Use device time zone</translation>
+        </message>
+        <message>
+            <source>Roma</source>
+            <translation>Rome</translation>
+        </message>
+        <message>
+            <source>Londra</source>
+            <translation>London</translation>
+        </message>
+        <message>
+            <source>Parigi</source>
+            <translation>Paris</translation>
+        </message>
+        <message>
+            <source>Cambia solo l’orologio di Quaderno, senza modificare l’ora del sistema.</source>
+            <translation>Changes only Quaderno’s clock, without changing the system time.</translation>
+        </message>
+        <message>
+            <source>Formato 24 ore</source>
+            <translation>24-hour format</translation>
+        </message>
+        <message>
+            <source>Contrasto elevato</source>
+            <translation>High contrast</translation>
+        </message>
+        <message>
+            <source>Etichette in grassetto</source>
+            <translation>Bold labels</translation>
+        </message>
+        <message>
+            <source>Strumenti visibili e ordine</source>
+            <translation>Visible tools and order</translation>
+        </message>
+        <message>
+            <source>Mostra gli strumenti che usi di più e cambia il loro ordine. Mantieni almeno uno strumento visibile.</source>
+            <translation>Show your most-used tools and change their order. Keep at least one tool visible.</translation>
+        </message>
+        <message>
+            <source>Sposta %1 prima</source>
+            <translation>Move %1 earlier</translation>
+        </message>
+        <message>
+            <source>Sposta %1 dopo</source>
+            <translation>Move %1 later</translation>
+        </message>
+        <message>
+            <source>Gesture e lettura</source>
+            <translation>Gestures and reading</translation>
+        </message>
+        <message>
+            <source>Doppio tocco sul libro</source>
+            <translation>Double-tap on a book</translation>
+        </message>
+        <message>
+            <source>Alterna zoom</source>
+            <translation>Toggle zoom</translation>
+        </message>
+        <message>
+            <source>Alterna schermo intero</source>
+            <translation>Toggle full-page view</translation>
+        </message>
+        <message>
+            <source>Nessuna azione</source>
+            <translation>No action</translation>
+        </message>
+        <message>
+            <source>Scorrimento sul libro</source>
+            <translation>Swipe on a book</translation>
+        </message>
+        <message>
+            <source>Cambia pagina</source>
+            <translation>Turn page</translation>
+        </message>
+        <message>
+            <source>Scorrimento verticale</source>
+            <translation>Scroll vertically</translation>
+        </message>
+        <message>
+            <source>Zoom iniziale dei libri</source>
+            <translation>Initial book zoom</translation>
+        </message>
+        <message>
+            <source>Margine di lettura</source>
+            <translation>Reading margin</translation>
+        </message>
+        <message>
+            <source>Nessuno</source>
+            <translation>None</translation>
+        </message>
+        <message>
+            <source>Piccolo</source>
+            <translation>Small</translation>
+        </message>
+        <message>
+            <source>Medio</source>
+            <translation>Medium</translation>
+        </message>
+        <message>
+            <source>Orientamento iniziale dei libri</source>
+            <translation>Initial book orientation</translation>
+        </message>
+        <message>
+            <source>Come l’app</source>
+            <translation>Same as the app</translation>
+        </message>
+        <message>
+            <source>Velocità di spostamento</source>
+            <translation>Pan speed</translation>
+        </message>
+        <message>
+            <source>Lenta</source>
+            <translation>Slow</translation>
+        </message>
+        <message>
+            <source>Normale</source>
+            <translation>Normal</translation>
+        </message>
+        <message>
+            <source>Rapida</source>
+            <translation>Fast</translation>
+        </message>
+        <message>
+            <source>Le preferenze del singolo libro, quando impostate, hanno precedenza su questi valori iniziali.</source>
+            <translation>Book-specific preferences, when set, take precedence over these defaults.</translation>
+        </message>
+        <message>
+            <source>Profilo di aggiornamento</source>
+            <translation>Refresh profile</translation>
+        </message>
+        <message>
+            <source>Aggiornamento automatico del display</source>
+            <translation>Automatic display refresh</translation>
+        </message>
+        <message>
+            <source>Bilanciato</source>
+            <translation>Balanced</translation>
+        </message>
+        <message>
+            <source>Più pulito</source>
+            <translation>Cleaner</translation>
+        </message>
+        <message>
+            <source>Più rapido</source>
+            <translation>Faster</translation>
+        </message>
+        <message>
+            <source>Regola gli interventi automatici del display. Il comando manuale resta disponibile con qualsiasi profilo.</source>
+            <translation>Adjusts automatic display refresh. Manual refresh remains available with every profile.</translation>
+        </message>
+        <message>
+            <source>Penna e tocco</source>
+            <translation>Pen and touch</translation>
+        </message>
+        <message>
+            <source>Risposta alla pressione della penna</source>
+            <translation>Pen pressure response</translation>
+        </message>
+        <message>
+            <source>Leggera</source>
+            <translation>Light</translation>
+        </message>
+        <message>
+            <source>Decisa</source>
+            <translation>Firm</translation>
+        </message>
+        <message>
+            <source>Protezione dai tocchi del palmo</source>
+            <translation>Palm touch protection</translation>
+        </message>
+        <message>
+            <source>Disattivata</source>
+            <translation>Off</translation>
+        </message>
+        <message>
+            <source>Durante la scrittura</source>
+            <translation>While writing</translation>
+        </message>
+        <message>
+            <source>Estesa dopo la scrittura</source>
+            <translation>Extended after writing</translation>
+        </message>
+        <message>
+            <source>Riconoscimento delle forme</source>
+            <translation>Shape recognition</translation>
+        </message>
+        <message>
+            <source>Preciso</source>
+            <translation>Precise</translation>
+        </message>
+        <message>
+            <source>Tollerante</source>
+            <translation>Tolerant</translation>
+        </message>
+        <message>
+            <source>Lazo e riconoscimento</source>
+            <translation>Lasso and recognition</translation>
+        </message>
+        <message>
+            <source>Conserva i tratti dopo la conversione</source>
+            <translation>Keep strokes after conversion</translation>
+        </message>
+        <message>
+            <source>Destinazione preferita del testo riconosciuto</source>
+            <translation>Preferred destination for recognized text</translation>
+        </message>
+        <message>
+            <source>Scegli ogni volta</source>
+            <translation>Choose each time</translation>
+        </message>
+        <message>
+            <source>Testo sul foglio</source>
+            <translation>Text on the page</translation>
+        </message>
+        <message>
+            <source>Celle della tabella</source>
+            <translation>Table cells</translation>
+        </message>
+        <message>
+            <source>Lingua del riconoscimento</source>
+            <translation>Recognition language</translation>
+        </message>
+        <message>
+            <source>Automatica</source>
+            <translation>Automatic</translation>
+        </message>
+        <message>
+            <source>Preferisci numeri per le celle</source>
+            <translation>Prefer numbers for cells</translation>
+        </message>
+        <message>
+            <source>Le preferenze preparano l’anteprima: puoi controllare e correggere il testo prima di applicarlo al foglio. La lingua automatica usa quella del quaderno.</source>
+            <translation>Preferences prepare the preview: you can review and correct the text before applying it to the page. Automatic language uses the notebook’s language.</translation>
+        </message>
+        <message>
+            <source>Parole personali</source>
+            <translation>Personal words</translation>
+        </message>
+        <message>
+            <source>Una parola per riga, fino a 100. Mantiene la grafia delle parole riconosciute, senza aggiungere parole al documento.</source>
+            <translation>One word per line, up to 100. Preserves the spelling of recognized words without adding words to the document.</translation>
+        </message>
+        <message>
+            <source>Correzioni personali</source>
+            <translation>Personal corrections</translation>
+        </message>
+        <message>
+            <source>Una correzione per riga nel formato origine=correzione, fino a 100. Viene proposta nell’anteprima, prima della conferma.</source>
+            <translation>One correction per line as original=replacement, up to 100. Proposed in the preview before confirmation.</translation>
+        </message>
+        <message>
+            <source>Sincronizzazione automatica di Quaderno</source>
+            <translation>Automatic Quaderno sync</translation>
+        </message>
+        <message>
+            <source>Quando sincronizzare via Wi-Fi</source>
+            <translation>When to sync over Wi-Fi</translation>
+        </message>
+        <message>
+            <source>Solo manualmente</source>
+            <translation>Manually only</translation>
+        </message>
+        <message>
+            <source>All’apertura di un quaderno</source>
+            <translation>When a notebook opens</translation>
+        </message>
+        <message>
+            <source>A intervalli regolari</source>
+            <translation>At regular intervals</translation>
+        </message>
+        <message>
+            <source>Intervallo</source>
+            <translation>Interval</translation>
+        </message>
+        <message>
+            <source>5 minuti</source>
+            <translation>5 minutes</translation>
+        </message>
+        <message>
+            <source>15 minuti</source>
+            <translation>15 minutes</translation>
+        </message>
+        <message>
+            <source>30 minuti</source>
+            <translation>30 minutes</translation>
+        </message>
+        <message>
+            <source>60 minuti</source>
+            <translation>60 minutes</translation>
+        </message>
+        <message>
+            <source>Sincronizza solo durante la ricarica del tablet</source>
+            <translation>Sync only while the tablet is charging</translation>
+        </message>
+        <message>
+            <source>Reti Wi-Fi attendibili</source>
+            <translation>Trusted Wi-Fi networks</translation>
+        </message>
+        <message>
+            <source>Una rete per riga, massimo 32. Lascia vuoto per non limitare le reti. I nomi devono corrispondere esattamente; non inserire password.</source>
+            <translation>One network per line, up to 32. Leave empty to allow any network. Names must match exactly; do not enter passwords.</translation>
+        </message>
+        <message>
+            <source>Se entrambe le copie sono state modificate</source>
+            <translation>When both copies have changed</translation>
+        </message>
+        <message>
+            <source>Chiedi cosa fare</source>
+            <translation>Ask what to do</translation>
+        </message>
+        <message>
+            <source>Conserva entrambe le copie</source>
+            <translation>Keep both copies</translation>
+        </message>
+        <message>
+            <source>Sincronizza i quaderni fissati con un dispositivo già abbinato e raggiungibile. I trasferimenti manuali restano disponibili.</source>
+            <translation>Sync pinned notebooks with an already paired, reachable device. Manual transfers remain available.</translation>
+        </message>
+        <message>
+            <source>Backup locali</source>
+            <translation>Local backups</translation>
+        </message>
+        <message>
+            <source>Frequenza del backup</source>
+            <translation>Backup frequency</translation>
+        </message>
+        <message>
+            <source>Ogni giorno</source>
+            <translation>Every day</translation>
+        </message>
+        <message>
+            <source>Ogni settimana</source>
+            <translation>Every week</translation>
+        </message>
+        <message>
+            <source>Quanti backup conservare</source>
+            <translation>Backups to keep</translation>
+        </message>
+        <message>
+            <source>I backup pianificati vengono creati quando Quaderno è aperto. Restano su questo dispositivo; copia i file altrove per proteggerli dalla perdita del dispositivo.</source>
+            <translation>Scheduled backups are created while Quaderno is open. They stay on this device; copy the files elsewhere to protect them if the device is lost.</translation>
+        </message>
+        <message>
+            <source>Crea backup adesso</source>
+            <translation>Create backup now</translation>
+        </message>
+        <message>
+            <source>Spazio e cache</source>
+            <translation>Space and cache</translation>
+        </message>
+        <message>
+            <source>Limite della cache dei libri</source>
+            <translation>Book cache limit</translation>
+        </message>
+        <message>
+            <source>Libreria: %1 · Oggetti: %2 · Cache: %3 · Backup: %4</source>
+            <translation>Library: %1 · Objects: %2 · Cache: %3 · Backups: %4</translation>
+        </message>
+        <message>
+            <source>Svuotare la cache conserva documenti e annotazioni. Le pagine necessarie verranno caricate di nuovo.</source>
+            <translation>Clearing the cache preserves documents and annotations. Pages will be loaded again when needed.</translation>
+        </message>
+        <message>
+            <source>Svuota cache</source>
+            <translation>Clear cache</translation>
+        </message>
+        <message>
+            <source>Aggiorna spazio</source>
+            <translation>Refresh storage</translation>
+        </message>
+        <message>
+            <source>Destinazioni Apple preferite</source>
+            <translation>Preferred Apple destinations</translation>
+        </message>
+        <message>
+            <source>Configura sul Mac l’app proposta quando condividi i contenuti. Dal Paper Pro trasferisci prima il quaderno al Mac; queste preferenze sono locali e non collegano un Apple Account al tablet.</source>
+            <translation>On the Mac, choose the app suggested when sharing content. From Paper Pro, transfer the notebook to the Mac first; these preferences are local and do not connect an Apple Account to the tablet.</translation>
+        </message>
+        <message>
+            <source>Salva file</source>
+            <translation>Save files</translation>
+        </message>
+        <message>
+            <source>Tabelle</source>
+            <translation>Tables</translation>
+        </message>
+        <message>
+            <source>Grafici</source>
+            <translation>Charts</translation>
+        </message>
+        <message>
+            <source>Libri</source>
+            <translation>Books</translation>
+        </message>
+        <message>
+            <source>Ruota automaticamente con il tablet</source>
+            <translation>Rotate automatically with the tablet</translation>
+        </message>
+        <message>
+            <source>Sensore di orientamento non disponibile. Usa la rotazione manuale.</source>
+            <translation>The orientation sensor is unavailable. Use manual rotation.</translation>
+        </message>
+        <message>
+            <source>Scegliere un orientamento manuale disattiva la rotazione automatica. La pagina resta invariata.</source>
+            <translation>Choosing a manual orientation disables automatic rotation. The page remains unchanged.</translation>
+        </message>
+        <message>
+            <source>Riconosci automaticamente i diagrammi</source>
+            <translation>Recognize diagrams automatically</translation>
+        </message>
+        <message>
+            <source>Nella sezione Diagrammi propone la conversione dopo una pausa. Controlla la proposta prima di applicarla; i tratti ambigui restano sul foglio.</source>
+            <translation>In Diagrams, suggests a conversion after a pause. Review the proposal before applying it; ambiguous strokes stay on the page.</translation>
+        </message>
+
+        <message>
+            <source>Collegamento automatico</source>
+            <translation>Automatic connection</translation>
+        </message>
+        <message>
+            <source>Dopo le modifiche</source>
+            <translation>After changes</translation>
+        </message>
+        <message>
+            <source>Dopo le modifiche attende una pausa nella scrittura. Alla riconnessione recupera i quaderni selezionati. Tieni Quaderno aperto e sbloccato su entrambi i dispositivi; il primo invio richiede una revisione e i conflitti seguono la politica scelta.</source>
+            <translation>After changes waits for a pause in writing. Selected notebooks catch up when the connection returns. Keep Quaderno open and unlocked on both devices; the first transfer requires review and conflicts follow your chosen policy.</translation>
+        </message>
+        <message>
+            <source>L’elenco delle reti limita solo il Wi-Fi. Il Bluetooth usa il dispositivo abbinato e deve essere già attivo. Un trasferimento in corso mantiene il proprio collegamento.</source>
+            <translation>The network list restricts Wi-Fi only. Bluetooth uses the paired device and must already be enabled. A transfer in progress keeps its connection.</translation>
+        </message>
+        <message>
+            <source>Preferisci Wi-Fi, altrimenti Bluetooth</source>
+            <translation>Prefer Wi-Fi, otherwise Bluetooth</translation>
+        </message>
+        <message>
+            <source>Quando sincronizzare</source>
+            <translation>When to sync</translation>
+        </message>
+        <message>
+            <source>Solo Bluetooth</source>
+            <translation>Bluetooth only</translation>
+        </message>
+        <message>
+            <source>Solo Wi-Fi</source>
+            <translation>Wi-Fi only</translation>
+        </message>
+    </context>
+    <context>
+        <name>AccountsPanel</name>
+        <message>
+            <source>Servizio web non disponibile.</source>
+            <translation>Web service unavailable.</translation>
+        </message>
+        <message>
+            <source>Apri il sito dal browser del Mac.</source>
+            <translation>Open the website in your Mac browser.</translation>
+        </message>
+        <message>
+            <source>Richiesta inviata al browser del Mac. Completa lì l’accesso; Quaderno non rileva lo stato dell’account.</source>
+            <translation>Request sent to your Mac browser. Sign in there; Quaderno cannot check your account status.</translation>
+        </message>
+        <message>
+            <source>Impossibile aprire il browser. Apri %1 sul Mac e riprova.</source>
+            <translation>Could not open the browser. Open %1 on your Mac and try again.</translation>
+        </message>
+        <message>
+            <source>Sincronizzazione in corso…</source>
+            <translation>Syncing…</translation>
+        </message>
+        <message>
+            <source>Configurato sul Paper Pro</source>
+            <translation>Configured on Paper Pro</translation>
+        </message>
+        <message>
+            <source>Da configurare dal Mac</source>
+            <translation>Set up from your Mac</translation>
+        </message>
+        <message>
+            <source>Sincronizzazione diretta sul Paper Pro</source>
+            <translation>Direct sync on Paper Pro</translation>
+        </message>
+        <message>
+            <source>Sincronizza le note Markdown con il vault via Wi-Fi. Le annotazioni, le tabelle e i grafici restano in Quaderno. L’accesso al vault viene verificato durante la sincronizzazione.</source>
+            <translation>Sync Markdown notes with your vault over Wi-Fi. Annotations, tables and charts stay in Quaderno. Access to the vault is checked when you sync.</translation>
+        </message>
+        <message>
+            <source>Configura il vault sul Paper Pro per sincronizzarlo direttamente. Sul Mac puoi usare il vault locale dal pannello Markdown e Obsidian.</source>
+            <translation>Set up the vault on Paper Pro for direct sync. On Mac, use your local vault through the Markdown and Obsidian panel.</translation>
+        </message>
+        <message>
+            <source>Apri Obsidian Sync</source>
+            <translation>Open Obsidian Sync</translation>
+        </message>
+        <message>
+            <source>Apri sito Obsidian</source>
+            <translation>Open Obsidian website</translation>
+        </message>
+        <message>
+            <source>Markdown, vault e Obsidian Publish</source>
+            <translation>Markdown, vaults and Obsidian Publish</translation>
+        </message>
+        <message>
+            <source>Vault locale e collegamenti web</source>
+            <translation>Local vault and web links</translation>
+        </message>
+        <message>
+            <source>Importazione web e collegamenti Publish</source>
+            <translation>Web import and Publish links</translation>
+        </message>
+        <message>
+            <source>Salva una nuova nota nel vault locale, aprila in Obsidian e configura il sito Publish. Puoi anche importare un file Markdown da un collegamento HTTPS diretto.</source>
+            <translation>Save a new note to your local vault, open it in Obsidian and configure your Publish site. You can also import a Markdown file from a direct HTTPS link.</translation>
+        </message>
+        <message>
+            <source>Importa file Markdown pubblici da un collegamento HTTPS diretto e configura i collegamenti al tuo sito Publish. La pubblicazione si gestisce in Obsidian.</source>
+            <translation>Import public Markdown files from direct HTTPS links and configure links to your Publish site. Manage publication in Obsidian.</translation>
+        </message>
+        <message>
+            <source>Apri Markdown e Obsidian</source>
+            <translation>Open Markdown and Obsidian</translation>
+        </message>
+        <message>
+            <source>Apple e iCloud</source>
+            <translation>Apple and iCloud</translation>
+        </message>
+        <message>
+            <source>Integrazioni con le app del Mac</source>
+            <translation>Mac app integrations</translation>
+        </message>
+        <message>
+            <source>Gestito sul Mac</source>
+            <translation>Managed on Mac</translation>
+        </message>
+        <message>
+            <source>Prepara file per Note, Libri, Numbers, Keynote e Diario, oppure importa PDF ed EPUB senza DRM da Libri. Completa l’importazione nell’app scelta; l’account Apple resta gestito da macOS.</source>
+            <translation>Prepare files for Notes, Books, Numbers, Keynote and Journal, or import DRM-free PDFs and EPUBs from Books. Complete the import in the chosen app; macOS manages your Apple account.</translation>
+        </message>
+        <message>
+            <source>Trasferisci i quaderni via Wi-Fi a Quaderno sul Mac, poi completa l’importazione nelle app Apple. Il Paper Pro non accede direttamente all’account iCloud.</source>
+            <translation>Transfer notebooks over Wi-Fi to Quaderno on Mac, then complete the import in the Apple apps. Paper Pro does not access your iCloud account directly.</translation>
+        </message>
+        <message>
+            <source>Condividi con Apple</source>
+            <translation>Share with Apple</translation>
+        </message>
+        <message>
+            <source>Importa da Libri</source>
+            <translation>Import from Books</translation>
+        </message>
+        <message>
+            <source>Apri iCloud</source>
+            <translation>Open iCloud</translation>
+        </message>
+        <message>
+            <source>Collega il Mac</source>
+            <translation>Connect your Mac</translation>
+        </message>
+        <message>
+            <source>Quaderno sul Mac e Paper Pro</source>
+            <translation>Quaderno on Mac and Paper Pro</translation>
+        </message>
+        <message>
+            <source>Collegamento non disponibile</source>
+            <translation>Connection unavailable</translation>
+        </message>
+        <message>
+            <source>Connesso · %1</source>
+            <translation>Connected · %1</translation>
+        </message>
+        <message>
+            <source>Wi-Fi locale</source>
+            <translation>Local Wi-Fi</translation>
+        </message>
+        <message>
+            <source>Collegamento in corso…</source>
+            <translation>Connecting…</translation>
+        </message>
+        <message>
+            <source>Abbinato · non connesso</source>
+            <translation>Paired · disconnected</translation>
+        </message>
+        <message>
+            <source>Da abbinare</source>
+            <translation>Not paired</translation>
+        </message>
+        <message>
+            <source>Abbina i due dispositivi, scegli i quaderni da trasferire e controlla la sincronizzazione. Per il Wi-Fi devono essere sulla stessa rete locale.</source>
+            <translation>Pair the two devices, choose notebooks to transfer and manage synchronization. For Wi-Fi, both devices must be on the same local network.</translation>
+        </message>
+        <message>
+            <source>Apri sincronizzazione wireless</source>
+            <translation>Open wireless sync</translation>
+        </message>
+        <message>
+            <source>Sito web e importazione di file</source>
+            <translation>Website and file import</translation>
+        </message>
+        <message>
+            <source>Accesso dal Mac</source>
+            <translation>Access from your Mac</translation>
+        </message>
+        <message>
+            <source>Apri il servizio nel browser e scarica i documenti, poi importali in Quaderno. I file importati non si aggiornano automaticamente dal servizio.</source>
+            <translation>Open the service in your browser and download documents, then import them into Quaderno. Imported files do not update automatically from the service.</translation>
+        </message>
+        <message>
+            <source>Importa i documenti del servizio in Quaderno sul Mac e trasferiscili qui via Wi-Fi. Il collegamento diretto a questo account non è disponibile sul Paper Pro.</source>
+            <translation>Import documents from the service into Quaderno on Mac, then transfer them here over Wi-Fi. Direct access to this account is unavailable on Paper Pro.</translation>
+        </message>
+        <message>
+            <source>Apri sito</source>
+            <translation>Open website</translation>
+        </message>
+        <message>
+            <source>Importa file scaricati</source>
+            <translation>Import downloaded files</translation>
+        </message>
+        <message>
+            <source>Trasferisci dal Mac</source>
+            <translation>Transfer from Mac</translation>
+        </message>
+        <message>
+            <source>Gestisci le integrazioni disponibili su questo dispositivo e il collegamento con il Mac.</source>
+            <translation>Manage integrations available on this device and its connection to your Mac.</translation>
+        </message>
+        <message>
+            <source>Collegamento cloud non disponibile</source>
+            <translation>Cloud connection unavailable</translation>
+        </message>
+        <message>
+            <source>Accedi nella pagina ufficiale, esplora le cartelle e trasferisci PDF, EPUB, Markdown, CSV, immagini e quaderni direttamente via Internet. Ogni caricamento crea una nuova copia.</source>
+            <translation>Sign in on the official page, browse folders and transfer PDF, EPUB, Markdown, CSV, images and notebooks directly over the internet. Each upload creates a new copy.</translation>
+        </message>
+        <message>
+            <source>Apri file cloud</source>
+            <translation>Open cloud files</translation>
+        </message>
+        <message>
+            <source>Accedi con Google</source>
+            <translation>Sign in with Google</translation>
+        </message>
+        <message>
+            <source>Accedi con Dropbox</source>
+            <translation>Sign in with Dropbox</translation>
+        </message>
+        <message>
+            <source>Accedi con Microsoft</source>
+            <translation>Sign in with Microsoft</translation>
         </message>
     </context>
 </TS>

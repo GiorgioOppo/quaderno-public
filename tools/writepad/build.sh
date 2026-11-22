@@ -25,14 +25,14 @@ tar -xzf "$archive" -C "$work" --strip-components=1 \
     "$source_prefix/Linux/makefile" "$source_prefix/UniversalRecognizer/V300/include" \
     "$source_prefix/UniversalRecognizer/V300/InkData" "$source_prefix/UniversalRecognizer/V300/RecognizerWrapper" \
     "$source_prefix/UniversalRecognizer/V300/reco" "$source_prefix/Dictionaries/Italian.dct" \
-    "$source_prefix/LICENSE" "$source_prefix/COPYRIGHT"
+    "$source_prefix/Dictionaries/English.dct" "$source_prefix/LICENSE" "$source_prefix/COPYRIGHT"
 
 # The reMarkable SDK supplies these environment variables. CXX and STRIP may contain flags.
 : "${CXX:=c++}" "${STRIP:=strip}"
 mkdir -p "$work/Linux/Lib" "$work/Linux/Release"
 make -C "$work/Linux" -j "${QUADERNO_BUILD_JOBS:-2}" CPP="$CXX" \
     CFLAGS='-std=gnu++11 -O2 -DNDEBUG -ffunction-sections -fdata-sections' \
-    DEFINES='-D_OS_LINUX -DHWR_SYSTEM=HWR_LINUX -D_EMBEDDED_DEVICE -DRECODICT -DLANG_ITALIAN'
+    DEFINES='-D_OS_LINUX -DHWR_SYSTEM=HWR_LINUX -D_EMBEDDED_DEVICE -DRECODICT -DLANG_ITALIAN -DLANG_ENGLISH'
 
 # shellcheck disable=SC2086
 $CXX -std=c++17 -O2 -Wall -Wextra -Wpedantic -D_OS_LINUX -ffunction-sections -fdata-sections \
@@ -44,5 +44,6 @@ $STRIP --strip-unneeded "$work/quaderno-handwriting"
 mkdir -p "$output"
 install -m 0755 "$work/quaderno-handwriting" "$output/quaderno-handwriting"
 install -m 0644 "$work/Dictionaries/Italian.dct" "$output/quaderno-handwriting-it.dct"
+install -m 0644 "$work/Dictionaries/English.dct" "$output/quaderno-handwriting-en.dct"
 install -m 0644 "$work/LICENSE" "$output/WritePad-LICENSE.txt"
 install -m 0644 "$work/COPYRIGHT" "$output/WritePad-COPYRIGHT.txt"

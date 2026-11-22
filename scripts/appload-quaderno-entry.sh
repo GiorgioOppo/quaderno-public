@@ -36,4 +36,4 @@ command -v systemd-run >/dev/null || die "systemd-run is required on the tablet.
 exec env -i PATH="$PATH" systemd-run --system --no-block --collect \
     --unit=quaderno-launch.service --service-type=exec \
     --description='Launch Quaderno from AppLoad' \
-    --property=RuntimeMaxSec=15min /bin/sh "$runner"
+    /bin/sh "$runner" --persistent

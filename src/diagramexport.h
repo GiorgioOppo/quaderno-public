@@ -5,6 +5,8 @@
 #include <QVariantMap>
 #include <QtQml/qqmlregistration.h>
 
+class QIODevice;
+
 class DiagramExport : public QObject
 {
     Q_OBJECT
@@ -14,6 +16,7 @@ public:
     explicit DiagramExport(QObject *parent = nullptr) : QObject(parent) {}
 
     Q_INVOKABLE QUrl suggestedFile(const QString &title) const;
+    static QString write(QIODevice &output, const QVariantMap &diagram, const QString &title);
     Q_INVOKABLE QString save(const QUrl &file, const QVariantMap &diagram, const QString &title) const;
     Q_INVOKABLE QVariantMap load(const QUrl &file) const;
 };

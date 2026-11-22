@@ -6,6 +6,13 @@
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTimer>
+#include <QDebug>
+
+#if defined(Q_OS_LINUX) || defined(Q_OS_MACOS)
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#endif
 
 namespace {
 constexpr quint16 syncPort = 47987;
@@ -67,12 +74,20 @@ public:
         m_server.setMaxPendingConnections(1);
         m_server.setListenBacklogSize(1);
         m_connectDeadline.setSingleShot(true);
+        m_interfaceWatch.setInterval(3000);
         QObject::connect(&m_server, &QTcpServer::pendingConnectionAvailable, &m_owner, [this] { accept(); });
         QObject::connect(&m_server, &QTcpServer::acceptError, &m_owner, [this] {
             fail(WifiSyncLink::tr("Impossibile accettare il collegamento Wi-Fi."));
         });
         QObject::connect(&m_connectDeadline, &QTimer::timeout, &m_owner, [this] {
             fail(WifiSyncLink::tr("Il Paper Pro non risponde. Controlla l’indirizzo e l’accesso del Mac alla rete locale."));
+        });
+        QObject::connect(&m_interfaceWatch, &QTimer::timeout, &m_owner, [this] {
+            // A listener bound to a DHCP address may remain nominally active
+            // after roaming or Wi-Fi loss. End that stale link so the normal
+            // authenticated reconnect path can bind the current interface.
+            if (!m_boundAddress.isNull() && wifiAddress() != m_boundAddress)
+                fail(WifiSyncLink::tr("La rete Wi-Fi del Paper Pro è cambiata. Riconnessione in corso…"));
         });
     }
 
@@ -90,6 +105,8 @@ public:
             return;
         }
         m_address = host.toString();
+        m_boundAddress = host;
+        m_interfaceWatch.start();
         m_status = WifiSyncLink::tr("In attesa del Mac sulla rete Wi-Fi…");
         emit m_owner.changed();
     }
@@ -141,6 +158,8 @@ private:
     void close()
     {
         m_connectDeadline.stop();
+        m_interfaceWatch.stop();
+        m_boundAddress.clear();
         m_server.close();
         while (auto *pending = m_server.nextPendingConnection()) {
             pending->abort();
@@ -208,7 +227,7 @@ private:
         if (socket != m_socket || m_ready)
             return;
         m_connectDeadline.stop();
-        socket->setSocketOption(QAbstractSocket::LowDelayOption, 1);
+        WifiSyncLink::configureConnectedSocket(*socket);
         m_ready = true;
         m_status = WifiSyncLink::tr("Collegamento Wi-Fi attivo.");
         emit m_owner.ready();
@@ -231,6 +250,8 @@ private:
     WifiSyncLink &m_owner;
     QTcpServer m_server;
     QTimer m_connectDeadline;
+    QTimer m_interfaceWatch;
+    QHostAddress m_boundAddress;
     QTcpSocket *m_socket = nullptr;
     QString m_address;
     QString m_status;
@@ -244,6 +265,30 @@ WifiSyncLink::WifiSyncLink(QObject *parent)
 
 WifiSyncLink::~WifiSyncLink() = default;
 
+void WifiSyncLink::configureConnectedSocket(QTcpSocket &socket)
+{
+    socket.setSocketOption(QAbstractSocket::LowDelayOption, 1);
+    socket.setSocketOption(QAbstractSocket::KeepAliveOption, 1);
+#if defined(Q_OS_LINUX) || defined(Q_OS_MACOS)
+    // Default TCP keepalive periods are too long to recover promptly after
+    // sleep or a lost access point. Acknowledged idle sessions stay connected;
+    // only an unresponsive peer reaches the existing disconnect/retry path.
+    const int descriptor = int(socket.socketDescriptor());
+    const auto setOption = [descriptor](int option, int value) {
+        return ::setsockopt(descriptor, IPPROTO_TCP, option, &value, sizeof(value)) == 0;
+    };
+#ifdef Q_OS_MACOS
+    const bool idle = setOption(TCP_KEEPALIVE, 30);
+#else
+    const bool idle = setOption(TCP_KEEPIDLE, 30);
+#endif
+    const bool interval = setOption(TCP_KEEPINTVL, 10);
+    const bool probes = setOption(TCP_KEEPCNT, 3);
+    if (!idle || !interval || !probes)
+        qWarning("Wi-Fi TCP keepalive tuning unavailable; retaining supported socket defaults.");
+#endif
+}
+
 void WifiSyncLink::listen()
 {
     m_private->listen(wifiAddress());
@@ -252,6 +297,11 @@ void WifiSyncLink::listen()
 void WifiSyncLink::connectTo(const QString &ipv4)
 {
     m_private->connectTo(parseAddress(ipv4));
+}
+
+bool WifiSyncLink::isSupportedAddress(const QString &ipv4)
+{
+    return !parseAddress(ipv4).isNull();
 }
 
 void WifiSyncLink::stop()

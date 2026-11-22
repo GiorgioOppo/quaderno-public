@@ -48,10 +48,23 @@ WirelessSync::WirelessSync(Notebook *notebook, const QString &pairingPath, bool 
     loadPairing();
     m_reconnect.setSingleShot(true);
     connect(&m_reconnect, &QTimer::timeout, this, [this] {
-        if (m_preferredLink == Link::Bluetooth)
-            connectBluetooth({}, false);
-        else if (m_preferredLink == Link::Wifi)
-            startWifi(m_preferredAddress, {});
+        m_reconnectDelayMs = 0;
+        emit reconnectionChanged();
+        // Recheck policy at execution time; a pending timer cannot bypass a lock,
+        // network restriction or a switch from Bluetooth to Wi-Fi automation.
+        if (!canReconnectAutomatically()) return;
+        if (automaticLink() == Link::Bluetooth)
+            connectBluetooth({}, false, true);
+        else if (automaticLink() == Link::Wifi)
+            connectWifi(m_preferredAddress, {}, true);
+        else if (automaticLink() == Link::Waiting)
+            startAutomaticListeners();
+    });
+    m_listenerRetry.setSingleShot(true);
+    connect(&m_listenerRetry, &QTimer::timeout, this, [this] {
+        m_reconnectDelayMs = 0;
+        emit reconnectionChanged();
+        retryMissingListeners();
     });
     connect(&m_transfer, &BleSync::changed, this, &WirelessSync::scheduleReconnect);
     m_activationDeadline.setSingleShot(true);
@@ -95,13 +108,19 @@ WirelessSync::WirelessSync(Notebook *notebook, const QString &pairingPath, bool 
             m_wifi.send(bytes);
     });
     connect(&m_channel, &SyncChannel::failed, this, &WirelessSync::linkEnded);
-    connect(&m_pipe, &BlePipe::received, &m_channel, &SyncChannel::receive);
+    connect(&m_pipe, &BlePipe::received, this, [this](const QByteArray &bytes) {
+        if (m_link == Link::Bluetooth) m_channel.receive(bytes);
+    });
     connect(&m_pipe, &BlePipe::failed, this, [this] {
-        linkEnded(tr("Lo scambio Bluetooth si è interrotto. Ricollega il dispositivo."));
+        transportEnded(Link::Bluetooth, tr("Lo scambio Bluetooth si è interrotto. Ricollega il dispositivo."));
     }, Qt::QueuedConnection);
-    connect(&m_wifi, &WifiSyncLink::ready, this, &WirelessSync::startChannel);
-    connect(&m_wifi, &WifiSyncLink::received, &m_channel, &SyncChannel::receive);
-    connect(&m_wifi, &WifiSyncLink::disconnected, this, &WirelessSync::linkEnded);
+    connect(&m_wifi, &WifiSyncLink::ready, this, [this] { transportReady(Link::Wifi); });
+    connect(&m_wifi, &WifiSyncLink::received, this, [this](const QByteArray &bytes) {
+        if (m_link == Link::Wifi) m_channel.receive(bytes);
+    });
+    connect(&m_wifi, &WifiSyncLink::disconnected, this, [this](const QString &message) {
+        transportEnded(Link::Wifi, message);
+    });
     connect(&m_wifi, &WifiSyncLink::changed, this, [this] {
         if (m_link == Link::Wifi && !m_channel.established())
             report(m_wifi.status());
@@ -109,27 +128,37 @@ WirelessSync::WirelessSync(Notebook *notebook, const QString &pairingPath, bool 
 #ifdef Q_OS_MACOS
     m_pipe.setOutput([this](const QByteArray &chunk) { return m_bluetooth.writeChunk(chunk); },
                      [this] { return m_bluetooth.maximumChunkSize(); });
-    connect(&m_bluetooth, &BleCentral::ready, this, &WirelessSync::startChannel);
+    connect(&m_bluetooth, &BleCentral::ready, this, [this] { transportReady(Link::Bluetooth); });
     connect(&m_bluetooth, &BleCentral::received, &m_pipe, &BlePipe::receive);
     connect(&m_bluetooth, &BleCentral::writable, &m_pipe, &BlePipe::writable);
     connect(&m_bluetooth, &BleCentral::statusChanged, this, [this](const QString &status) {
         if (m_link == Link::Bluetooth)
             report(status);
     });
-    connect(&m_bluetooth, &BleCentral::disconnected, this, &WirelessSync::linkEnded);
+    connect(&m_bluetooth, &BleCentral::disconnected, this, [this](const QString &message) {
+        transportEnded(Link::Bluetooth, message);
+    });
 #elif defined(Q_OS_LINUX)
     m_pipe.setOutput([this](const QByteArray &chunk) { return m_bluetooth.send(chunk); },
                      [this] { return m_bluetooth.maximumChunkSize(); });
     connect(&m_bluetooth, &BlePeripheral::frameReceived, &m_pipe, &BlePipe::receive);
     connect(&m_bluetooth, &BlePeripheral::peerChanged, this, [this](bool connected) {
-        if (m_link != Link::Bluetooth)
+        if (m_link != Link::Bluetooth && m_link != Link::Waiting)
             return;
         if (connected)
-            startChannel();
+            transportReady(Link::Bluetooth);
         else
-            linkEnded(tr("Il Mac si è disconnesso dal Paper Pro."));
+            transportEnded(Link::Bluetooth, tr("Il Mac si è disconnesso dal Paper Pro."));
     });
     connect(&m_bluetooth, &BlePeripheral::changed, this, [this] {
+        if (m_link == Link::Waiting) {
+            m_bluetoothStatus = m_bluetooth.status();
+            if (m_bluetoothCandidate && !m_bluetooth.running() && !m_bluetooth.busy())
+                transportEnded(Link::Bluetooth, m_bluetooth.status());
+            else
+                emit changed();
+            return;
+        }
         if (m_link != Link::Bluetooth) {
             m_bluetoothStatus = m_bluetooth.status();
             emit changed();
@@ -180,7 +209,7 @@ QString WirelessSync::code() const
 
 QString WirelessSync::address() const
 {
-    return m_link == Link::Wifi ? m_wifi.address() : QString{};
+    return m_link == Link::Wifi || m_link == Link::Waiting ? m_wifi.address() : QString{};
 }
 
 QString WirelessSync::bluetoothStatus() const
@@ -211,9 +240,11 @@ void WirelessSync::preparePairing()
     report(tr("Inserisci questo codice nell’app Quaderno sul Mac."));
 }
 
-bool WirelessSync::prepareConnection(Link link, const QString &code)
+bool WirelessSync::prepareConnection(Link link, const QString &code, bool automatic)
 {
     if (!available() || active() || m_locked || activatingBluetooth())
+        return false;
+    if (automatic && !canReconnectAutomatically())
         return false;
     if (!paired()) {
         if (!m_tablet)
@@ -224,9 +255,17 @@ bool WirelessSync::prepareConnection(Link link, const QString &code)
             return false;
         }
     }
-    m_reconnect.stop();
+    stopReconnectTimers();
     m_paused = false;
+    m_automaticConnection = automatic;
+    if (!automatic) {
+        m_reconnectFailures = 0;
+        m_bluetoothFallbackNext = false;
+    }
     m_link = link;
+    updateAutomaticTransferGate();
+    emit linkChanged();
+    emit reconnectionChanged();
     emit changed();
     return true;
 }
@@ -236,11 +275,11 @@ void WirelessSync::startBluetooth(const QString &code)
     connectBluetooth(code, true);
 }
 
-void WirelessSync::connectBluetooth(const QString &code, bool allowActivation)
+void WirelessSync::connectBluetooth(const QString &code, bool allowActivation, bool automatic)
 {
     if (m_tablet && m_pendingSecret.isEmpty())
         preparePairing();
-    if (!prepareConnection(Link::Bluetooth, code))
+    if (!prepareConnection(Link::Bluetooth, code, automatic))
         return;
     m_tryBluetoothActivation = allowActivation && m_canActivateBluetooth;
 #if defined(Q_OS_LINUX) || defined(Q_OS_MACOS)
@@ -250,12 +289,115 @@ void WirelessSync::connectBluetooth(const QString &code, bool allowActivation)
 
 void WirelessSync::startWifi(const QString &address, const QString &code)
 {
-    if (!prepareConnection(Link::Wifi, code))
+    connectWifi(address, code, false);
+}
+
+void WirelessSync::connectWifi(const QString &address, const QString &code, bool automatic)
+{
+    if (!m_tablet && !validWifiAddress(address)) {
+        report(tr("Inserisci l’indirizzo IPv4 locale del Paper Pro, ad esempio 192.168.1.20. L’indirizzo USB non è utilizzabile qui."));
+        return;
+    }
+    if (!prepareConnection(Link::Wifi, code, automatic))
         return;
     if (m_tablet)
         m_wifi.listen();
     else
         m_wifi.connectTo(address.trimmed());
+}
+
+void WirelessSync::startAutomaticListeners()
+{
+    if (!m_tablet || !prepareConnection(Link::Waiting, {}, true)) return;
+    retryMissingListeners();
+}
+
+void WirelessSync::retryMissingListeners()
+{
+    if (m_link != Link::Waiting || !m_automaticConnection || m_locked || m_paused
+        || !m_automaticAllowed || !m_transfer.autoSync() || m_automaticTransport != QStringLiteral("auto"))
+        return;
+    // Advertise only through a radio that is already enabled. The automatic
+    // path must never execute the Paper Pro firmware activation helper.
+    const bool startBluetooth = !m_bluetoothCandidate;
+    m_bluetoothCandidate = true;
+    if (m_automaticWifiAllowed && !m_wifiCandidate) {
+        m_wifiCandidate = true;
+        m_wifi.listen();
+    }
+#if defined(Q_OS_LINUX)
+    if (startBluetooth && m_link == Link::Waiting)
+        m_bluetooth.start();
+#else
+    Q_UNUSED(startBluetooth)
+    m_bluetoothCandidate = false;
+#endif
+    if (m_link == Link::Waiting) {
+        report(m_wifiCandidate && m_bluetoothCandidate
+            ? tr("In attesa del Mac via Wi-Fi o Bluetooth…")
+            : m_wifiCandidate ? tr("In attesa del Mac via Wi-Fi; Bluetooth non disponibile.")
+            : m_bluetoothCandidate ? tr("In attesa del Mac via Bluetooth; Wi-Fi non disponibile.")
+            : tr("Reti non disponibili. Quaderno riproverà il collegamento automaticamente."));
+        scheduleListenerRetry();
+    }
+}
+
+void WirelessSync::scheduleListenerRetry()
+{
+    if (m_link != Link::Waiting || !m_automaticConnection || m_locked || m_paused
+        || !m_automaticAllowed || !m_transfer.autoSync()) return;
+    if (m_bluetoothCandidate && (!m_automaticWifiAllowed || m_wifiCandidate)) {
+        m_listenerRetry.stop();
+        m_reconnectDelayMs = 0;
+        emit reconnectionChanged();
+        return;
+    }
+    if (!m_listenerRetry.isActive()) {
+        m_reconnectFailures = qMin(m_reconnectFailures + 1, 6);
+        m_reconnectDelayMs = reconnectDelayMs(true, m_reconnectFailures);
+        m_listenerRetry.start(m_reconnectDelayMs);
+        emit reconnectionChanged();
+    }
+}
+
+void WirelessSync::transportReady(Link link)
+{
+    if (m_link == Link::Waiting) {
+        if ((link == Link::Wifi && (!m_wifiCandidate || !m_automaticWifiAllowed))
+            || (link == Link::Bluetooth && !m_bluetoothCandidate)) return;
+        // Only one transport owns TLS. A second callback cannot replace a
+        // handshake or interrupt a transfer already selected by the first.
+        m_link = link;
+        m_wifiCandidate = false;
+        m_bluetoothCandidate = false;
+        stopReconnectTimers();
+        if (link == Link::Bluetooth)
+            m_wifi.stop();
+#if defined(Q_OS_LINUX) || defined(Q_OS_MACOS)
+        else
+            m_bluetooth.stop();
+#endif
+        updateAutomaticTransferGate();
+        emit linkChanged();
+    }
+    if (m_link == link && !m_channel.established()) startChannel();
+}
+
+void WirelessSync::transportEnded(Link link, const QString &message)
+{
+    if (m_link == Link::Waiting) {
+        if (link == Link::Wifi) m_wifiCandidate = false;
+        if (link == Link::Bluetooth) {
+            m_bluetoothCandidate = false;
+            m_bluetoothStatus = message;
+        }
+        scheduleListenerRetry();
+        report(m_wifiCandidate ? tr("In attesa del Mac via Wi-Fi; Bluetooth non disponibile.")
+            : m_bluetoothCandidate ? tr("In attesa del Mac via Bluetooth; Wi-Fi non disponibile.")
+            : tr("Reti non disponibili. Quaderno riproverà il collegamento automaticamente."));
+        return;
+    }
+    if (m_link == link) linkEnded(message);
 }
 
 void WirelessSync::activateBluetooth()
@@ -269,8 +411,9 @@ void WirelessSync::activateBluetooth()
 
 void WirelessSync::startChannel()
 {
-    if (!active())
+    if (!active() || m_link == Link::Waiting || m_channelStarted)
         return;
+    m_channelStarted = true;
     const auto &secret = paired() ? m_secret : m_pendingSecret;
     const auto limit = m_link == Link::Bluetooth ? bluetoothLimit : wifiLimit;
     m_pipe.reset();
@@ -289,10 +432,16 @@ void WirelessSync::acceptPeer()
         m_secret = m_pendingSecret;
         m_pendingSecret.clear();
         updatePeer();
+        emit pairedChanged();
     }
     m_preferredLink = m_link;
-    m_preferredAddress = m_link == Link::Wifi && !m_tablet ? m_wifi.address() : QString{};
+    m_reconnectFailures = 0;
+    m_bluetoothFallbackNext = false;
+    stopReconnectTimers();
+    if (m_link == Link::Wifi && !m_tablet)
+        m_preferredAddress = m_wifi.address();
     saveConnection();
+    updateAutomaticTransferGate();
     m_transfer.setConnected(true);
     report(m_link == Link::Bluetooth ? tr("Collegamento Bluetooth protetto attivo.")
                                      : tr("Collegamento Wi-Fi locale protetto attivo."));
@@ -301,7 +450,7 @@ void WirelessSync::acceptPeer()
 void WirelessSync::stop()
 {
     m_paused = true;
-    m_reconnect.stop();
+    stopReconnectTimers();
     const bool bluetooth = m_link == Link::Bluetooth;
     resetLink();
     if (bluetooth) {
@@ -309,22 +458,35 @@ void WirelessSync::stop()
         refreshBluetooth();
     }
     report({});
+    emit reconnectionChanged();
 }
 
 void WirelessSync::resetLink()
 {
+    m_resettingLink = true;
+    // Let the engine classify the interrupted preview/apply while its link
+    // policy is still intact. Closing that gate first would look like a user
+    // pause and erase the retry checkpoint for the disconnected transfer.
+    m_transfer.setConnected(false);
     m_link = Link::None;
+    m_automaticConnection = false;
+    m_channelStarted = false;
+    m_wifiCandidate = false;
+    m_bluetoothCandidate = false;
+    m_listenerRetry.stop();
+    updateAutomaticTransferGate();
     m_tryBluetoothActivation = false;
     if (activatingBluetooth())
         m_activateBluetooth.kill();
     m_channel.stop();
-    m_transfer.setConnected(false);
     m_pipe.reset();
     m_wifi.stop();
 #if defined(Q_OS_MACOS) || defined(Q_OS_LINUX)
     m_bluetooth.stop();
 #endif
     m_pendingSecret.clear();
+    m_resettingLink = false;
+    emit linkChanged();
 }
 
 void WirelessSync::linkEnded(const QString &message)
@@ -334,6 +496,10 @@ void WirelessSync::linkEnded(const QString &message)
     // A failed attempt does not discard the unpaired tablet's displayed code.
     const QByteArray pending = m_tablet ? m_pendingSecret : QByteArray{};
     const bool bluetooth = m_link == Link::Bluetooth;
+    const Link failedLink = m_link;
+    m_reconnectFailures = qMin(m_reconnectFailures + 1, 6);
+    if (m_automaticTransport == QStringLiteral("auto"))
+        m_bluetoothFallbackNext = failedLink == Link::Wifi;
     resetLink();
     m_pendingSecret = pending;
     if (bluetooth)
@@ -349,10 +515,14 @@ void WirelessSync::forget()
         report(tr("Impossibile rimuovere l’abbinamento salvato."));
         return;
     }
+    const bool wasPaired = paired();
     m_secret.clear();
     m_transfer.forgetPeer();
+    if (wasPaired) emit pairedChanged();
     m_preferredLink = Link::None;
     m_preferredAddress.clear();
+    m_reconnectFailures = 0;
+    m_bluetoothFallbackNext = false;
     wirelessSettings().remove(QStringLiteral("wirelessTransport"));
     report(tr("Abbinamento rimosso."));
 }
@@ -367,6 +537,7 @@ void WirelessSync::report(const QString &message)
 
 void WirelessSync::loadPairing()
 {
+    const bool wasPaired = paired();
     QFile file(m_pairingPath);
     const QFileInfo info(file);
     if (info.isSymLink() || !info.isFile() || !file.open(QIODevice::ReadOnly)
@@ -381,10 +552,13 @@ void WirelessSync::loadPairing()
         settings.beginGroup(QStringLiteral("wirelessTransport"));
         const QString transport = settings.value(QStringLiteral("type")).toString();
         m_preferredAddress = settings.value(QStringLiteral("address")).toString();
+        if (!validWifiAddress(m_preferredAddress))
+            m_preferredAddress.clear();
         if (transport == QStringLiteral("bluetooth"))
             m_preferredLink = Link::Bluetooth;
         else if (transport == QStringLiteral("wifi") && (m_tablet || !m_preferredAddress.isEmpty()))
             m_preferredLink = Link::Wifi;
+        if (wasPaired != paired()) emit pairedChanged();
     }
 }
 
@@ -409,7 +583,7 @@ void WirelessSync::setLocked(bool locked)
         return;
     m_locked = locked;
     if (locked) {
-        m_reconnect.stop();
+        stopReconnectTimers();
         resetLink();
         m_bluetoothStatus.clear();
         report({});
@@ -418,14 +592,140 @@ void WirelessSync::setLocked(bool locked)
     }
 }
 
+void WirelessSync::setAutomaticAllowed(bool allowed)
+{
+    if (m_automaticAllowed == allowed) return;
+    m_automaticAllowed = allowed;
+    updateAutomaticTransferGate();
+    enforceAutomaticPolicy();
+    scheduleReconnect();
+    emit changed();
+}
+
+void WirelessSync::setAutomaticWifiOnly(bool wifiOnly)
+{
+    setAutomaticTransport(wifiOnly ? QStringLiteral("wifi") : QStringLiteral("auto"));
+}
+
+void WirelessSync::setAutomaticTransport(const QString &transport)
+{
+    if ((transport != QStringLiteral("auto") && transport != QStringLiteral("wifi")
+         && transport != QStringLiteral("bluetooth")) || m_automaticTransport == transport) return;
+    m_automaticTransport = transport;
+    m_bluetoothFallbackNext = false;
+    m_reconnectFailures = 0;
+    stopReconnectTimers();
+    updateAutomaticTransferGate();
+    enforceAutomaticPolicy();
+    scheduleReconnect();
+    emit automaticPolicyChanged();
+    emit changed();
+}
+
+void WirelessSync::setAutomaticWifiAllowed(bool allowed)
+{
+    if (m_automaticWifiAllowed == allowed) return;
+    m_automaticWifiAllowed = allowed;
+    updateAutomaticTransferGate();
+    enforceAutomaticPolicy();
+    scheduleReconnect();
+    emit automaticPolicyChanged();
+    emit changed();
+}
+
+void WirelessSync::updateAutomaticTransferGate()
+{
+    const bool transportAllowed = (m_link == Link::Wifi && m_automaticWifiAllowed
+        && m_automaticTransport != QStringLiteral("bluetooth"))
+        || (m_link == Link::Bluetooth && m_automaticTransport != QStringLiteral("wifi"));
+    m_transfer.setAutomaticAllowed(m_automaticAllowed && !m_locked && transportAllowed);
+}
+
+void WirelessSync::enforceAutomaticPolicy()
+{
+    if (m_resettingLink || !m_automaticConnection || m_channel.established()) return;
+    const bool allowed = m_automaticAllowed && m_transfer.autoSync() && !m_locked && !m_paused;
+    if (!allowed || (m_link == Link::Wifi && (!m_automaticWifiAllowed
+            || m_automaticTransport == QStringLiteral("bluetooth")))
+        || (m_link == Link::Bluetooth && automaticWifiOnly())
+        || (m_link == Link::Waiting && m_automaticTransport != QStringLiteral("auto"))) {
+        resetLink();
+        return;
+    }
+    if (m_link == Link::Waiting) {
+        if (!m_automaticWifiAllowed && m_wifiCandidate) {
+            m_wifiCandidate = false;
+            m_wifi.stop();
+        }
+        // Starting candidates is deferred: a QML policy binding never starts a
+        // radio or server while its remaining security gates are reevaluating.
+        if (m_automaticWifiAllowed && !m_wifiCandidate && !m_listenerRetry.isActive()) {
+            m_listenerRetry.start(0);
+            emit reconnectionChanged();
+        } else {
+            scheduleListenerRetry();
+        }
+    }
+}
+
+WirelessSync::Link WirelessSync::automaticLink() const
+{
+    const bool wifi = m_automaticWifiAllowed && (m_tablet || validWifiAddress(m_preferredAddress));
+    if (m_automaticTransport == QStringLiteral("bluetooth")) return Link::Bluetooth;
+    if (m_automaticTransport == QStringLiteral("wifi")) return wifi ? Link::Wifi : Link::None;
+    if (m_tablet) return Link::Waiting;
+    return wifi && !m_bluetoothFallbackNext ? Link::Wifi : Link::Bluetooth;
+}
+
+bool WirelessSync::canReconnectAutomatically() const
+{
+    return available() && !m_resettingLink && !active() && !activatingBluetooth() && paired() && m_transfer.autoSync()
+        && m_automaticAllowed && !m_locked && !m_paused && automaticLink() != Link::None;
+}
+
 void WirelessSync::scheduleReconnect()
 {
-    if (!available() || active() || activatingBluetooth() || !paired() || !m_transfer.autoSync() || m_locked || m_paused
-        || m_preferredLink == Link::None) {
-        m_reconnect.stop();
+    if (m_resettingLink) return;
+    enforceAutomaticPolicy();
+    if (m_link == Link::Waiting) return;
+    if (!canReconnectAutomatically()) {
+        if (m_reconnect.isActive()) {
+            m_reconnect.stop();
+            m_reconnectDelayMs = 0;
+            emit reconnectionChanged();
+        }
     } else if (!m_reconnect.isActive()) {
-        m_reconnect.start(m_tablet ? 3000 : 8000);
+        m_reconnectDelayMs = reconnectDelayMs(m_tablet, m_reconnectFailures);
+        m_reconnect.start(m_reconnectDelayMs);
+        emit reconnectionChanged();
     }
+}
+
+int WirelessSync::reconnectDelayMs(bool tablet, int failures)
+{
+    const int shift = qBound(0, failures - 1, 6);
+    return qMin(120000, (tablet ? 3000 : 8000) * (1 << shift));
+}
+
+void WirelessSync::stopReconnectTimers()
+{
+    m_reconnect.stop();
+    m_listenerRetry.stop();
+    m_reconnectDelayMs = 0;
+    emit reconnectionChanged();
+}
+
+bool WirelessSync::resumeAutomaticConnection()
+{
+    if (!available() || active() || activatingBluetooth() || !paired() || !m_transfer.autoSync()
+        || !m_automaticAllowed || m_locked || automaticLink() == Link::None) return false;
+    m_paused = false;
+    m_reconnectFailures = 0;
+    m_bluetoothFallbackNext = false;
+    m_reconnectDelayMs = 0;
+    m_reconnect.start(0);
+    emit reconnectionChanged();
+    return true;
 }
 
 void WirelessSync::saveConnection()

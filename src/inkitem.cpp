@@ -1,4 +1,5 @@
 #include "inkitem.h"
+#include "inkselection.h"
 
 #include <QCoreApplication>
 #include <QGuiApplication>
@@ -11,6 +12,7 @@
 #include <QStyleHints>
 #include <QTabletEvent>
 #include <QTouchEvent>
+#include <QTransform>
 #include <QtMath>
 
 #include <algorithm>
@@ -277,6 +279,9 @@ InkItem::InkItem(QQuickItem *parent) : QQuickPaintedItem(parent)
     m_shapeHold.setSingleShot(true);
     m_shapeHold.setInterval(550);
     connect(&m_shapeHold, &QTimer::timeout, this, &InkItem::previewHeldShape);
+    m_palmHold.setSingleShot(true);
+    m_palmHold.setInterval(650);
+    connect(&m_palmHold, &QTimer::timeout, this, &InkItem::touchBlockedChanged);
 
     m_epaper = QGuiApplication::platformName() == QStringLiteral("epaper");
 #ifdef Q_OS_LINUX
@@ -302,6 +307,71 @@ bool InkItem::penAvailable() const
     return !m_epaper;
 }
 
+void InkItem::setPointPicking(bool value)
+{
+    if (m_pointPicking == value) return;
+    cancelDrawing();
+    m_pointPicking = value;
+    emit pointPickingChanged();
+}
+
+void InkItem::setNativeMarkerEnabled(bool value)
+{
+    if (m_nativeMarkerEnabled == value) return;
+    cancelMarker();
+    m_nativeMarkerEnabled = value;
+#ifdef Q_OS_LINUX
+    m_marker.reset();
+    if (m_epaper && value) m_marker = std::make_unique<PaperProMarker>(*this);
+#endif
+    emit nativeMarkerEnabledChanged();
+    emit penAvailableChanged();
+}
+
+void InkItem::setMarkerInkTarget(InkItem *target)
+{
+    if (target == this) target = nullptr;
+    if (m_markerInkTarget == target) return;
+    cancelMarker();
+    m_markerInkTarget = target;
+    emit markerInkTargetChanged();
+}
+
+void InkItem::setPressureExponent(qreal value)
+{
+    if (!std::isfinite(value) || value < 0.4 || value > 2.5 || value == m_pressureExponent)
+        return;
+    cancelDrawing();
+    m_pressureExponent = value;
+    emit inputPreferencesChanged();
+}
+
+void InkItem::setShapeTolerance(qreal value)
+{
+    if (!std::isfinite(value) || value < 0.5 || value > 1.5 || value == m_shapeTolerance)
+        return;
+    cancelDrawing();
+    m_shapeTolerance = value;
+    emit inputPreferencesChanged();
+}
+
+bool InkItem::touchBlocked() const
+{
+    return m_palmRejection != QStringLiteral("off")
+        && (m_live.source == Source::Tablet || m_live.source == Source::Marker || m_palmHold.isActive());
+}
+
+void InkItem::setPalmRejection(const QString &value)
+{
+    if (value == m_palmRejection || (value != QStringLiteral("off") && value != QStringLiteral("writing")
+        && value != QStringLiteral("extended")))
+        return;
+    m_palmRejection = value;
+    if (value != QStringLiteral("extended")) m_palmHold.stop();
+    emit inputPreferencesChanged();
+    emit touchBlockedChanged();
+}
+
 void InkItem::dispatchMarker(Phase phase, QPointF windowPoint, qreal pressure, bool eraserTip)
 {
     auto *mainWindow = window();
@@ -312,8 +382,12 @@ void InkItem::dispatchMarker(Phase phase, QPointF windowPoint, qreal pressure, b
     if (phase == Phase::Press) {
         cancelMarker();
         auto *modal = QGuiApplication::modalWindow();
-        if ((!modal || modal == mainWindow) &&
-            handleInput(Source::Marker, phase, mapFromScene(windowPoint), pressure, eraserTip)) {
+        InkItem *inkTarget = m_markerInkTarget && m_markerInkTarget->window()
+            ? m_markerInkTarget.data() : this;
+        const QPointF inkScenePoint = inkTarget->window()->mapFromGlobal(globalPoint);
+        if ((!modal || modal == inkTarget->window()) &&
+            inkTarget->handleInput(Source::Marker, phase, inkTarget->mapFromScene(inkScenePoint), pressure, eraserTip)) {
+            m_markerStrokeTarget = inkTarget;
             m_markerContact = MarkerContact::Ink;
             return;
         }
@@ -337,9 +411,14 @@ void InkItem::dispatchMarker(Phase phase, QPointF windowPoint, qreal pressure, b
 
     // Keep the same route for the whole contact, even when crossing the page edge.
     if (m_markerContact == MarkerContact::Ink) {
-        if (phase == Phase::Release)
+        const QPointer<InkItem> inkTarget = m_markerStrokeTarget;
+        if (phase == Phase::Release) {
             m_markerContact = MarkerContact::None;
-        handleInput(Source::Marker, phase, mapFromScene(windowPoint), pressure, eraserTip);
+            m_markerStrokeTarget.clear();
+        }
+        if (inkTarget && inkTarget->window())
+            inkTarget->handleInput(Source::Marker, phase,
+                inkTarget->mapFromScene(inkTarget->window()->mapFromGlobal(globalPoint)), pressure, eraserTip);
         return;
     }
     if (m_markerContact != MarkerContact::Control || !m_markerWindow)
@@ -370,7 +449,8 @@ void InkItem::cancelMarker()
 {
     const auto contact = std::exchange(m_markerContact, MarkerContact::None);
     if (contact == MarkerContact::Ink) {
-        cancelDrawing();
+        if (m_markerStrokeTarget) m_markerStrokeTarget->cancelDrawing();
+        m_markerStrokeTarget.clear();
         return;
     }
     if (contact != MarkerContact::Control)
@@ -532,6 +612,14 @@ void InkItem::observeWindow(QQuickWindow *window)
 bool InkItem::eventFilter(QObject *watched, QEvent *event)
 {
     switch (event->type()) {
+    case QEvent::TouchBegin:
+    case QEvent::TouchUpdate:
+    case QEvent::TouchEnd:
+        if (touchBlocked()) {
+            event->accept();
+            return true;
+        }
+        break;
     case QEvent::Hide:
     case QEvent::WindowDeactivate:
         cancelDrawing();
@@ -611,19 +699,131 @@ void InkItem::geometryChange(const QRectF &geometry, const QRectF &previousGeome
     }
 }
 
+bool InkItem::inputOverlayContains(QPointF position) const
+{
+    if (!m_inputOverlay)
+        return false;
+    const auto hit = [this, position](auto &&self, QQuickItem *item) -> bool {
+        if (!item || !item->isVisible() || !item->isEnabled())
+            return false;
+        const QPointF local = item->mapFromItem(this, position);
+        if (item->clip() && !item->contains(local))
+            return false;
+        if (item->property("blocksInk").toBool() && item->contains(local))
+            return true;
+        for (QQuickItem *child : item->childItems()) {
+            if (self(self, child))
+                return true;
+        }
+        return false;
+    };
+    return hit(hit, m_inputOverlay);
+}
+
 QString InkItem::textItemAt(QPointF position) const
 {
-    if (!isVisible() || !contains(position) || !insideAncestorClips(*this, position)
+    if (!isVisible() || inputOverlayContains(position) || !contains(position) || !insideAncestorClips(*this, position)
         || width() <= 0 || height() <= 0)
         return {};
 
     const QPointF point(position.x() / width(), position.y() / height());
     for (auto it = m_pageItems.crbegin(); it != m_pageItems.crend(); ++it) {
         const QVariantMap item = it->toMap();
-        const QRectF bounds(item.value(QStringLiteral("x")).toDouble(), item.value(QStringLiteral("y")).toDouble(),
-                            item.value(QStringLiteral("width")).toDouble(), item.value(QStringLiteral("height")).toDouble());
-        if (bounds.contains(point))
+        if (InkSelectionGeometry::itemOutline(item).containsPoint(point, Qt::OddEvenFill))
             return item.value(QStringLiteral("type")) == QStringLiteral("text")
+                ? item.value(QStringLiteral("id")).toString() : QString{};
+    }
+    return {};
+}
+
+QString InkItem::noteItemAt(QPointF position) const
+{
+    if (!isVisible() || inputOverlayContains(position) || !contains(position) || !insideAncestorClips(*this, position)
+        || width() <= 0 || height() <= 0)
+        return {};
+    const QPointF point(position.x() / width(), position.y() / height());
+    for (auto it = m_pageItems.crbegin(); it != m_pageItems.crend(); ++it) {
+        const QVariantMap item = it->toMap();
+        if (InkSelectionGeometry::itemOutline(item).containsPoint(point, Qt::OddEvenFill))
+            return item.value(QStringLiteral("type")) == QStringLiteral("note")
+                ? item.value(QStringLiteral("id")).toString() : QString{};
+    }
+    return {};
+}
+
+QVariantMap InkItem::tableCellAt(QPointF position) const
+{
+    if (!isVisible() || inputOverlayContains(position) || !contains(position) || !insideAncestorClips(*this, position)
+        || width() <= 0 || height() <= 0)
+        return {};
+
+    const QPointF point(position.x() / width(), position.y() / height());
+    for (auto it = m_pageItems.crbegin(); it != m_pageItems.crend(); ++it) {
+        const QVariantMap item = it->toMap();
+        if (!InkSelectionGeometry::itemOutline(item).containsPoint(point, Qt::OddEvenFill))
+            continue;
+        // An object above the table owns the tap, even when it is not editable
+        // through this path. Do not open a cell hidden behind another item.
+        if (item.value(QStringLiteral("type")) != QStringLiteral("table"))
+            return {};
+        const int rows = item.value(QStringLiteral("rows")).toInt();
+        const int columns = item.value(QStringLiteral("cols")).toInt();
+        const QVariantList cells = item.value(QStringLiteral("cells")).toList();
+        const qreal left = item.value(QStringLiteral("x")).toDouble() * 600;
+        const qreal top = item.value(QStringLiteral("y")).toDouble() * 800;
+        const qreal itemWidth = item.value(QStringLiteral("width")).toDouble() * 600;
+        const qreal itemHeight = item.value(QStringLiteral("height")).toDouble() * 800;
+        if (rows <= 0 || columns <= 0 || cells.size() != qsizetype(rows) * columns
+            || !std::isfinite(itemWidth) || !std::isfinite(itemHeight) || itemWidth <= 0 || itemHeight <= 0)
+            return {};
+        const QPointF center(left + itemWidth / 2, top + itemHeight / 2);
+        QTransform inverse;
+        inverse.translate(center.x(), center.y());
+        inverse.rotate(-item.value(QStringLiteral("rotation")).toDouble());
+        inverse.translate(-center.x(), -center.y());
+        const QPointF local = inverse.map(QPointF(point.x() * 600, point.y() * 800));
+        const qreal columnPosition = (local.x() - left) / itemWidth * columns;
+        const qreal rowPosition = (local.y() - top) / itemHeight * rows;
+        if (!std::isfinite(columnPosition) || !std::isfinite(rowPosition)
+            || columnPosition < 0 || columnPosition >= columns || rowPosition < 0 || rowPosition >= rows)
+            return {};
+        const int row = static_cast<int>(std::floor(rowPosition));
+        const int column = static_cast<int>(std::floor(columnPosition));
+        const QString id = item.value(QStringLiteral("id")).toString();
+        if (id.isEmpty()) return {};
+        return {{QStringLiteral("id"), id}, {QStringLiteral("row"), row}, {QStringLiteral("column"), column},
+                {QStringLiteral("occupied"), !cells.at(qsizetype(row) * columns + column).toString().isEmpty()}};
+    }
+    return {};
+}
+
+QString InkItem::chartItemAt(QPointF position) const
+{
+    if (!isVisible() || inputOverlayContains(position) || !contains(position) || !insideAncestorClips(*this, position)
+        || width() <= 0 || height() <= 0)
+        return {};
+
+    const QPointF point(position.x() / width(), position.y() / height());
+    for (auto it = m_pageItems.crbegin(); it != m_pageItems.crend(); ++it) {
+        const QVariantMap item = it->toMap();
+        if (InkSelectionGeometry::itemOutline(item).containsPoint(point, Qt::OddEvenFill))
+            return item.value(QStringLiteral("type")) == QStringLiteral("chart")
+                ? item.value(QStringLiteral("id")).toString() : QString{};
+    }
+    return {};
+}
+
+QString InkItem::diagramItemAt(QPointF position) const
+{
+    if (!isVisible() || inputOverlayContains(position) || !contains(position) || !insideAncestorClips(*this, position)
+        || width() <= 0 || height() <= 0)
+        return {};
+
+    const QPointF point(position.x() / width(), position.y() / height());
+    for (auto it = m_pageItems.crbegin(); it != m_pageItems.crend(); ++it) {
+        const QVariantMap item = it->toMap();
+        if (InkSelectionGeometry::itemOutline(item).containsPoint(point, Qt::OddEvenFill))
+            return item.value(QStringLiteral("type")) == QStringLiteral("diagram")
                 ? item.value(QStringLiteral("id")).toString() : QString{};
     }
     return {};
@@ -631,21 +831,55 @@ QString InkItem::textItemAt(QPointF position) const
 
 bool InkItem::handleInput(Source source, Phase phase, QPointF position, qreal pressure, bool eraserTip)
 {
+    // Transform only incoming stylus pressure. Stored points and the release
+    // fallback already use the chosen response and must not be transformed twice.
+    if (source != Source::Mouse)
+        pressure = std::pow(std::clamp(pressure, 0.0, 1.0), m_pressureExponent);
+    if (m_live.source == source && phase != Phase::Press && (!m_inputActivity.isValid() || m_inputActivity.elapsed() >= 500)) {
+        emit inputActivity();
+        m_inputActivity.start();
+    }
     if (phase == Phase::Press) {
         if (m_live.source != Source::None || !isVisible() || !isEnabled()
-            || m_image.isNull() || !contains(position) || (m_lassoMode && eraserTip)
-            || !insideAncestorClips(*this, position))
+            || inputOverlayContains(position) || m_image.isNull() || !contains(position) || (m_lassoMode && eraserTip)
+            || !insideAncestorClips(*this, position) || (m_pointPicking && eraserTip))
             return false;
+        emit inputActivity();
+        m_inputActivity.start();
         m_live.source = source;
+        m_palmHold.stop();
+        emit touchBlockedChanged();
         m_live.color = m_inkColor;
         m_live.width = m_inkWidth;
         m_live.tool = eraserTip ? InkTool::Eraser : m_inkTool;
         emit drawingChanged();
+        if (m_pointPicking) {
+            m_live.pointPick = true;
+            m_live.textTapStart = position;
+            m_live.textTapTime.start();
+            emit strokeStarted();
+            return true;
+        }
         if (!m_lassoMode && m_live.tool == InkTool::Eraser)
             prepareEraser();
-        if (!m_lassoMode && (m_live.tool == InkTool::Pen || m_live.tool == InkTool::Pencil || m_live.tool == InkTool::Marker))
+        if (!m_lassoMode && m_live.tool != InkTool::Eraser)
+            m_live.noteTapId = noteItemAt(position);
+        if (m_live.noteTapId.isEmpty() && !m_lassoMode && (m_live.tool == InkTool::Pen || m_live.tool == InkTool::Pencil || m_live.tool == InkTool::Marker)) {
             m_live.textTapId = textItemAt(position);
-        if (m_live.textTapId.isEmpty()) {
+            if (m_live.textTapId.isEmpty()) {
+                const QVariantMap cell = tableCellAt(position);
+                // Mouse clicks edit empty cells too. Pen taps in empty cells
+                // must remain ink so dots and decimal separators can be written.
+                if (!cell.isEmpty() && (source == Source::Mouse || cell.value(QStringLiteral("occupied")).toBool()))
+                    m_live.tableTapCell = cell;
+                if (m_live.tableTapCell.isEmpty()) {
+                    m_live.chartTapId = chartItemAt(position);
+                    if (m_live.chartTapId.isEmpty())
+                        m_live.diagramTapId = diagramItemAt(position);
+                }
+            }
+        }
+        if (m_live.textTapId.isEmpty() && m_live.tableTapCell.isEmpty() && m_live.chartTapId.isEmpty() && m_live.diagramTapId.isEmpty() && m_live.noteTapId.isEmpty()) {
             addPoint(position, pressure);
         } else {
             m_live.textTapStart = position;
@@ -659,20 +893,51 @@ bool InkItem::handleInput(Source source, Phase phase, QPointF position, qreal pr
     if (m_live.source != source)
         return false;
 
-    if (!m_live.textTapId.isEmpty()) {
+    if (m_live.pointPick) {
+        m_live.pointPickCancelled = m_live.pointPickCancelled || !contains(position) || !insideAncestorClips(*this, position)
+            || QLineF(position, m_live.textTapStart).length() >= QGuiApplication::styleHints()->startDragDistance();
+        if (phase == Phase::Release) {
+            const bool accepted = !m_live.pointPickCancelled
+                && m_live.textTapTime.elapsed() < QGuiApplication::styleHints()->mousePressAndHoldInterval();
+            const QPointF point(m_live.textTapStart.x() / width(), m_live.textTapStart.y() / height());
+            resetDrawing();
+            if (accepted) emit pagePointPicked(point);
+        }
+        return true;
+    }
+
+    if (!m_live.textTapId.isEmpty() || !m_live.tableTapCell.isEmpty() || !m_live.chartTapId.isEmpty() || !m_live.diagramTapId.isEmpty() || !m_live.noteTapId.isEmpty()) {
         const auto *hints = QGuiApplication::styleHints();
+        const bool sameTarget = !m_live.noteTapId.isEmpty() ? noteItemAt(position) == m_live.noteTapId
+            : !m_live.textTapId.isEmpty() ? textItemAt(position) == m_live.textTapId
+            : !m_live.chartTapId.isEmpty() ? chartItemAt(position) == m_live.chartTapId
+            : !m_live.diagramTapId.isEmpty() ? diagramItemAt(position) == m_live.diagramTapId
+            : tableCellAt(position) == m_live.tableTapCell;
         const bool stillTap = QLineF(position, m_live.textTapStart).length() < hints->startDragDistance()
             && m_live.textTapTime.elapsed() < hints->mousePressAndHoldInterval()
-            && textItemAt(position) == m_live.textTapId;
+            && sameTarget;
         if (stillTap) {
             if (phase == Phase::Release) {
                 const QString id = m_live.textTapId;
+                const QVariantMap cell = m_live.tableTapCell;
+                const QString chartId = m_live.chartTapId;
+                const QString diagramId = m_live.diagramTapId;
+                const QString noteId = m_live.noteTapId;
                 resetDrawing();
-                emit textItemTapped(id);
+                if (!noteId.isEmpty()) emit noteItemTapped(noteId);
+                else if (!id.isEmpty()) emit textItemTapped(id);
+                else if (!chartId.isEmpty()) emit chartItemTapped(chartId);
+                else if (!diagramId.isEmpty()) emit diagramItemTapped(diagramId);
+                else emit tableCellTapped(cell.value(QStringLiteral("id")).toString(),
+                    cell.value(QStringLiteral("row")).toInt(), cell.value(QStringLiteral("column")).toInt());
             }
             return true;
         }
         m_live.textTapId.clear();
+        m_live.tableTapCell.clear();
+        m_live.chartTapId.clear();
+        m_live.diagramTapId.clear();
+        m_live.noteTapId.clear();
         addPoint(m_live.textTapStart, m_live.textTapPressure);
     }
 
@@ -768,7 +1033,7 @@ void InkItem::previewHeldShape()
 {
     if (m_live.source == Source::None || m_live.points.size() < 2)
         return;
-    m_shapePreview = recognizeInkShape(m_live.points, size());
+    m_shapePreview = recognizeInkShape(m_live.points, size(), m_shapeTolerance);
     if (m_shapePreview)
         rebuildImage();
 }
@@ -972,6 +1237,10 @@ void InkItem::eraseNear(const InkPoint &from, const InkPoint &to)
 void InkItem::resetDrawing()
 {
     const bool wasDrawing = drawing();
+    const bool wasBlocked = touchBlocked();
+    if ((m_live.source == Source::Marker || m_live.source == Source::Tablet)
+        && m_palmRejection == QStringLiteral("extended"))
+        m_palmHold.start();
     m_shapeHold.stop();
     m_shapePreview.reset();
     m_live = {};
@@ -980,6 +1249,8 @@ void InkItem::resetDrawing()
     m_eraserOffset = 0;
     if (wasDrawing)
         emit drawingChanged();
+    if (wasBlocked != touchBlocked())
+        emit touchBlockedChanged();
 }
 
 bool InkItem::drawing() const

@@ -1,8 +1,14 @@
 #include "deviceinfo.h"
+#include "markerbattery.h"
 
 #include <QSysInfo>
 
 #ifdef Q_OS_LINUX
+#include <QDBusConnection>
+#include <QDBusMessage>
+#include <QDBusPendingCallWatcher>
+#include <QDBusReply>
+#include <QDBusVariant>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -10,6 +16,8 @@
 
 #include <algorithm>
 #include <array>
+#include <functional>
+#include <memory>
 
 namespace {
 const QString lightDirectory = QStringLiteral("/sys/class/backlight/rm_frontlight/");
@@ -102,6 +110,23 @@ bool hasBluetoothController()
         return controller.match(entry).hasMatch();
     });
 }
+
+void readMarkerProperty(QObject *owner, const QString &property,
+                        std::function<void(QVariant)> completed)
+{
+    auto message = QDBusMessage::createMethodCall(QStringLiteral("no.remarkable.marker"),
+        QStringLiteral("/no/remarkable/marker"), QStringLiteral("org.freedesktop.DBus.Properties"),
+        QStringLiteral("Get"));
+    message.setAutoStartService(false);
+    message.setArguments({QStringLiteral("no.remarkable.marker"), property});
+    auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::systemBus().asyncCall(message, 1000), owner);
+    QObject::connect(watcher, &QDBusPendingCallWatcher::finished, owner,
+                     [completed = std::move(completed)](QDBusPendingCallWatcher *finished) {
+        const QDBusReply<QDBusVariant> reply(finished->reply());
+        finished->deleteLater();
+        completed(reply.isValid() ? reply.value().variant() : QVariant{});
+    });
+}
 }
 #endif
 
@@ -181,7 +206,109 @@ void DeviceInfo::refresh()
     }
 #endif
 
+    refreshMarker();
+    publishChanges();
+}
+
+void DeviceInfo::publishChanges()
+{
+    const QVariantList state{m_paperPro, m_model, m_osVersion, m_batteryPercent, m_charging,
+        m_batteryStatus, m_markerAvailable, m_markerPresent, m_markerBatteryPercent,
+        m_markerCharging, m_markerStatus, m_bluetoothAvailable, m_bluetoothStatus,
+        m_frontlightAvailable, m_frontlightLevel, m_frontlightStatus, m_error};
+    if (state == m_publishedState)
+        return;
+    m_publishedState = state;
     emit changed();
+}
+
+void DeviceInfo::applyMarkerReading(const MarkerBattery::Reading &reading)
+{
+    m_markerAvailable = reading.available;
+    m_markerPresent = reading.present;
+    m_markerBatteryPercent = reading.percent;
+    m_markerCharging = reading.charging;
+    switch (reading.state) {
+    case MarkerBattery::State::Unavailable:
+        m_markerStatus = tr("Telemetria della penna non disponibile");
+        break;
+    case MarkerBattery::State::Absent:
+        m_markerStatus = tr("Penna non rilevata");
+        break;
+    case MarkerBattery::State::Ready:
+        m_markerStatus = tr("Penna agganciata");
+        break;
+    case MarkerBattery::State::Charging:
+        m_markerStatus = tr("In carica");
+        break;
+    case MarkerBattery::State::Full:
+        m_markerStatus = tr("Carica completa");
+        break;
+    case MarkerBattery::State::Discharging:
+        m_markerStatus = tr("Penna in uso");
+        break;
+    case MarkerBattery::State::NotCharging:
+        m_markerStatus = tr("Carica sospesa");
+        break;
+    case MarkerBattery::State::Unknown:
+        m_markerStatus = tr("Stato di carica della penna non disponibile");
+        break;
+    }
+}
+
+void DeviceInfo::refreshMarker()
+{
+#ifdef Q_OS_LINUX
+    if (m_paperPro) {
+        if (m_markerRefreshPending)
+            return;
+        m_markerRefreshPending = true;
+        struct PendingReading {
+            QVariant capacity;
+            QVariant docked;
+            QVariant charging;
+            int remaining = 3;
+        };
+        const auto reading = std::make_shared<PendingReading>();
+        const auto finish = [this, reading](const QVariant &confirmedDocked) {
+            // Use a fresh fallback after DBus replies, never a cached percentage.
+            const auto fallback = MarkerBattery::readPowerSupplies(QStringLiteral("/sys/class/power_supply"));
+            const bool sameDockState = reading->docked.metaType().id() == QMetaType::Bool
+                && confirmedDocked.metaType().id() == QMetaType::Bool
+                && reading->docked.toBool() == confirmedDocked.toBool();
+            applyMarkerReading(MarkerBattery::fromService(reading->capacity,
+                sameDockState ? confirmedDocked : QVariant{}, reading->charging, fallback));
+            m_markerRefreshPending = false;
+            publishChanges();
+        };
+        const auto received = [this, reading, finish] {
+            if (--reading->remaining != 0)
+                return;
+            // Separate Get calls must not combine a pre-undocking percentage
+            // with a later dock status. An undocked reading ignores capacity.
+            if (reading->docked.metaType().id() == QMetaType::Bool && reading->docked.toBool())
+                readMarkerProperty(this, QStringLiteral("Docked"), finish);
+            else
+                finish(reading->docked);
+        };
+        readMarkerProperty(this, QStringLiteral("BatteryCapacity"), [reading, received](QVariant value) {
+            reading->capacity = std::move(value);
+            received();
+        });
+        readMarkerProperty(this, QStringLiteral("Docked"), [reading, received](QVariant value) {
+            reading->docked = std::move(value);
+            received();
+        });
+        readMarkerProperty(this, QStringLiteral("IsCharging"), [reading, received](QVariant value) {
+            reading->charging = std::move(value);
+            received();
+        });
+        return;
+    }
+#endif
+    applyMarkerReading({});
+    m_markerStatus = tr("Disponibile sul Paper Pro");
+    publishChanges();
 }
 
 bool DeviceInfo::setFrontlightLevel(int level)

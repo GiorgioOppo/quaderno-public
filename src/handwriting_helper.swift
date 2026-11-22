@@ -9,6 +9,7 @@ struct QuadernoHandwriting {
     private struct Response: Encodable {
         var text: String?
         var error: String?
+        var alternatives: [String]?
     }
 
     private enum InputError: Error {
@@ -19,18 +20,23 @@ struct QuadernoHandwriting {
     static func main() async {
         let response: Response
         do {
+            let arguments = CommandLine.arguments
+            let language = arguments.count == 1 ? "it" : (arguments.count == 3 && arguments[1] == "--language" ? arguments[2] : "")
+            guard ["it", "en"].contains(language) else { throw InputError.malformed }
             let data = try readInput()
             let paths = try JSONDecoder().decode([[[Double]]].self, from: data)
             let drawing = try makeDrawing(paths)
-            let languages = [Locale.Language(identifier: "it"), Locale.Language(identifier: "en")]
+            let languages = [Locale.Language(identifier: language)]
             let recognizer = PKStrokeRecognizer(preferredLanguages: languages)
             await recognizer.updateDrawing(drawing)
             var text = await recognizer.recognizedText()?.trimmingCharacters(in: .whitespacesAndNewlines)
+            var alternatives: [String] = []
             if text?.isEmpty != false {
-                text = try? recognizeImage(drawing)
+                alternatives = (try? recognizeImage(drawing, language: language)) ?? []
+                text = alternatives.first
             }
             if let text, !text.isEmpty {
-                response = Response(text: text)
+                response = Response(text: text, alternatives: alternatives.isEmpty ? [text] : alternatives)
             } else {
                 response = Response(error: "Non è stato riconosciuto alcun testo.")
             }
@@ -100,15 +106,15 @@ struct QuadernoHandwriting {
         return PKDrawing(strokes: strokes)
     }
 
-    private static func recognizeImage(_ drawing: PKDrawing) throws -> String? {
+    private static func recognizeImage(_ drawing: PKDrawing, language: String) throws -> [String] {
         let bounds = drawing.bounds.insetBy(dx: -9, dy: -9)
-        guard !bounds.isEmpty else { return nil }
+        guard !bounds.isEmpty else { return [] }
 
         let scale = 3.0
         guard let context = CGContext(data: nil, width: Int(ceil(bounds.width * scale)),
                                       height: Int(ceil(bounds.height * scale)), bitsPerComponent: 8,
                                       bytesPerRow: 0, space: CGColorSpaceCreateDeviceGray(),
-                                      bitmapInfo: CGImageAlphaInfo.none.rawValue) else { return nil }
+                                      bitmapInfo: CGImageAlphaInfo.none.rawValue) else { return [] }
         context.setFillColor(gray: 1, alpha: 1)
         context.fill(CGRect(x: 0, y: 0, width: context.width, height: context.height))
         context.scaleBy(x: scale, y: -scale)
@@ -131,9 +137,9 @@ struct QuadernoHandwriting {
             context.strokePath()
         }
 
-        guard let image = context.makeImage() else { return nil }
+        guard let image = context.makeImage() else { return [] }
         let request = VNRecognizeTextRequest()
-        request.recognitionLevel = .fast
+        request.recognitionLevel = .accurate
         for (stage, devices) in try request.supportedComputeStageDevices {
             for device in devices {
                 if case .cpu = device {
@@ -142,9 +148,21 @@ struct QuadernoHandwriting {
                 }
             }
         }
-        request.recognitionLanguages = ["it-IT", "en-US"]
+        request.recognitionLanguages = [language == "it" ? "it-IT" : "en-US"]
         try VNImageRequestHandler(cgImage: image).perform([request])
-        return request.results?.compactMap { $0.topCandidates(1).first?.string }
-            .joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        let lines = (request.results ?? []).map { $0.topCandidates(3).map(\.string) }
+        let best = lines.compactMap(\.first)
+        guard best.count == lines.count, !best.isEmpty else { return [] }
+        var alternatives = [best.joined(separator: "\n")]
+        for (index, candidates) in lines.enumerated() {
+            for candidate in candidates.dropFirst() {
+                var variant = best
+                variant[index] = candidate
+                let text = variant.joined(separator: "\n")
+                if !alternatives.contains(text) { alternatives.append(text) }
+                if alternatives.count == 3 { return alternatives }
+            }
+        }
+        return alternatives
     }
 }
