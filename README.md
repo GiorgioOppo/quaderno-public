@@ -4,9 +4,13 @@
 
 Quaderno is an experimental native note-taking app for **reMarkable Paper Pro** and **Macs with Apple silicon**. It brings handwriting, text, tables, and document annotations together in a library stored on your device. **0.2.23 is a source preview.** Build this version from the repository. The `v0.1.0` tag identifies the original source preview. [Build instructions](docs/en/DEVELOPMENT.md) · [Release status](docs/en/RELEASE.md)
 
-![Quaderno editor showing a vector chart on a sample page](docs/immagini/editor.png)
+## Screenshots from QA
 
-*Mac preview with sample data.*
+The Qt interface tests on macOS captured these screens from the 0.2.24 development build using synthetic notebooks. Select an image to view it at full size.
+
+| Full-page tools | Convert a sketch to a chart | Review handwritten cells |
+| --- | --- | --- |
+| [![The Tools menu open over a book in full-page view, with highlighting and Post-it commands](docs/immagini/qa-menu-pagina-intera.png)](docs/immagini/qa-menu-pagina-intera.png) | [![The lasso selects a line sketch and shows the Convert to chart action](docs/immagini/qa-lazo-grafico.png)](docs/immagini/qa-lazo-grafico.png) | [![The cell review dialog shows sample values 12 and −5 for cells A1 and A2](docs/immagini/qa-scrittura-celle.png)](docs/immagini/qa-scrittura-celle.png) |
 
 ## What you can do
 

@@ -4,9 +4,13 @@
 
 Quaderno è un’app nativa sperimentale per prendere appunti su **reMarkable Paper Pro** e **Mac Apple Silicon**. Riunisce scrittura a penna, testo, tabelle e annotazioni di documenti in una libreria salvata sul dispositivo. **La 0.2.23 è un’anteprima dei sorgenti.** Compila questa versione dal repository. Il tag `v0.1.0` identifica l’anteprima originale. [Istruzioni di compilazione](docs/SVILUPPO.md) · [Stato del rilascio](docs/RILASCIO.md)
 
-![Editor di Quaderno con un grafico vettoriale su una pagina di esempio](docs/immagini/editor.png)
+## Schermate di collaudo
 
-*Schermata della build Mac con dati di esempio.*
+Le schermate provengono dai test dell’interfaccia Qt su macOS della build di sviluppo 0.2.24, eseguiti con quaderni sintetici. Tocca un’immagine per aprirla a dimensione intera.
+
+| Strumenti in Pagina intera | Convertire uno schizzo in grafico | Rivedere la scrittura nelle celle |
+| --- | --- | --- |
+| [![Menu Strumenti aperto su un libro in Pagina intera, con i comandi Evidenzia e Post-it](docs/immagini/qa-menu-pagina-intera.png)](docs/immagini/qa-menu-pagina-intera.png) | [![Il lazo seleziona uno schizzo a linee e mostra il comando Converti in grafico](docs/immagini/qa-lazo-grafico.png)](docs/immagini/qa-lazo-grafico.png) | [![La finestra di revisione mostra i valori di prova 12 e −5 nelle celle A1 e A2](docs/immagini/qa-scrittura-celle.png)](docs/immagini/qa-scrittura-celle.png) |
 
 ## Cosa puoi fare
 
