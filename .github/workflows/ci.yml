@@ -84,6 +84,8 @@ jobs:
           curl --fail --location --retry 3 \
             https://storage.googleapis.com/remarkable-codex-toolchain/3.29.1.0/remarkable-production-image-6.0.112-ferrari-public-aarch64-toolchain.sh \
             -o "$RUNNER_TEMP/ferrari-sdk.sh"
+          printf '%s  %s\n' '83127c0bcfe69265aabec378190dbe36e9903dd2986c0c17093fbd24901d1efc' \
+            "$RUNNER_TEMP/ferrari-sdk.sh" | sha256sum --check
           sh "$RUNNER_TEMP/ferrari-sdk.sh" -y -d "$RUNNER_TEMP/ferrari-sdk"
       - name: Cross compile tablet binary
         shell: bash

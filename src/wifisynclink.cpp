@@ -63,6 +63,38 @@ QHostAddress parseAddress(const QString &input)
         return {};
     return parsed;
 }
+
+QHostAddress handoffSource(const QHostAddress &peer)
+{
+    QHostAddress source;
+    int bestPrefix = 0;
+    for (const auto &interface : QNetworkInterface::allInterfaces()) {
+        const auto flags = interface.flags();
+        const auto type = interface.type();
+        // Qt can classify Wi-Fi as Ethernet. Both are suitable for a directly
+        // attached LAN while the Paper Pro listens on its Wi-Fi interface.
+        if ((type != QNetworkInterface::Wifi && type != QNetworkInterface::Ethernet)
+            || !flags.testFlag(QNetworkInterface::IsUp) || !flags.testFlag(QNetworkInterface::IsRunning)
+            || flags.testFlag(QNetworkInterface::IsLoopBack) || flags.testFlag(QNetworkInterface::IsPointToPoint))
+            continue;
+        for (const auto &entry : interface.addressEntries()) {
+            const auto local = entry.ip();
+            const int prefix = entry.prefixLength();
+            if (prefix <= bestPrefix || !isLocalAddress(local) || local == peer
+                || !peer.isInSubnet(local, prefix))
+                continue;
+            if (prefix < 31) {
+                const quint32 hostMask = ~entry.netmask().toIPv4Address();
+                const quint32 host = peer.toIPv4Address() & hostMask;
+                if (host == 0 || host == hostMask)
+                    continue;
+            }
+            source = local;
+            bestPrefix = prefix;
+        }
+    }
+    return source;
+}
 }
 
 class WifiSyncLinkPrivate
@@ -93,41 +125,51 @@ public:
 
     ~WifiSyncLinkPrivate() { close(); }
 
-    void listen(const QHostAddress &host)
+    quint16 listen(const QHostAddress &host, quint16 port = syncPort, const QString &advertisedAddress = {})
     {
         close();
         if (host.isNull()) {
             fail(WifiSyncLink::tr("Connetti il Paper Pro a una rete Wi-Fi con un indirizzo IPv4 locale."));
-            return;
+            return 0;
         }
-        if (!m_server.listen(host, syncPort)) {
+        if (!m_server.listen(host, port)) {
             fail(WifiSyncLink::tr("Impossibile attivare la sincronizzazione sulla rete Wi-Fi del Paper Pro."));
-            return;
+            return 0;
         }
-        m_address = host.toString();
-        m_boundAddress = host;
-        m_interfaceWatch.start();
+        m_address = advertisedAddress.isEmpty() ? host.toString() : advertisedAddress;
+        if (!host.isLoopback()) {
+            m_boundAddress = host;
+            m_interfaceWatch.start();
+        }
         m_status = WifiSyncLink::tr("In attesa del Mac sulla rete Wi-Fi…");
+        const auto listeningPort = m_server.serverPort();
         emit m_owner.changed();
+        return listeningPort;
     }
 
-    void connectTo(const QHostAddress &host)
+    bool connectTo(const QHostAddress &host, const QHostAddress &source = {}, quint16 port = syncPort,
+                   const QString &advertisedAddress = {})
     {
         close();
         if (host.isNull()) {
             fail(WifiSyncLink::tr("Inserisci l’indirizzo IPv4 locale mostrato sul Paper Pro."));
-            return;
+            return false;
         }
 
         auto *socket = new QTcpSocket(&m_owner);
         socket->setProxy(QNetworkProxy::NoProxy);
+        if (!source.isNull() && !socket->bind(source)) {
+            socket->deleteLater();
+            return false;
+        }
         adopt(socket);
-        m_address = host.toString();
+        m_address = advertisedAddress.isEmpty() ? host.toString() : advertisedAddress;
         m_status = WifiSyncLink::tr("Collegamento al Paper Pro sulla rete Wi-Fi…");
         m_connectDeadline.start(connectTimeoutMs);
         emit m_owner.changed();
         if (socket == m_socket)
-            socket->connectToHost(host, syncPort);
+            socket->connectToHost(host, port);
+        return socket == m_socket;
     }
 
     void stop()
@@ -291,12 +333,28 @@ void WifiSyncLink::configureConnectedSocket(QTcpSocket &socket)
 
 void WifiSyncLink::listen()
 {
+    if (m_loopback) {
+        m_loopback->port = m_private->listen(QHostAddress::LocalHost, 0, m_loopback->advertisedAddress);
+        return;
+    }
     m_private->listen(wifiAddress());
 }
 
 void WifiSyncLink::connectTo(const QString &ipv4)
 {
     m_private->connectTo(parseAddress(ipv4));
+}
+
+bool WifiSyncLink::connectToHandoff(const QString &ipv4)
+{
+    const auto peer = parseAddress(ipv4);
+    if (peer.isNull())
+        return false;
+    if (m_loopback && ipv4 == m_loopback->advertisedAddress)
+        return m_loopback->port != 0 && m_private->connectTo(QHostAddress::LocalHost, QHostAddress::LocalHost,
+                                                             m_loopback->port, m_loopback->advertisedAddress);
+    const auto source = handoffSource(peer);
+    return !source.isNull() && m_private->connectTo(peer, source);
 }
 
 bool WifiSyncLink::isSupportedAddress(const QString &ipv4)

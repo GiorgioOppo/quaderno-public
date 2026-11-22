@@ -43,6 +43,7 @@
 #include "notebook.h"
 #include "obsidianintegration.h"
 #include "obsidiansync.h"
+#include "mixedpageanalyzer.h"
 #include "pagepreviewitem.h"
 #include "pagetemplateitem.h"
 #include "paperprostandby.h"
@@ -333,6 +334,7 @@ private slots:
         qmlRegisterTypesAndRevisions<Notebook>("Quaderno", 254);
         qmlRegisterTypesAndRevisions<ObsidianIntegration>("Quaderno", 254);
         qmlRegisterTypesAndRevisions<ObsidianSync>("Quaderno", 254);
+        qmlRegisterTypesAndRevisions<MixedPageAnalyzer>("Quaderno", 254);
         qmlRegisterTypesAndRevisions<PagePreviewItem>("Quaderno", 254);
         qmlRegisterTypesAndRevisions<PageTemplateItem>("Quaderno", 254);
         qmlRegisterTypesAndRevisions<PaperProStandby>("Quaderno", 254);
@@ -792,6 +794,66 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(visibleItem(h.window()->contentItem(), "reviewHanddrawnDiagram") != nullptr, 4500);
         QVERIFY(!dialog->property("visible").toBool());
         QVERIFY(h.notebook.pageItems().isEmpty());
+        QVERIFY2(h.qmlWarnings.isEmpty(), qPrintable(h.qmlWarnings.join(QStringLiteral(" | "))));
+    }
+
+    void diagramWorkspacePlacementAndConnections_data()
+    {
+        QTest::addColumn<bool>("wide");
+        QTest::newRow("desktop-side-panels") << true;
+        QTest::newRow("compact-tablet-shelf") << false;
+    }
+
+    void diagramWorkspacePlacementAndConnections()
+    {
+        QFETCH(bool, wide);
+        DiagramsHarness h(!wide);
+        QVERIFY(h.window());
+        h.window()->resize(wide ? QSize(1100, 920) : QSize(460, 790));
+        auto *editor = h.find<QObject>("diagramEditor");
+        QVERIFY(editor);
+        QVERIFY(QMetaObject::invokeMethod(editor, "openFor", Q_ARG(QVariant, QVariant{})));
+        QTRY_VERIFY(editor->property("visible").toBool());
+        QTRY_COMPARE(editor->property("sidePanels").toBool(), wide);
+        auto *palette = visibleItem(h.window()->contentItem(), "diagramShapePalette");
+        auto *canvas = visibleItem(h.window()->contentItem(), "diagramCanvas");
+        auto *process = visibleItem(h.window()->contentItem(), "diagramShape_process");
+        auto *decision = visibleItem(h.window()->contentItem(), "diagramShape_decision");
+        QVERIFY(palette && canvas && process && decision);
+        const auto center = [](QQuickItem *item) { return item->mapToScene({item->width() / 2, item->height() / 2}).toPoint(); };
+        const auto pagePoint = [canvas](qreal x, qreal y) {
+            return canvas->mapToScene({x * canvas->width(), y * canvas->height()}).toPoint();
+        };
+        const auto drag = [&h](QPoint from, QPoint to) {
+            QTest::mousePress(h.window(), Qt::LeftButton, Qt::NoModifier, from);
+            QTest::mouseMove(h.window(), from + (to - from) / 3);
+            QTest::mouseMove(h.window(), to);
+            QTest::mouseRelease(h.window(), Qt::LeftButton, Qt::NoModifier, to);
+        };
+
+        QTest::mouseClick(h.window(), Qt::LeftButton, Qt::NoModifier, center(process));
+        QTRY_COMPARE(qmlArray(editor, "nodes").size(), 1);
+        drag(center(decision), pagePoint(.68, .52));
+        QTRY_COMPARE(qmlArray(editor, "nodes").size(), 2);
+        const auto first = qmlArray(editor, "nodes").at(0).toMap();
+        const auto placed = qmlArray(editor, "nodes").at(1).toMap();
+        QCOMPARE(placed.value("shape").toString(), QStringLiteral("decision"));
+        QVERIFY(std::abs(placed.value("x").toDouble() - .535) < .025);
+        QVERIFY(std::abs(placed.value("y").toDouble() - .43) < .025);
+
+        auto *handle = visibleItem(h.window()->contentItem(), "diagramConnectorHandle");
+        QVERIFY(handle);
+        drag(center(handle), pagePoint(.165, .115));
+        QTRY_COMPARE(qmlArray(editor, "edges").size(), 1);
+        const auto edge = qmlArray(editor, "edges").first().toMap();
+        QCOMPARE(edge.value("from"), placed.value("id"));
+        QCOMPARE(edge.value("to"), first.value("id"));
+        QQuickItem *orthogonal = nullptr;
+        QTRY_VERIFY((orthogonal = visibleItem(h.window()->contentItem(), "diagramOrthogonalRoute"))
+            && orthogonal->isEnabled() && orthogonal->width() > 0 && orthogonal->height() > 0);
+        QTest::qWait(90); // The inspector's Flow lays out the newly visible edge tools on the next frame.
+        QTest::mouseClick(h.window(), Qt::LeftButton, Qt::NoModifier, center(orthogonal));
+        QTRY_COMPARE(qmlArray(editor, "edges").first().toMap().value("route").toString(), QStringLiteral("orthogonal"));
         QVERIFY2(h.qmlWarnings.isEmpty(), qPrintable(h.qmlWarnings.join(QStringLiteral(" | "))));
     }
 

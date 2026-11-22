@@ -744,9 +744,11 @@ QString InkItem::noteItemAt(QPointF position) const
     const QPointF point(position.x() / width(), position.y() / height());
     for (auto it = m_pageItems.crbegin(); it != m_pageItems.crend(); ++it) {
         const QVariantMap item = it->toMap();
-        if (InkSelectionGeometry::itemOutline(item).containsPoint(point, Qt::OddEvenFill))
-            return item.value(QStringLiteral("type")) == QStringLiteral("note")
+        if (InkSelectionGeometry::itemOutline(item).containsPoint(point, Qt::OddEvenFill)) {
+            const QVariant type = item.value(QStringLiteral("type"));
+            return type == QStringLiteral("note") || type == QStringLiteral("link")
                 ? item.value(QStringLiteral("id")).toString() : QString{};
+        }
     }
     return {};
 }

@@ -17,6 +17,8 @@ namespace {
 constexpr qsizetype bluetoothLimit = 8 * 1024 * 1024;
 constexpr qsizetype wifiLimit = 64 * 1024 * 1024;
 constexpr qsizetype secretBytes = 16;
+constexpr int rendezvousDiscoveryMs = 4000;
+constexpr int rendezvousConnectionMs = 6000;
 constexpr auto privatePermissions = QFileDevice::ReadOwner | QFileDevice::WriteOwner;
 
 QByteArray parseCode(const QString &value)
@@ -93,38 +95,60 @@ WirelessSync::WirelessSync(Notebook *notebook, const QString &pairingPath, bool 
         m_bluetooth.start();
 #endif
     });
-    connect(&m_transfer, &BleSync::sendMessage, &m_channel, &SyncChannel::sendMessage);
-    connect(&m_channel, &SyncChannel::messageReceived, &m_transfer, &BleSync::receiveMessage);
+    m_rendezvousDeadline.setSingleShot(true);
+    connect(&m_rendezvousDeadline, &QTimer::timeout, this, [this] { fallbackRendezvous(true); });
+    connect(&m_transfer, &BleSync::syncWorkChanged, this, &WirelessSync::updateRendezvous, Qt::QueuedConnection);
+    connect(&m_transfer, &BleSync::transportSelectionBusyChanged, this, &WirelessSync::updateRendezvous, Qt::QueuedConnection);
+    connect(&m_transfer, &BleSync::sendMessage, this, [this](const QVariantMap &metadata, const QByteArray &payload) {
+        auto &channel = m_rendezvous == Rendezvous::Wifi ? m_handoffWifi : m_channel;
+        channel.sendMessage(metadata, payload);
+    });
+    connect(&m_channel, &SyncChannel::messageReceived, this, &WirelessSync::receivePrimaryMessage);
     connect(&m_channel, &SyncChannel::establishedChanged, this, [this] {
         if (m_channel.established())
             acceptPeer();
-        else
+        else if (m_rendezvous != Rendezvous::Wifi)
             m_transfer.setConnected(false);
     });
     connect(&m_channel, &SyncChannel::encryptedReady, this, [this](const QByteArray &bytes) {
-        if (m_link == Link::Bluetooth)
+        if (m_channelLink == Link::Bluetooth)
             m_pipe.enqueue(bytes);
-        else if (m_link == Link::Wifi)
+        else if (m_channelLink == Link::Wifi)
             m_wifi.send(bytes);
     });
-    connect(&m_channel, &SyncChannel::failed, this, &WirelessSync::linkEnded);
+    connect(&m_channel, &SyncChannel::failed, this, [this](const QString &message) {
+        if (m_rendezvous == Rendezvous::Wifi)
+            transportEnded(Link::Bluetooth, message);
+        else
+            linkEnded(message);
+    });
     connect(&m_pipe, &BlePipe::received, this, [this](const QByteArray &bytes) {
-        if (m_link == Link::Bluetooth) m_channel.receive(bytes);
+        if (m_channelLink == Link::Bluetooth) m_channel.receive(bytes);
     });
     connect(&m_pipe, &BlePipe::failed, this, [this] {
         transportEnded(Link::Bluetooth, tr("Lo scambio Bluetooth si è interrotto. Ricollega il dispositivo."));
     }, Qt::QueuedConnection);
     connect(&m_wifi, &WifiSyncLink::ready, this, [this] { transportReady(Link::Wifi); });
     connect(&m_wifi, &WifiSyncLink::received, this, [this](const QByteArray &bytes) {
-        if (m_link == Link::Wifi) m_channel.receive(bytes);
+        if (m_rendezvous == Rendezvous::Connecting || m_rendezvous == Rendezvous::Wifi)
+            m_handoffWifi.receive(bytes);
+        else if (m_channelLink == Link::Wifi)
+            m_channel.receive(bytes);
     });
     connect(&m_wifi, &WifiSyncLink::disconnected, this, [this](const QString &message) {
         transportEnded(Link::Wifi, message);
     });
     connect(&m_wifi, &WifiSyncLink::changed, this, [this] {
-        if (m_link == Link::Wifi && !m_channel.established())
+        if (m_link == Link::Wifi && m_rendezvous == Rendezvous::Inactive && !m_channel.established())
             report(m_wifi.status());
     });
+    connect(&m_handoffWifi, &SyncChannel::encryptedReady, &m_wifi, &WifiSyncLink::send);
+    connect(&m_handoffWifi, &SyncChannel::messageReceived, this, &WirelessSync::receiveHandoffMessage);
+    connect(&m_handoffWifi, &SyncChannel::establishedChanged, this, [this] {
+        if (!m_tablet && m_rendezvous == Rendezvous::Connecting && m_handoffWifi.established())
+            sendRendezvous(SyncRendezvous::Kind::Ready);
+    });
+    connect(&m_handoffWifi, &SyncChannel::failed, this, [this] { fallbackRendezvous(true); });
 #ifdef Q_OS_MACOS
     m_pipe.setOutput([this](const QByteArray &chunk) { return m_bluetooth.writeChunk(chunk); },
                      [this] { return m_bluetooth.maximumChunkSize(); });
@@ -143,7 +167,7 @@ WirelessSync::WirelessSync(Notebook *notebook, const QString &pairingPath, bool 
                      [this] { return m_bluetooth.maximumChunkSize(); });
     connect(&m_bluetooth, &BlePeripheral::frameReceived, &m_pipe, &BlePipe::receive);
     connect(&m_bluetooth, &BlePeripheral::peerChanged, this, [this](bool connected) {
-        if (m_link != Link::Bluetooth && m_link != Link::Waiting)
+        if (m_link != Link::Bluetooth && m_link != Link::Waiting && m_rendezvous != Rendezvous::Wifi)
             return;
         if (connected)
             transportReady(Link::Bluetooth);
@@ -260,7 +284,7 @@ bool WirelessSync::prepareConnection(Link link, const QString &code, bool automa
     m_automaticConnection = automatic;
     if (!automatic) {
         m_reconnectFailures = 0;
-        m_bluetoothFallbackNext = false;
+        m_directWifiNext = false;
     }
     m_link = link;
     updateAutomaticTransferGate();
@@ -362,6 +386,13 @@ void WirelessSync::scheduleListenerRetry()
 
 void WirelessSync::transportReady(Link link)
 {
+    if (link == Link::Wifi && m_rendezvous == Rendezvous::Connecting) {
+        // Bind the second TLS connection to this authenticated Bluetooth
+        // exchange. A direct Wi-Fi sync or a stale offer cannot claim it.
+        m_handoffWifi.start(m_tablet, derive(m_secret, QByteArrayLiteral("Wi-Fi handoff/")
+            + m_rendezvousSession.toLatin1()), wifiLimit);
+        return;
+    }
     if (m_link == Link::Waiting) {
         if ((link == Link::Wifi && (!m_wifiCandidate || !m_automaticWifiAllowed))
             || (link == Link::Bluetooth && !m_bluetoothCandidate)) return;
@@ -385,6 +416,19 @@ void WirelessSync::transportReady(Link link)
 
 void WirelessSync::transportEnded(Link link, const QString &message)
 {
+    if (link == Link::Wifi && (m_rendezvous == Rendezvous::Connecting || m_rendezvous == Rendezvous::Wifi)) {
+        fallbackRendezvous(true);
+        return;
+    }
+    if (link == Link::Bluetooth && m_rendezvous == Rendezvous::Wifi) {
+        m_channelLink = Link::None;
+        m_channel.stop();
+        m_pipe.reset();
+#if defined(Q_OS_LINUX) || defined(Q_OS_MACOS)
+        m_bluetooth.stop();
+#endif
+        return;
+    }
     if (m_link == Link::Waiting) {
         if (link == Link::Wifi) m_wifiCandidate = false;
         if (link == Link::Bluetooth) {
@@ -411,9 +455,11 @@ void WirelessSync::activateBluetooth()
 
 void WirelessSync::startChannel()
 {
-    if (!active() || m_link == Link::Waiting || m_channelStarted)
+    if (!active() || m_link == Link::Waiting || m_channelLink != Link::None)
         return;
-    m_channelStarted = true;
+    // Record ownership once per TLS stream. Selecting Wi-Fi for file data
+    // does not move the primary Bluetooth stream or change its record order.
+    m_channelLink = m_link;
     const auto &secret = paired() ? m_secret : m_pendingSecret;
     const auto limit = m_link == Link::Bluetooth ? bluetoothLimit : wifiLimit;
     m_pipe.reset();
@@ -436,15 +482,221 @@ void WirelessSync::acceptPeer()
     }
     m_preferredLink = m_link;
     m_reconnectFailures = 0;
-    m_bluetoothFallbackNext = false;
+    m_directWifiNext = false;
     stopReconnectTimers();
     if (m_link == Link::Wifi && !m_tablet)
         m_preferredAddress = m_wifi.address();
     saveConnection();
     updateAutomaticTransferGate();
+    if (m_link == Link::Bluetooth)
+        beginRendezvous();
     m_transfer.setConnected(true);
     report(m_link == Link::Bluetooth ? tr("Collegamento Bluetooth protetto attivo.")
                                      : tr("Collegamento Wi-Fi locale protetto attivo."));
+}
+
+bool WirelessSync::canRendezvous() const
+{
+    return m_automaticConnection && m_automaticAllowed
+        && m_automaticTransport == QStringLiteral("auto") && m_transfer.autoSync() && !m_locked && !m_paused;
+}
+
+bool WirelessSync::canOfferWifi() const
+{
+    return canRendezvous() && m_automaticWifiAllowed;
+}
+
+void WirelessSync::beginRendezvous()
+{
+    if (!canRendezvous() || !m_transfer.setTransportSelectionPaused(true))
+        return;
+    m_rendezvous = Rendezvous::Discovering;
+    m_rendezvousDeadline.start(rendezvousDiscoveryMs);
+    if (!m_tablet) {
+        m_rendezvousSession = SyncRendezvous::newSessionId();
+        sendRendezvous(SyncRendezvous::Kind::Hello);
+    }
+}
+
+void WirelessSync::sendRendezvous(SyncRendezvous::Kind kind, const QString &address)
+{
+    using Kind = SyncRendezvous::Kind;
+    if (kind == Kind::Hello || kind == Kind::Work) {
+        m_localWork = m_transfer.hasSyncWork() || m_transfer.transportSelectionBusy();
+        m_localWifi = canOfferWifi();
+    }
+    auto &channel = kind == Kind::Ready || kind == Kind::Commit ? m_handoffWifi : m_channel;
+    channel.sendMessage(SyncRendezvous::encode(
+        {kind, m_rendezvousSession, m_localWork, m_localWifi, address}), {});
+}
+
+void WirelessSync::updateRendezvous()
+{
+    using Kind = SyncRendezvous::Kind;
+    if (m_rendezvous == Rendezvous::Bluetooth) {
+        const bool work = m_transfer.hasSyncWork() || m_transfer.transportSelectionBusy();
+        if (m_localWork != work || m_localWifi != canOfferWifi())
+            sendRendezvous(Kind::Work);
+        // Let the entire current batch settle before another Wi-Fi attempt.
+        if (!m_tablet && !m_localWork && !m_peerWork && m_localWifi && m_peerWifi)
+            beginRendezvous();
+        return;
+    }
+    if (m_rendezvous != Rendezvous::Idle)
+        return;
+    if (!canOfferWifi() || !m_peerWifi || m_transfer.transportSelectionBusy()) {
+        fallbackRendezvous(true);
+        return;
+    }
+    if (m_localWork != m_transfer.hasSyncWork())
+        sendRendezvous(Kind::Work);
+    if (m_rendezvous != Rendezvous::Idle || !m_tablet || (!m_localWork && !m_peerWork))
+        return;
+    m_rendezvous = Rendezvous::Connecting;
+    m_rendezvousDeadline.start(rendezvousConnectionMs);
+    report(tr("Cerco un collegamento Wi-Fi per sincronizzare…"));
+    m_wifi.listen();
+    if (m_rendezvous == Rendezvous::Connecting)
+        sendRendezvous(Kind::Offer, m_wifi.address());
+}
+
+void WirelessSync::receivePrimaryMessage(const QVariantMap &metadata, const QByteArray &payload)
+{
+    using Kind = SyncRendezvous::Kind;
+    if (!SyncRendezvous::isControlMessage(metadata)) {
+        if (m_rendezvous == Rendezvous::Wifi)
+            return;
+        const auto type = metadata.value(QStringLiteral("type")).toString();
+        // Legacy peers can start a transfer while the capability probe is
+        // pending. Finish on Bluetooth before delivering the first payload.
+        if (m_rendezvous != Rendezvous::Inactive && m_rendezvous != Rendezvous::Bluetooth
+            && type != QStringLiteral("syncHello")
+            && type != QStringLiteral("syncHelloReply"))
+            fallbackRendezvous(true);
+        m_transfer.receiveMessage(metadata, payload);
+        return;
+    }
+    if (m_rendezvous == Rendezvous::Inactive)
+        return;
+    const auto message = SyncRendezvous::decode(metadata, payload);
+    if (!message)
+        return;
+    const bool discovering = m_rendezvous == Rendezvous::Discovering
+        && (m_tablet || m_rendezvousSession == message->session);
+    const bool rearming = m_rendezvous == Rendezvous::Bluetooth && m_tablet
+        && message->session != m_rendezvousSession;
+    if (message->kind == Kind::Hello && (discovering || rearming)) {
+        if (rearming && (!canOfferWifi() || !m_transfer.setTransportSelectionPaused(true))) {
+            m_channel.sendMessage(SyncRendezvous::encode({Kind::Abort, message->session, false, false, {}}), {});
+            m_rendezvous = Rendezvous::Inactive;
+            return;
+        }
+        m_rendezvousSession = message->session;
+        m_peerWork = message->work;
+        m_peerWifi = message->wifi;
+        m_rendezvous = Rendezvous::Idle;
+        m_rendezvousDeadline.stop();
+        if (m_tablet)
+            sendRendezvous(Kind::Hello);
+        updateRendezvous();
+    } else if (message->session == m_rendezvousSession) {
+        if (message->kind == Kind::Abort && m_rendezvous != Rendezvous::Bluetooth) {
+            fallbackRendezvous(false);
+        } else if (message->kind == Kind::Work
+                   && (m_rendezvous == Rendezvous::Idle || m_rendezvous == Rendezvous::Bluetooth)) {
+            m_peerWork = message->work;
+            m_peerWifi = message->wifi;
+            updateRendezvous();
+        } else if (message->kind == Kind::Offer && !m_tablet && m_rendezvous == Rendezvous::Idle) {
+            if (!canOfferWifi() || !m_peerWifi || (!m_transfer.hasSyncWork() && !m_peerWork)
+                || m_transfer.transportSelectionBusy()) {
+                fallbackRendezvous(true);
+                return;
+            }
+            m_rendezvous = Rendezvous::Connecting;
+            m_rendezvousDeadline.start(rendezvousConnectionMs);
+            report(tr("Cerco un collegamento Wi-Fi per sincronizzare…"));
+            if (!m_wifi.connectToHandoff(message->address))
+                fallbackRendezvous(true);
+        }
+    }
+}
+
+void WirelessSync::receiveHandoffMessage(const QVariantMap &metadata, const QByteArray &payload)
+{
+    using Kind = SyncRendezvous::Kind;
+    if (m_rendezvous == Rendezvous::Wifi) {
+        if (!SyncRendezvous::isControlMessage(metadata))
+            m_transfer.receiveMessage(metadata, payload);
+        return;
+    }
+    const auto message = SyncRendezvous::decode(metadata, payload);
+    if (m_rendezvous != Rendezvous::Connecting || !message || message->session != m_rendezvousSession
+        || message->kind != (m_tablet ? Kind::Ready : Kind::Commit)
+        || !canOfferWifi() || m_transfer.transportSelectionBusy()) {
+        fallbackRendezvous(true);
+        return;
+    }
+    if (m_tablet)
+        sendRendezvous(Kind::Commit);
+    if (m_rendezvous == Rendezvous::Connecting)
+        useHandoffWifi();
+}
+
+void WirelessSync::useHandoffWifi()
+{
+    m_rendezvousDeadline.stop();
+    m_rendezvous = Rendezvous::Wifi;
+    m_transfer.setConnected(false);
+    m_link = Link::Wifi;
+    m_transfer.setPayloadLimit(wifiLimit);
+    m_preferredLink = Link::Wifi;
+    if (!m_tablet)
+        m_preferredAddress = m_wifi.address();
+    saveConnection();
+    updateAutomaticTransferGate();
+    emit linkChanged();
+    m_transfer.setConnected(true);
+    m_transfer.setTransportSelectionPaused(false);
+    report(tr("Collegamento Wi-Fi locale protetto attivo."));
+}
+
+void WirelessSync::fallbackRendezvous(bool notifyPeer)
+{
+    if (m_rendezvous == Rendezvous::Inactive || m_rendezvous == Rendezvous::Bluetooth)
+        return;
+    const bool wasWifi = m_rendezvous == Rendezvous::Wifi;
+    const bool wifiAttempted = wasWifi || m_rendezvous == Rendezvous::Connecting;
+    const bool peerSupportsHandoff = m_rendezvous != Rendezvous::Discovering;
+    m_rendezvousDeadline.stop();
+    if (wasWifi && !m_channel.established()) {
+        linkEnded(tr("Collegamento Wi-Fi interrotto. Riconnessione in corso…"));
+        return;
+    }
+    m_rendezvous = peerSupportsHandoff ? Rendezvous::Bluetooth : Rendezvous::Inactive;
+    // Route the abort over the original Bluetooth TLS stream, before opening
+    // it to fresh transfer messages.
+    if (notifyPeer && !m_rendezvousSession.isEmpty())
+        sendRendezvous(SyncRendezvous::Kind::Abort);
+    if (!peerSupportsHandoff)
+        m_rendezvousSession.clear();
+    m_handoffWifi.stop();
+    m_wifi.stop();
+    if (wasWifi) {
+        // A fresh preview can resume on Bluetooth. A lost apply confirmation
+        // is still handled by the engine as an uncertain result.
+        m_transfer.setConnected(false);
+        m_link = Link::Bluetooth;
+        m_transfer.setPayloadLimit(bluetoothLimit);
+        updateAutomaticTransferGate();
+        emit linkChanged();
+        m_transfer.setConnected(true);
+    }
+    m_transfer.setTransportSelectionPaused(false);
+    if (peerSupportsHandoff)
+        sendRendezvous(SyncRendezvous::Kind::Work);
+    if (wifiAttempted)
+        report(tr("Wi-Fi non disponibile. La sincronizzazione continua via Bluetooth."));
 }
 
 void WirelessSync::stop()
@@ -453,6 +705,7 @@ void WirelessSync::stop()
     stopReconnectTimers();
     const bool bluetooth = m_link == Link::Bluetooth;
     resetLink();
+    m_transfer.cancelDeferredTransfer();
     if (bluetooth) {
         m_bluetoothStatus.clear();
         refreshBluetooth();
@@ -468,9 +721,17 @@ void WirelessSync::resetLink()
     // policy is still intact. Closing that gate first would look like a user
     // pause and erase the retry checkpoint for the disconnected transfer.
     m_transfer.setConnected(false);
+    m_rendezvousDeadline.stop();
+    m_rendezvous = Rendezvous::Inactive;
+    m_rendezvousSession.clear();
+    m_localWork = false;
+    m_localWifi = false;
+    m_peerWork = false;
+    m_peerWifi = false;
+    m_transfer.setTransportSelectionPaused(false);
     m_link = Link::None;
     m_automaticConnection = false;
-    m_channelStarted = false;
+    m_channelLink = Link::None;
     m_wifiCandidate = false;
     m_bluetoothCandidate = false;
     m_listenerRetry.stop();
@@ -479,6 +740,7 @@ void WirelessSync::resetLink()
     if (activatingBluetooth())
         m_activateBluetooth.kill();
     m_channel.stop();
+    m_handoffWifi.stop();
     m_pipe.reset();
     m_wifi.stop();
 #if defined(Q_OS_MACOS) || defined(Q_OS_LINUX)
@@ -499,7 +761,7 @@ void WirelessSync::linkEnded(const QString &message)
     const Link failedLink = m_link;
     m_reconnectFailures = qMin(m_reconnectFailures + 1, 6);
     if (m_automaticTransport == QStringLiteral("auto"))
-        m_bluetoothFallbackNext = failedLink == Link::Wifi;
+        m_directWifiNext = failedLink == Link::Bluetooth;
     resetLink();
     m_pendingSecret = pending;
     if (bluetooth)
@@ -522,7 +784,7 @@ void WirelessSync::forget()
     m_preferredLink = Link::None;
     m_preferredAddress.clear();
     m_reconnectFailures = 0;
-    m_bluetoothFallbackNext = false;
+    m_directWifiNext = false;
     wirelessSettings().remove(QStringLiteral("wirelessTransport"));
     report(tr("Abbinamento rimosso."));
 }
@@ -585,6 +847,7 @@ void WirelessSync::setLocked(bool locked)
     if (locked) {
         stopReconnectTimers();
         resetLink();
+        m_transfer.cancelDeferredTransfer();
         m_bluetoothStatus.clear();
         report({});
     } else {
@@ -612,7 +875,7 @@ void WirelessSync::setAutomaticTransport(const QString &transport)
     if ((transport != QStringLiteral("auto") && transport != QStringLiteral("wifi")
          && transport != QStringLiteral("bluetooth")) || m_automaticTransport == transport) return;
     m_automaticTransport = transport;
-    m_bluetoothFallbackNext = false;
+    m_directWifiNext = false;
     m_reconnectFailures = 0;
     stopReconnectTimers();
     updateAutomaticTransferGate();
@@ -643,7 +906,13 @@ void WirelessSync::updateAutomaticTransferGate()
 
 void WirelessSync::enforceAutomaticPolicy()
 {
-    if (m_resettingLink || !m_automaticConnection || m_channel.established()) return;
+    if (m_resettingLink || !m_automaticConnection) return;
+    if (m_rendezvous == Rendezvous::Bluetooth)
+        QMetaObject::invokeMethod(this, &WirelessSync::updateRendezvous, Qt::QueuedConnection);
+    else if ((m_rendezvous == Rendezvous::Discovering && !canRendezvous())
+             || ((m_rendezvous == Rendezvous::Idle || m_rendezvous == Rendezvous::Connecting) && !canOfferWifi()))
+        fallbackRendezvous(true);
+    if (m_channel.established() || m_rendezvous == Rendezvous::Wifi) return;
     const bool allowed = m_automaticAllowed && m_transfer.autoSync() && !m_locked && !m_paused;
     if (!allowed || (m_link == Link::Wifi && (!m_automaticWifiAllowed
             || m_automaticTransport == QStringLiteral("bluetooth")))
@@ -674,7 +943,7 @@ WirelessSync::Link WirelessSync::automaticLink() const
     if (m_automaticTransport == QStringLiteral("bluetooth")) return Link::Bluetooth;
     if (m_automaticTransport == QStringLiteral("wifi")) return wifi ? Link::Wifi : Link::None;
     if (m_tablet) return Link::Waiting;
-    return wifi && !m_bluetoothFallbackNext ? Link::Wifi : Link::Bluetooth;
+    return wifi && m_directWifiNext ? Link::Wifi : Link::Bluetooth;
 }
 
 bool WirelessSync::canReconnectAutomatically() const
@@ -721,7 +990,7 @@ bool WirelessSync::resumeAutomaticConnection()
         || !m_automaticAllowed || m_locked || automaticLink() == Link::None) return false;
     m_paused = false;
     m_reconnectFailures = 0;
-    m_bluetoothFallbackNext = false;
+    m_directWifiNext = false;
     m_reconnectDelayMs = 0;
     m_reconnect.start(0);
     emit reconnectionChanged();

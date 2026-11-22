@@ -125,6 +125,10 @@ public:
     Q_INVOKABLE bool createBookInFolder(const QString &title, const QString &folderId);
     Q_INVOKABLE bool createDiagramBook(const QString &title, const QString &folderId);
     Q_INVOKABLE bool createBookWithItem(const QString &title, const QString &folderId, const QVariantMap &item);
+    Q_INVOKABLE QVariantMap mixedPageSource() const;
+    Q_INVOKABLE bool createMixedDocument(const QString &sourceBookId, const QString &sourcePageId,
+                                         const QString &sourceRevision, const QString &title, const QString &markdown,
+                                         const QVariantMap &diagram, const QVariantMap &table);
     Q_INVOKABLE bool startDocumentImport(const QUrl &file, const QString &folderId);
     Q_INVOKABLE void cancelDocumentImport();
     Q_INVOKABLE bool importDocument(const QUrl &file, const QString &folderId);
@@ -144,6 +148,8 @@ public:
     Q_INVOKABLE QUrl suggestedPdfName() const;
     Q_INVOKABLE bool openBook(const QString &id);
     Q_INVOKABLE QVariantMap openLibraryItem(const QString &bookId, const QString &pageId, const QString &itemId);
+    Q_INVOKABLE QVariantMap openPageLink(const QString &id);
+    Q_INVOKABLE QVariantMap linkedPageItem(const QString &id) const;
     Q_INVOKABLE QVariantMap libraryItemCopy(const QString &bookId, const QString &pageId, const QString &itemId) const;
     Q_INVOKABLE bool renameBook(const QString &title);
     Q_INVOKABLE bool createFolder(const QString &title, const QString &parentId);
@@ -200,7 +206,12 @@ public:
                                   const QString &expectedPageId, const QVariantMap &expectedOriginal = {});
     Q_INVOKABLE bool removePageNote(const QString &id, const QString &expectedBookId,
                                     const QString &expectedPageId, const QVariantMap &expectedOriginal = {});
+    Q_INVOKABLE bool savePageLink(const QVariantMap &target, const QPointF &anchor, const QString &expectedBookId,
+                                  const QString &expectedPageId);
+    Q_INVOKABLE bool removePageLink(const QString &id, const QString &expectedBookId, const QString &expectedPageId);
     Q_INVOKABLE QVariantMap tableChartPreview(const QVariantMap &options) const;
+    Q_INVOKABLE QVariantMap tableChartSnapshot(const QString &bookId, const QString &pageId,
+                                               const QString &tableId, const QVariantMap &options) const;
     Q_INVOKABLE bool saveTableChart(const QVariantMap &options);
     Q_INVOKABLE bool savePageItemOnNewPage(const QVariantMap &item);
     Q_INVOKABLE bool saveTranscript(const QVariantMap &item);
@@ -339,10 +350,12 @@ private:
     static int findPage(const Book &book, const QString &id);
     static int resumePage(const Book &book);
     static int pageAtRevision(const Book &book, const QString &revision, const QString &pageId, int pageNumber);
-    static void resetPageIds(Book &book);
+    static void resetBookIds(Book &book, const QString &newBookId);
     static void preserveReadingPosition(Book &incoming, const Book &local);
     static void preserveMarkdownBlocks(Book &incoming, const Book &local);
     bool openBookPage(int book, int page);
+    struct LinkLocation { int book; int page; int item; };
+    std::optional<LinkLocation> pageLinkTarget(const QVariantMap &link) const;
     static int findFolder(const State &state, const QString &id);
     static QString markdownTextOf(const Book &book);
     static bool isPureMarkdown(const Book &book);

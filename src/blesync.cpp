@@ -18,6 +18,8 @@ constexpr int transferTimeout = 15 * 60 * 1000;
 constexpr int reviewTimeout = 5 * 60 * 1000;
 constexpr int resumeTimeout = 2 * 60 * 1000;
 constexpr int automaticDelay = 1700;
+constexpr int pendingRetryDelay = 1900;
+constexpr int editWorkDelay = 400;
 constexpr int maxAutomaticRetries = 3;
 constexpr qsizetype mebibyte = 1024 * 1024;
 constexpr qsizetype bluetoothPayloadLimit = 8 * mebibyte;
@@ -90,6 +92,9 @@ BleSync::BleSync(Notebook *notebook, QObject *parent, QString stateDirectory)
     m_outgoingTimer.setSingleShot(true);
     m_incomingTimer.setSingleShot(true);
     m_autoTimer.setSingleShot(true);
+    m_routingStateTimer.setSingleShot(true);
+    m_pendingTransferTimer.setSingleShot(true);
+    m_deferredTimer.setSingleShot(true);
     m_bookStatusTimer.setSingleShot(true);
     m_outgoingResumeTimer.setSingleShot(true);
     m_incomingResumeTimer.setSingleShot(true);
@@ -104,6 +109,26 @@ BleSync::BleSync(Notebook *notebook, QObject *parent, QString stateDirectory)
     });
     connect(&m_incomingTimer, &QTimer::timeout, this, &BleSync::resetIncoming);
     connect(&m_autoTimer, &QTimer::timeout, this, &BleSync::runAutoSync);
+    connect(&m_delta, &DeltaTransfer::receivingChanged, this, [this] { scheduleRoutingState(); });
+    connect(&m_routingStateTimer, &QTimer::timeout, this, [this] {
+        const bool busy = transportSelectionBusy();
+        if (m_notifiedTransportBusy != busy) {
+            m_notifiedTransportBusy = busy;
+            emit transportSelectionBusyChanged();
+        }
+        const bool work = hasSyncWork();
+        if (m_notifiedSyncWork != work) {
+            m_notifiedSyncWork = work;
+            emit syncWorkChanged();
+        }
+    });
+    connect(&m_pendingTransferTimer, &QTimer::timeout, this, [this] {
+        m_retryPendingOnConnection = false;
+        retryPendingTransfer();
+        scheduleRoutingState();
+        scheduleAutoSync();
+    });
+    connect(&m_deferredTimer, &QTimer::timeout, this, &BleSync::dispatchDeferredTransfer);
     connect(&m_bookStatusTimer, &QTimer::timeout, this, &BleSync::updateBookStatus);
     connect(&m_outgoingResumeTimer, &QTimer::timeout, this, [this] {
         finishResume(tr("La richiesta di ripresa è scaduta. Controlla l’altro dispositivo."), true);
@@ -137,6 +162,9 @@ void BleSync::setPeerIdentity(const QString &id)
     m_batchRevisions.clear();
     m_pendingTransferBook.clear();
     m_pendingTransferRevision.clear();
+    m_deferredPreviewBook.clear();
+    m_deferredResume = {};
+    m_retryPendingOnConnection = false;
     m_pendingTransferAutomatic = false;
     m_pendingTransferApplying = false;
     m_bookIssues.clear();
@@ -211,6 +239,7 @@ void BleSync::setPeerIdentity(const QString &id)
         }
     }
     updateBookStatus();
+    scheduleRoutingState();
     emit resumeChanged();
     // Automation reads this list while synchronously updating transfer gates.
     // A policy/status notification must not invalidate that input binding.
@@ -222,6 +251,49 @@ void BleSync::setPayloadLimit(qsizetype bytes)
 {
     if (!m_connected)
         m_payloadLimit = qBound(qsizetype{1}, bytes, qsizetype{64 * 1024 * 1024});
+}
+
+bool BleSync::transportSelectionBusy() const
+{
+    // The approval token and the in-progress preview belong to this channel.
+    // A deferred local intent has not sent anything and can follow a new link.
+    return m_stage != Stage::Idle || !m_incomingRequest.isEmpty() || m_delta.receiving()
+        || !m_outgoingResume.bookId.isEmpty() || !m_incomingResume.request.isEmpty();
+}
+
+bool BleSync::setTransportSelectionPaused(bool paused)
+{
+    if (paused && transportSelectionBusy())
+        return false;
+    if (m_transportSelectionPaused == paused)
+        return true;
+    m_transportSelectionPaused = paused;
+    if (paused) {
+        m_autoTimer.stop();
+        m_pendingTransferTimer.stop();
+        m_deferredTimer.stop();
+    } else if (m_connected) {
+        if (hasDeferredTransfer()) m_deferredTimer.start(0);
+        schedulePendingRetry();
+        scheduleAutoSync();
+    }
+    return true;
+}
+
+void BleSync::cancelDeferredTransfer()
+{
+    if (!hasDeferredTransfer())
+        return;
+    m_deferredTimer.stop();
+    if (!m_deferredResume.bookId.isEmpty()) {
+        finishResume({});
+        return;
+    }
+    m_deferredPreviewBook.clear();
+    m_status.clear();
+    scheduleRoutingState();
+    scheduleAutoSync();
+    emit changed();
 }
 
 void BleSync::forgetPeer()
@@ -250,26 +322,30 @@ void BleSync::setConnected(bool connected)
         }
     }
     m_connected = connected;
+    m_retryPendingOnConnection = connected && !m_pendingTransferAutomatic && hasPendingTransfer();
     // A successful reconnect must permit a fresh preview, but must not erase
     // a retry budget or its backoff while the radio repeatedly disconnects.
     if (!connected && m_automatic && !wasApplying) queueAutomaticRetry();
     resetIncoming();
     m_autoTimer.stop();
-    if (!connected && resumeBusy())
+    m_pendingTransferTimer.stop();
+    m_deferredTimer.stop();
+    if (!connected && !m_outgoingResume.bookId.isEmpty())
         finishResume(tr("Connessione interrotta prima della conferma di ripresa."));
     clearResumeOffer();
     finishOutgoing(!connected && wasApplying
         ? tr("Connessione interrotta durante l’invio. Controlla l’altro dispositivo prima di riprovare.") : QString{});
     m_delta.setConnected(connected, m_peer);
-    if (connected && !m_pendingTransferBook.isEmpty())
-        QTimer::singleShot(1900, this, [this] {
-            if (!m_pendingTransferAutomatic) retryPendingTransfer();
-        });
+    if (connected && !m_transportSelectionPaused) {
+        if (hasDeferredTransfer()) m_deferredTimer.start(0);
+        schedulePendingRetry();
+    }
 }
 
 void BleSync::retryPendingTransfer()
 {
-    if (!m_connected || !m_notebook || m_editorBusy || m_stage != Stage::Idle || m_pendingTransferBook.isEmpty())
+    if ((!m_connected && !m_transportSelectionPaused) || !m_notebook || m_editorBusy
+        || m_stage != Stage::Idle || m_pendingTransferBook.isEmpty())
         return;
     // Reconstruct a new preview from the current content. A previous approval is
     // never replayed after a connection loss or an application restart.
@@ -278,8 +354,20 @@ void BleSync::retryPendingTransfer()
 
 void BleSync::preview(const QString &bookId)
 {
-    if (!m_connected || !m_notebook || busy())
+    if ((!m_connected && !m_transportSelectionPaused) || m_peer.isEmpty() || !m_notebook || busy())
         return;
+    if (m_transportSelectionPaused && (!validBook(bookId) || !m_notebook->hasBookId(bookId)))
+        return;
+    if (!m_deferredResume.bookId.isEmpty())
+        finishResume({});
+    if (m_transportSelectionPaused) {
+        m_deferredPreviewBook = bookId;
+        m_status = tr("Scelta del collegamento per la sincronizzazione…");
+        scheduleRoutingState();
+        emit changed();
+        return;
+    }
+    m_deferredPreviewBook.clear();
     if (m_stage == Stage::Review)
         cancel();
     beginPreview(bookId, m_notebook->bookTransferRevision(bookId), false);
@@ -287,6 +375,8 @@ void BleSync::preview(const QString &bookId)
 
 void BleSync::beginPreview(const QString &bookId, const QString &revision, bool automatic)
 {
+    m_pendingTransferTimer.stop();
+    m_retryPendingOnConnection = false;
     m_completed = false;
     m_bookId = bookId;
     m_revision = revision;
@@ -314,6 +404,7 @@ void BleSync::beginPreview(const QString &bookId, const QString &revision, bool 
     m_status = tr("Controllo della versione sull’altro dispositivo…");
     m_outgoingTimer.start(transferTimeout);
     updateBookStatus();
+    scheduleRoutingState();
     emit changed();
     if (m_stage == Stage::Preview) {
         const QByteArray payload = m_payload;
@@ -358,6 +449,9 @@ void BleSync::cancel()
     if (applying())
         return;
     const QString request = m_request;
+    m_pendingTransferTimer.stop();
+    m_retryPendingOnConnection = false;
+    m_deferredPreviewBook.clear();
     m_pendingTransferBook.clear();
     m_pendingTransferRevision.clear();
     m_pendingTransferAutomatic = false;
@@ -392,6 +486,7 @@ void BleSync::setPinned(const QString &bookId, bool pinned)
     emit pinnedBooksChanged();
     emit changed();
     updateAutomaticState();
+    scheduleRoutingState();
     scheduleAutoSync();
 }
 
@@ -411,6 +506,7 @@ void BleSync::setAutoSync(bool enabled)
     savePreferences();
     emit changed();
     updateAutomaticState();
+    scheduleRoutingState();
     scheduleAutoSync();
 }
 
@@ -423,6 +519,7 @@ void BleSync::setAutomaticAllowed(bool allowed)
         pauseAutomaticPreview();
     }
     emit changed();
+    scheduleRoutingState();
     scheduleAutoSync();
 }
 
@@ -439,6 +536,7 @@ void BleSync::setTriggeredAutomaticSync(bool triggered)
     savePreferences();
     emit changed();
     updateAutomaticState();
+    scheduleRoutingState();
     scheduleAutoSync();
 }
 
@@ -457,10 +555,8 @@ bool BleSync::requestAutomaticSync()
     // refreshes its snapshot; subsequent edits do not become continuous sync.
     if (m_triggeredAutomaticSync) {
         for (const QString &bookId : m_pins) {
-            const QString revision = m_notebook->bookTransferRevision(bookId);
-            if (revision.isEmpty() || m_uncertainAutomaticBooks.contains(bookId)
-                || revision == m_baselines.value(bookId).toString()
-                || revision == m_conflictCopies.value(bookId).toString()) continue;
+            const QString revision = automaticRevision(bookId);
+            if (revision.isEmpty()) continue;
             const auto attempt = m_autoAttempts.constFind(bookId);
             // Startup/reconnect/interval triggers are not explicit permission
             // to restart an exhausted same-revision retry budget.
@@ -549,6 +645,7 @@ void BleSync::receivePreview(const QString &request, const QVariantMap &message,
         m_incomingPayload = payload;
         m_incomingBase = agreed;
         m_incomingTimer.start(reviewTimeout);
+        scheduleRoutingState();
         if (m_incomingAction == QStringLiteral("conflict"))
             setBookIssue(bookId, m_notebook->bookTransferRevision(bookId), QStringLiteral("conflict"), {});
     }
@@ -681,6 +778,7 @@ void BleSync::resetOutgoing()
 
 void BleSync::resetIncoming()
 {
+    const bool hadPreview = !m_incomingRequest.isEmpty();
     m_incomingTimer.stop();
     m_incomingRequest.clear();
     m_incomingToken.clear();
@@ -688,13 +786,15 @@ void BleSync::resetIncoming()
     m_incomingBook.clear();
     m_incomingPayload.clear();
     m_incomingBase.clear();
+    if (hadPreview) scheduleRoutingState();
 }
 
 void BleSync::finishOutgoing(const QString &status, bool completed, bool conflict)
 {
     const QString bookId = m_bookId;
     const QString revision = m_revision;
-    const bool followWithResume = resumeBusy() && m_outgoingResume.request.isEmpty() && m_outgoingResume.bookId == bookId;
+    const bool followWithResume = !m_outgoingResume.bookId.isEmpty() && m_outgoingResume.request.isEmpty()
+        && m_outgoingResume.bookId == bookId;
     if (m_automatic && m_triggeredAutomaticSync && !completed && m_autoAttempts.value(bookId).retry
         && m_pins.contains(bookId) && !m_automaticQueue.contains(bookId)) {
         m_automaticQueue.prepend(bookId);
@@ -725,6 +825,7 @@ void BleSync::finishOutgoing(const QString &status, bool completed, bool conflic
     if (!status.isEmpty() && (conflict || !completed))
         setBookIssue(bookId, revision, conflict ? QStringLiteral("conflict") : QStringLiteral("error"), status);
     updateBookStatus();
+    scheduleRoutingState();
     emit changed();
     if (followWithResume && resumeBusy()) {
         if (completed && !conflict)
@@ -737,9 +838,39 @@ void BleSync::finishOutgoing(const QString &status, bool completed, bool conflic
     scheduleAutoSync();
 }
 
+void BleSync::scheduleRoutingState(int delay)
+{
+    if (!m_routingStateTimer.isActive() || m_routingStateTimer.remainingTime() > delay)
+        m_routingStateTimer.start(delay);
+}
+
+void BleSync::dispatchDeferredTransfer()
+{
+    if (!m_connected || m_transportSelectionPaused || !m_notebook || m_stage != Stage::Idle)
+        return;
+    if (!m_deferredResume.bookId.isEmpty()) {
+        const ResumeRequest resume = std::exchange(m_deferredResume, {});
+        if (m_notebook->canResumeBook(resume.bookId, resume.revision, resume.pageId))
+            sendResume(resume.bookId, resume.pageId);
+        else
+            finishResume(tr("La pagina è cambiata. Riaprila e riprova."));
+    } else if (!m_deferredPreviewBook.isEmpty()) {
+        preview(std::exchange(m_deferredPreviewBook, {}));
+    }
+    scheduleRoutingState();
+    scheduleAutoSync();
+}
+
+void BleSync::schedulePendingRetry()
+{
+    if (m_retryPendingOnConnection && m_connected && !m_transportSelectionPaused && !m_editorBusy)
+        m_pendingTransferTimer.start(pendingRetryDelay);
+}
+
 void BleSync::scheduleAutoSync()
 {
-    if (m_connected && m_autoSync && m_automaticAllowed && !m_editorBusy && m_notebook && m_stage == Stage::Idle
+    if (m_connected && !m_transportSelectionPaused && !hasDeferredTransfer() && !pendingRetryHasPriority()
+        && m_autoSync && m_automaticAllowed && !m_editorBusy && m_notebook && m_stage == Stage::Idle
         && !m_pins.isEmpty() && (!m_triggeredAutomaticSync || !m_automaticQueue.isEmpty())) {
         int delay = automaticDelay;
         bool onlyRetries = true;
@@ -764,24 +895,27 @@ void BleSync::setEditorBusy(bool busy)
     m_editorBusy = busy;
     if (busy) {
         m_autoTimer.stop();
+        m_pendingTransferTimer.stop();
         pauseAutomaticPreview();
-    } else
+    } else {
+        schedulePendingRetry();
         scheduleAutoSync();
+    }
     if (!m_resumeOffer.isEmpty())
         emit resumeChanged();
+    scheduleRoutingState();
     emit changed();
 }
 
 void BleSync::runAutoSync()
 {
-    if (!m_connected || !m_autoSync || !m_automaticAllowed || m_editorBusy || !m_notebook || m_stage != Stage::Idle)
+    if (!m_connected || m_transportSelectionPaused || hasDeferredTransfer() || pendingRetryHasPriority()
+        || !m_autoSync || !m_automaticAllowed || m_editorBusy || !m_notebook || m_stage != Stage::Idle)
         return;
     const QStringList candidates = m_triggeredAutomaticSync ? m_automaticQueue : m_pins;
     for (const QString &bookId : candidates) {
-        const QString revision = m_notebook->bookTransferRevision(bookId);
-        if (!m_pins.contains(bookId) || revision.isEmpty() || m_uncertainAutomaticBooks.contains(bookId)
-            || revision == m_baselines.value(bookId).toString()
-            || revision == m_conflictCopies.value(bookId).toString()
+        const QString revision = automaticRevision(bookId);
+        if (!m_pins.contains(bookId) || revision.isEmpty()
             || (m_triggeredAutomaticSync && revision != m_batchRevisions.value(bookId))) {
             m_automaticQueue.removeAll(bookId);
             m_batchRevisions.remove(bookId);
@@ -806,6 +940,41 @@ void BleSync::runAutoSync()
     savePreferences();
     updateAutomaticState();
     if (automaticRetryPending()) scheduleAutoSync();
+}
+
+QString BleSync::automaticRevision(const QString &bookId) const
+{
+    if (m_uncertainAutomaticBooks.contains(bookId))
+        return {};
+    const QString revision = m_notebook->bookTransferRevision(bookId);
+    if (revision == m_baselines.value(bookId).toString() || revision == m_conflictCopies.value(bookId).toString())
+        return {};
+    return revision;
+}
+
+bool BleSync::hasSyncWork() const
+{
+    if (!m_notebook || m_peer.isEmpty())
+        return false;
+    if (hasDeferredTransfer())
+        return true;
+    if (m_editorBusy || m_stage != Stage::Idle)
+        return false;
+    if ((!m_connected || m_retryPendingOnConnection) && !m_pendingTransferAutomatic
+        && hasPendingTransfer() && m_notebook->hasBookId(m_pendingTransferBook))
+        return true;
+    if (!m_autoSync || !m_automaticAllowed)
+        return false;
+    const auto &candidates = m_triggeredAutomaticSync ? m_automaticQueue : m_pins;
+    for (const QString &bookId : candidates) {
+        const QString revision = automaticRevision(bookId);
+        if (revision.isEmpty() || (m_triggeredAutomaticSync && revision != m_batchRevisions.value(bookId)))
+            continue;
+        const auto attempt = m_autoAttempts.constFind(bookId);
+        if (attempt == m_autoAttempts.cend() || attempt->revision != revision || attempt->retry)
+            return true;
+    }
+    return false;
 }
 
 bool BleSync::queueAutomaticRetry()
@@ -840,6 +1009,7 @@ void BleSync::updateAutomaticState()
     if (count == m_notifiedAutomaticCount && retry == m_notifiedAutomaticRetry) return;
     m_notifiedAutomaticCount = count;
     m_notifiedAutomaticRetry = retry;
+    scheduleRoutingState();
     emit automaticStateChanged();
 }
 
@@ -880,6 +1050,7 @@ void BleSync::acknowledge(const QString &bookId, const QString &revision)
     m_autoAttempts.remove(bookId);
     savePreferences();
     updateBookStatus();
+    scheduleRoutingState();
 }
 
 QVariantMap BleSync::bookStatus(const QString &bookId) const
@@ -915,6 +1086,10 @@ QVariantMap BleSync::bookStatus(const QString &bookId) const
 void BleSync::noteBookChanges()
 {
     scheduleAutoSync();
+    // Strokes can arrive in bursts. Avoid repeatedly hashing pinned books
+    // while pen input keeps arriving, but notify before the automatic send.
+    if (m_routingStateTimer.remainingTime() != 0)
+        m_routingStateTimer.start(editWorkDelay);
     if (!m_bookStatusTimer.isActive())
         m_bookStatusTimer.start(250);
 }
@@ -943,7 +1118,7 @@ void BleSync::setBookIssue(const QString &bookId, const QString &revision, const
 
 void BleSync::sendResume(const QString &bookId, const QString &pageId)
 {
-    if (!m_connected || !m_notebook || resumeBusy())
+    if ((!m_connected && !m_transportSelectionPaused) || m_peer.isEmpty() || !m_notebook || resumeBusy())
         return;
     const QString revision = m_notebook->bookTransferRevision(bookId);
     const int page = m_notebook->bookPageNumber(bookId, pageId);
@@ -956,7 +1131,16 @@ void BleSync::sendResume(const QString &bookId, const QString &pageId)
         finishResume(tr("Attendi la conclusione del trasferimento in corso."));
         return;
     }
+    m_deferredPreviewBook.clear();
+    if (m_transportSelectionPaused) {
+        m_deferredResume = {bookId, revision, pageId, {}, page};
+        m_resumeStatus = tr("Scelta del collegamento per la sincronizzazione…");
+        scheduleRoutingState();
+        emit resumeChanged();
+        return;
+    }
     m_outgoingResume = {bookId, revision, pageId, {}};
+    scheduleRoutingState();
     if (m_stage == Stage::Idle && m_baselines.value(bookId).toString() == revision) {
         dispatchResume();
         return;
@@ -1011,6 +1195,7 @@ void BleSync::receiveResume(const QString &request, const QVariantMap &message)
     m_resumeOffer = {{QStringLiteral("bookId"), bookId}, {QStringLiteral("title"), title},
                      {QStringLiteral("pageId"), pageId}, {QStringLiteral("page"), pageNumber}};
     m_incomingResumeTimer.start(resumeTimeout);
+    scheduleRoutingState();
     emit resumeChanged();
 }
 
@@ -1075,10 +1260,13 @@ void BleSync::finishResume(const QString &status, bool notifyPeer)
     const QString request = m_outgoingResume.request;
     m_outgoingResumeTimer.stop();
     m_outgoingResume = {};
+    m_deferredResume = {};
     m_resumeStatus = status;
+    scheduleRoutingState();
     emit resumeChanged();
     if (notifyPeer && m_connected && !request.isEmpty())
         emit sendMessage({{QStringLiteral("type"), resumeCancelType}, {QStringLiteral("request"), request}}, {});
+    scheduleAutoSync();
 }
 
 void BleSync::replyToResume(const QString &status)
@@ -1096,5 +1284,6 @@ void BleSync::clearResumeOffer()
     if (m_resumeOffer.isEmpty())
         return;
     m_resumeOffer.clear();
+    scheduleRoutingState();
     emit resumeChanged();
 }

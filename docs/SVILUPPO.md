@@ -16,6 +16,7 @@ Quaderno è un’applicazione C++17 e Qt Quick. Il progetto genera `quaderno.app
 | [`Notebook`](../src/notebook.cpp) | Libreria, pagine, livelli, cronologia delle modifiche all’inchiostro, importazione JSON ed esportazione. Usa `QLockFile` per coordinare le scritture e `QSaveFile` per sostituire atomicamente il file dati. |
 | [`InkItem`](../src/inkitem.cpp) e [`inkrender`](../src/inkrender.cpp) | Input da mouse, tablet Qt e Marker Linux. I tratti usano coordinate normalizzate. Su Paper Pro la pressione del Marker arriva dagli eventi di `/dev/input`. |
 | [`PageContent`](../src/pagecontent.cpp) e [`PagePreviewItem`](../src/pagepreviewitem.cpp) | Rendering di modelli, elementi di pagina, miniature e grafici. Il PDF usa lo stesso codice C++ per disegnare i contenuti di pagina e i tratti. |
+| [`MixedPageAnalyzer`](../src/mixedpageanalyzer.cpp) e [`MixedPageRegions`](../src/mixedpageregions.cpp) | Applicano i contorni a mano libera e preparano una bozza con prosa, celle ed etichette del diagramma. L’OCR delle immagini usa un componente locale opzionale. |
 | [`shaperecognition`](../src/shaperecognition.cpp) e [`ChartRecognizer`](../src/chartrecognizer.cpp) | Riconoscimento locale delle forme e ricostruzione di grafici da tratti selezionati. |
 | [`pdfimport`](../src/pdfimport.cpp) e [`epubimport`](../src/epubimport.cpp) | Importazione locale. Per i PDF usa Core Graphics e PDFKit su macOS e PDFium sul Paper Pro. Legge gli EPUB con libarchive. |
 | [`AppleShare`](../src/appleshare.cpp), [`UsbTransfer`](../src/usbtransfer.cpp) e [`Handwriting`](../src/handwriting.cpp) | Condivisione PDF tramite macOS, trasferimento dei quaderni via SSH e trascrizione locale con WritePad su Paper Pro o PencilKit e Vision su macOS. |
@@ -70,7 +71,7 @@ Dopo aver scaricato il kit, esegui l’installer e scegli la directory di destin
 PAPER_PRO_SDK='/percorso/di/installazione/dell-sdk'
 source "$PAPER_PRO_SDK/environment-setup-cortexa53-crypto-remarkable-linux"
 
-cmake -S . -B build-paper-pro -G Ninja -DCMAKE_BUILD_TYPE=Release \
+cmake -S . -B build-paper-pro -G Ninja -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_TOOLCHAIN_FILE="$CMAKE_TOOLCHAIN_FILE" \
   -DQt6_DIR="$OECORE_TARGET_SYSROOT/usr/lib/cmake/Qt6" \
   -DQT_HOST_PATH="$OECORE_NATIVE_SYSROOT/usr" \
@@ -83,16 +84,17 @@ readelf -d build-paper-pro/quaderno
 
 Verifica che `file` riporti un eseguibile ELF a 64 bit per AArch64. `readelf` mostra l’interprete dinamico e le dipendenze. Controlla che l’eseguibile sia privo di riferimenti `RPATH` o `RUNPATH` a percorsi della macchina di compilazione. Sul tablet `try-on-device.sh --check` controlla l’eseguibile, la risoluzione delle librerie e la disponibilità dei plugin Qt e‑ink.
 
-Per attivare la trascrizione offline in italiano sul Paper Pro, compila il motore WritePad separato con lo stesso SDK. Metti l’eseguibile e il dizionario italiano accanto a `quaderno` nel pacchetto. L’installatore verifica che il motore possa caricare il dizionario. Quando distribuisci il motore, includi gli avvisi di licenza e il codice sorgente corrispondente. [Compilare il motore di trascrizione](../tools/writepad/README.md)
+Per attivare la trascrizione offline dei tratti della penna, compila il motore WritePad separato con lo stesso SDK. Metti l’eseguibile e i due dizionari accanto a `quaderno` nel pacchetto. L’installatore verifica i dizionari italiano e inglese. Quando distribuisci il motore, includi gli avvisi di licenza e il codice sorgente corrispondente. [Compilare il motore di trascrizione](../tools/writepad/README.md)
 
 ## Verificare le modifiche
 
-Il repository contiene i sorgenti e gli script di installazione. Le verifiche funzionali sono riproducibili con i passaggi qui sotto. Per i test usa quaderni, immagini e credenziali di prova. I target di regressione 0.2.8 includono `diagramrecognition_tests`, `diagramsintegration_tests` e `screenorientation_tests` per geometria, conversione/recupero atomici, flussi di libreria/interfaccia e filtro del sensore. La loro presenza non attesta il superamento del collaudo sul dispositivo.
+Usa quaderni, immagini e credenziali di prova. Abilita `BUILD_TESTING` nella build desktop per eseguire le suite CTest, tra cui riconoscimento dei diagrammi, revisione delle pagine miste, collegamenti interni, persistenza e sincronizzazione wireless.
 
-GitHub Actions compila l’app desktop su Linux e controlla l’avvio nei layout desktop e tablet. Per ripetere il controllo degli script in locale, installa ShellCheck ed esegui il comando seguente.
+GitHub Actions compila su Linux AArch64 e macOS, esegue CTest e verifica l’avvio nei due layout. Il job manuale per Paper Pro compila l’app base con l’SDK del firmware. Compila e verifica separatamente il motore OCR opzionale. Per i controlli locali, installa ShellCheck ed esegui i comandi seguenti.
 
 ```bash
 sh scripts/check-shell.sh
+ctest --test-dir build-mac --output-on-failure
 ```
 
 Per una prova visiva del layout tablet su Mac, avvia il binario di sviluppo direttamente da Terminale. Chiudi prima altre istanze di Quaderno se vuoi usare la stessa libreria.
@@ -115,7 +117,8 @@ python3 scripts/check-startup.py build-ci/quaderno
 | Libreria e persistenza | Crea un quaderno con più pagine, tag, cartelle e livelli. Riapri l’app e verifica i dati. Ripeti un’importazione dello stesso JSON e prova un conflitto con una copia modificata. |
 | Penna e livelli | Scrivi, cancella, annulla e ripeti. Nascondi e mostra un livello. Verifica le forme intelligenti, il lazo e il ripristino del tratto originale dopo la riapertura. |
 | Grafici e documenti | Seleziona due assi e una curva o barre. Correggi i dati, imposta la scala e confronta il CSV con l’anteprima. Importa un PDF e un EPUB senza DRM, aggiungi annotazioni e controlla il PDF esportato. |
-| Trascrizione | Usa un breve campione scritto a mano. Verifica che l’anteprima compaia in automatico sul Paper Pro. Rivedi il testo, salvalo su una nuova pagina, cercalo e verifica che i tratti originali siano ancora disponibili. |
+| Trascrizione | Usa un breve campione scritto a mano. Rivedi la proposta, prova a inserire il testo nella selezione o su una nuova pagina e verifica che i tratti originali si possano recuperare. |
+| Pagine miste | Sul Paper Pro traccia i contorni di prosa, diagramma e tabella con celle vuote. Rivedi le bozze, salva un quaderno unico e apri e modifica entrambe le destinazioni interne. Ripeti con il motore OCR opzionale installato. |
 | Diagrammi | Crea un quaderno Diagrammi vuoto e riaprilo; disegna e rivedi un flusso, escludi un’etichetta, applica, annulla/ripeti e recupera i tratti dopo il riavvio. Inserisci una copia in Scrittura e verifica indipendenza, PNG/`.drawio` nel Markdown e trasferimento del quaderno. |
 | Orientamento automatico | Con sensore supportato verifica quattro angoli stabili, posizioni piatte/ambigue, allineamento degli ingressi, attesa con finestre, PIN/sospensione, scelta manuale e orientamento fisso del libro. Un errore di lettura non deve generare un nuovo angolo. |
 | Paper Pro fisico | Verifica coordinate e pressione del Marker, allineamento touch, refresh e leggibilità e‑ink, luce di lettura e Wi‑Fi. Prova **Esci** e la scadenza della sessione. Verifica il ritorno dell’interfaccia reMarkable in entrambi i casi. |
@@ -169,6 +172,8 @@ sh scripts/package-paper-pro.sh build-paper-pro/quaderno build-paper-pro/package
 ```
 
 Per includere il motore di trascrizione offline, esegui lo script nell’ambiente dell’SDK corrispondente e passa l’archivio WritePad della revisione indicata come terzo argomento. Distribuisci l’archivio dei sorgenti che lo script crea insieme allo ZIP. [Compilazione e pacchetto WritePad](../tools/writepad/README.md)
+
+Per includere l’OCR della prosa, delle celle e delle etichette dei diagrammi nelle pagine miste, aggiungi `--raster-ocr-dir CARTELLA` dopo la cartella di destinazione o l’archivio opzionale WritePad. Indica una cartella con il motore AArch64 per Paper Pro, `quaderno-raster-ocr`, il modello `quaderno-raster-ocr.onnx`, il dizionario `quaderno-raster-ocr.txt` e il file regolare `libonnxruntime.so.1`. Lo ZIP include anche le licenze e gli avvisi del modello e della libreria presenti nella cartella. [Compilare il motore OCR opzionale](../tools/raster-ocr/README.md) · [Componenti di terze parti](../THIRD_PARTY_NOTICES.md)
 
 Per verificare il pacchetto, estrailo su una macchina di prova ed esegui l’installazione USB con `--install-only`. Poi avvia una sessione temporanea e verifica il ritorno all’interfaccia reMarkable. Per ogni build distribuita indica il commit, la versione del firmware collaudata e lo SHA‑256 dello ZIP.
 

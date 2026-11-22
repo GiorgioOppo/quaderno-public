@@ -12,7 +12,14 @@ Earlier verification covers the 0.2.8 recognizer: its first installation passed 
 
 Open **Diagrams** to create a diagram notebook or find diagrams already present in other notebooks. An empty diagram workspace remains accessible before its first recognized shape. Opening a library entry shows its page; use the editing action to open its diagram editor.
 
-You can draw on the page using the pen, or construct a diagram in the existing editor. The editor provides process boxes, start/end shapes, decisions, data shapes and notes. It supports editable labels, directed connectors, straight or orthogonal routing, moving and resizing nodes, selection and lasso selection, duplication, grid snapping, alignment, distribution, zoom, and undo/redo for its draft.
+In the **0.2.14 development editor**, open **Shapes and connectors** to build a flowchart. On a wide screen the shape palette and inspector flank the canvas. On a narrow screen they sit above and below the drawing area.
+
+1. Tap or drag a process box, start/end shape, decision, data shape or note from the palette. Drag a placed shape to move it and use its resize handle to change its size.
+2. Drag the connector handle from the first shape to the second or choose **Connect** and tap the two shapes in order.
+3. Select a shape or arrow to edit its label and properties in the inspector. Change shape type, duplicate a shape, reverse an arrow or choose straight or orthogonal routing.
+4. Use the lasso and arrangement tools to align and distribute shapes. Grid snapping, zoom and pan help position them. Use the editor's undo and redo while editing the draft.
+
+You can still sketch on the page and use **Recognize diagram**, or open a compatible draw.io file from the Diagram toolbar.
 
 Saving the editor updates the diagram object. Page-level undo and the editor’s draft history are separate mechanisms.
 
@@ -67,7 +74,8 @@ Unrecognized strokes and rejected or empty label groups are never removed by the
 ## Use diagrams elsewhere
 
 - **Writing:** copy a diagram into a writing notebook as an editable page object. Markdown export with assets includes a rendered image and a `.drawio` attachment; plain Markdown cannot itself store editable Quaderno geometry.
-- **Books, Charts and Tables:** diagrams can accompany these objects on a page. Copying an object creates an independent copy; it is not a live link between documents.
+- **Books:** place **Link an item** on a book page to open the original diagram and return to the exact source page. Transfer the diagram's notebook separately when the two items are in different notebooks.
+- **Charts and Tables:** diagrams can accompany these objects on a page. Copying an object creates an independent copy; it is not a live link between documents.
 - **PDF:** page export renders the diagram with the other page content.
 - **draw.io:** import supported `.drawio`/XML diagrams and export editable `.drawio` files. Unsupported external elements may be omitted or simplified; review import notices.
 - **Transfer and backup:** the portable `.quaderno` document and existing notebook transfer/backup flows retain the editable diagram model. Transferring files does not require a new diagram service.

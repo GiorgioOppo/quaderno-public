@@ -17,6 +17,8 @@ case "$#" in
                 cat <<'EOF'
 Collega il reMarkable Paper Pro al Mac con un cavo USB‑C per dati.
 Estrai quaderno, try-on-device.sh e questo script nella stessa cartella.
+Se il pacchetto include il riconoscimento di testo nei PDF e nelle immagini,
+estrai anche il motore OCR, il modello, il dizionario, la libreria e le licenze.
 
   sh install-paper-pro.sh                 Installa e avvia la prova.
   sh install-paper-pro.sh --install-only  Installa senza avviare la prova.
@@ -42,6 +44,17 @@ handwriting=0
 if [ -e "$bundle/quaderno-handwriting" ] || [ -e "$bundle/quaderno-handwriting-it.dct" ]; then
     handwriting=1
     set -- "$@" quaderno-handwriting quaderno-handwriting-it.dct quaderno-handwriting-en.dct
+fi
+raster_ocr=0
+for item in quaderno-raster-ocr quaderno-raster-ocr.onnx quaderno-raster-ocr.txt libonnxruntime.so.1; do
+    if [ -e "$bundle/$item" ] || [ -L "$bundle/$item" ]; then
+        raster_ocr=1
+        break
+    fi
+done
+if [ "$raster_ocr" = 1 ]; then
+    set -- "$@" quaderno-raster-ocr quaderno-raster-ocr.onnx quaderno-raster-ocr.txt libonnxruntime.so.1 \
+        ONNXRuntime-LICENSE.txt ONNXRuntime-ThirdPartyNotices.txt PaddleOCR-LICENSE.txt
 fi
 for item do
     [ -f "$bundle/$item" ] && [ ! -L "$bundle/$item" ] ||
@@ -102,6 +115,10 @@ fi
 if [ "$handwriting" = 1 ]; then
     set -- "$@" quaderno-handwriting quaderno-handwriting-it.dct quaderno-handwriting-en.dct
 fi
+if [ "$raster_ocr" = 1 ]; then
+    set -- "$@" quaderno-raster-ocr quaderno-raster-ocr.onnx quaderno-raster-ocr.txt libonnxruntime.so.1 \
+        ONNXRuntime-LICENSE.txt ONNXRuntime-ThirdPartyNotices.txt PaddleOCR-LICENSE.txt
+fi
 
 umask 077
 base=/home/root/quaderno
@@ -126,6 +143,9 @@ tar -xf - -C "$stage" "$@" ||
 chmod u+x "$stage/quaderno" || die "Impossibile rendere Quaderno eseguibile."
 if [ "$handwriting" = 1 ]; then
     chmod u+x "$stage/quaderno-handwriting" || die "Impossibile rendere eseguibile il motore di trascrizione."
+fi
+if [ "$raster_ocr" = 1 ]; then
+    chmod u+x "$stage/quaderno-raster-ocr" || die "Impossibile rendere eseguibile il motore OCR."
 fi
 sh "$stage/try-on-device.sh" --check ||
     die "La verifica di compatibilità sul Paper Pro non è riuscita."
@@ -168,4 +188,5 @@ ssh -T -o HostName=10.11.99.1 -o ProxyCommand=none -o ProxyJump=none \
     -o ConnectionAttempts=1 -o ConnectTimeout=8 root@10.11.99.1 \
     "mode=$mode
 handwriting=$handwriting
+raster_ocr=$raster_ocr
 $remote" < "$archive"

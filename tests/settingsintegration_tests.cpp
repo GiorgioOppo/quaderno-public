@@ -42,6 +42,7 @@
 #include "notebook.h"
 #include "obsidianintegration.h"
 #include "obsidiansync.h"
+#include "mixedpageanalyzer.h"
 #include "pagepreviewitem.h"
 #include "pagetemplateitem.h"
 #include "paperprostandby.h"
@@ -218,6 +219,7 @@ private slots:
         qmlRegisterTypesAndRevisions<Notebook>("Quaderno", 254);
         qmlRegisterTypesAndRevisions<ObsidianIntegration>("Quaderno", 254);
         qmlRegisterTypesAndRevisions<ObsidianSync>("Quaderno", 254);
+        qmlRegisterTypesAndRevisions<MixedPageAnalyzer>("Quaderno", 254);
         qmlRegisterTypesAndRevisions<PagePreviewItem>("Quaderno", 254);
         qmlRegisterTypesAndRevisions<PageTemplateItem>("Quaderno", 254);
         qmlRegisterTypesAndRevisions<PaperProStandby>("Quaderno", 254);
@@ -295,6 +297,8 @@ private slots:
         QCOMPARE(handwriting->applyTextPreferences("quaderno macos Qvaderno foo foobar\nO1,5\nOffice 10"),
             QStringLiteral("Quaderno macOS Quaderno \\1$literal foobar\n01,5\nOffice 10"));
         QVERIFY(handwriting->originalResult().isEmpty());
+        QCOMPARE(h.window()->property("penTool").toString(), QStringLiteral("read"));
+        QVERIFY(QMetaObject::invokeMethod(h.window(), "selectTool", Q_ARG(QString, QStringLiteral("highlighter"))));
         QTRY_VERIFY(gestures->isEnabled() && ink->isVisible() && ink->isEnabled() && ink->width() > 100);
         QTest::qWait(100); // Settle the imported background's viewport and clipping geometry.
         QPointingDevice pen("Palm pen", 731028, QInputDevice::DeviceType::Stylus,
@@ -464,6 +468,33 @@ private slots:
         QTRY_VERIFY(visibleItem(h.window()->contentItem(), "preference_cacheLimitMiB"));
         h.screenshot("settings-storage-backup");
         QCOMPARE(h.notebook.exportLibraryForTransfer(), original);
+    }
+
+    void sshAccessShowsAllRoutesWithoutOfferingWritesOnAnUnverifiedDevice()
+    {
+        SettingsHarness h;
+        QVERIFY(h.window());
+        auto *settings = h.find<QObject>("settingsView");
+        QVERIFY(settings);
+        QSignalSpy changes(h.ssh.access(), &PaperProSshAccess::changed);
+        const auto before = h.notebook.exportLibraryForTransfer();
+        QVERIFY(QMetaObject::invokeMethod(h.window(), "showSettings"));
+        QVERIFY(QMetaObject::invokeMethod(settings, "selectCategory", Q_ARG(int, 12)));
+        QTRY_VERIFY(visibleItem(h.window()->contentItem(), "sshAccessCard"));
+        for (const QString &transport : {QStringLiteral("wifi"), QStringLiteral("usb"), QStringLiteral("bluetooth")}) {
+            QTRY_VERIFY(visibleItem(h.window()->contentItem(), QStringLiteral("sshAccessTransport_") + transport));
+            QVERIFY(!visibleItem(h.window()->contentItem(), QStringLiteral("sshAccessEnable_") + transport));
+            QVERIFY(!visibleItem(h.window()->contentItem(), QStringLiteral("sshAccessDisable_") + transport));
+        }
+        auto *refresh = visibleItem(h.window()->contentItem(), "sshAccessRefresh");
+        QVERIFY(refresh && !refresh->isEnabled());
+        QCOMPARE(changes.size(), 0);
+        QCOMPARE(h.notebook.exportLibraryForTransfer(), before);
+        h.screenshot("settings-ssh-unavailable");
+
+        QVERIFY(h.window()->setProperty("tabletMode", false));
+        QTRY_VERIFY(!visibleItem(h.window()->contentItem(), "sshAccessCard"));
+        QVERIFY2(h.qmlWarnings.isEmpty(), qPrintable(h.qmlWarnings.join(QStringLiteral(" | "))));
     }
 
     void readerActionsUseSelectedPreferencesAndKeepInkUntouched()
@@ -663,8 +694,10 @@ Item {
         QVERIFY(automation->property("eligible").toBool());
         QVERIFY(wireless.automaticAllowed());
         wireless.transfer()->setPinned(notebook.bookId(), false);
-        QVERIFY(!automation->property("eligible").toBool());
-        QVERIFY(!wireless.automaticAllowed());
+        QVERIFY(automation->property("eligible").toBool()); // The device can still receive.
+        QVERIFY(wireless.automaticAllowed());
+        QVERIFY(!automation->property("pending").toBool());
+        QCOMPARE(wireless.transfer()->pendingAutomaticCount(), 0);
         wireless.transfer()->setPinned(notebook.bookId(), true);
         QVERIFY(automation->property("eligible").toBool());
         QVERIFY(wireless.automaticAllowed());
@@ -870,6 +903,16 @@ Item {
         QVERIFY(automation->property("pending").toBool());
         QVERIFY(transfer->setProperty("resumeBusy", false));
         QTRY_COMPARE(transfer->property("requests").toInt(), 5);
+
+        // A paired receiver can listen even if it has no notebooks to send.
+        QVERIFY(transfer->setProperty("pinnedBooks", QStringList{}));
+        QVERIFY(preferences->setProperty("syncTransport", "auto"));
+        QVERIFY(transfer->setProperty("connected", false));
+        QVERIFY(wireless->property("automaticAllowed").toBool());
+        QVERIFY(!automation->property("pending").toBool());
+        QVERIFY(transfer->setProperty("connected", true));
+        QCoreApplication::processEvents();
+        QCOMPARE(transfer->property("requests").toInt(), 5);
         QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join(QStringLiteral(" | "))));
     }
 

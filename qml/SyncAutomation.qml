@@ -22,8 +22,7 @@ Item {
     readonly property bool trustedNetwork: preferences.trustedWifiSsids.length === 0
         || (currentSsid.length > 0 && preferences.trustedWifiSsids.includes(currentSsid))
     readonly property bool chargingAllowed: !wireless.tablet || !preferences.wifiChargingOnly || deviceInfo.charging
-    readonly property bool eligible: enabledByPreference && allowed && wireless.paired
-        && transfer.pinnedBooks.length > 0 && chargingAllowed
+    readonly property bool eligible: enabledByPreference && allowed && wireless.paired && chargingAllowed
         && (preferences.syncTransport !== "wifi" || trustedNetwork)
     // Actual transport is deliberately excluded from eligible: its notifications
     // must never feed the synchronous automaticAllowed policy binding.
@@ -32,7 +31,6 @@ Item {
         : preferences.syncTransport !== "bluetooth" && trustedNetwork
     readonly property string status: !enabledByPreference ? qsTr("Sincronizzazione automatica disattivata.")
         : !wireless.paired ? qsTr("Abbina un dispositivo per sincronizzare automaticamente.")
-        : transfer.pinnedBooks.length === 0 ? qsTr("Scegli i quaderni da sincronizzare nella finestra wireless.")
         : !allowed ? qsTr("Sincronizzazione automatica in pausa durante il blocco o la modifica.")
         : preferences.syncTransport === "wifi" && !trustedNetwork ? (currentSsid.length === 0
             ? qsTr("In pausa: il nome della rete Wi-Fi non è disponibile.")
@@ -46,6 +44,7 @@ Item {
         : transfer.busy ? qsTr("Sincronizzazione dei quaderni selezionati in corso…")
         : transfer.automaticRetryPending ? qsTr("Trasferimento interrotto: nuovo tentativo automatico in attesa.")
         : pending || transfer.pendingAutomaticCount > 0 ? qsTr("Modifiche in attesa di sincronizzazione.")
+        : transfer.pinnedBooks.length === 0 ? qsTr("Pronto a ricevere. Scegli i quaderni da inviare nella finestra wireless.")
         : continuous ? qsTr("Sincronizzazione dopo le modifiche · %1.").arg(wireless.bluetoothActive ? qsTr("Bluetooth") : qsTr("Wi-Fi"))
         : preferences.wifiAutoSync === "interval"
             ? qsTr("Sincronizzazione programmata ogni %1 minuti.").arg(preferences.wifiSyncMinutes)
@@ -91,7 +90,7 @@ Item {
     }
     onConnectedChanged: {
         if (connected) catchUp()
-        else if (initialized && enabledByPreference) pending = true
+        else if (initialized && enabledByPreference && transfer.pinnedBooks.length > 0) pending = true
     }
     Component.onCompleted: { initialized = true; catchUp() }
 

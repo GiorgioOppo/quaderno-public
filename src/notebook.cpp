@@ -295,6 +295,24 @@ QString tableLibraryTitle(const QVariantMap &item)
     return {};
 }
 
+QString libraryItemTitle(const QVariantMap &item, const QString &bookTitle)
+{
+    const QVariant type = item.value(QStringLiteral("type"));
+    if (type == QStringLiteral("chart"))
+        return item.value(QStringLiteral("title")).toString();
+    if (type == QStringLiteral("table"))
+        return tableLibraryTitle(item);
+    QString title;
+    for (const QVariant &node : item.value(QStringLiteral("nodes")).toList()) {
+        title = node.toMap().value(QStringLiteral("text")).toString().simplified();
+        if (!title.isEmpty()) break;
+    }
+    if (title.isEmpty()) title = bookTitle;
+    title.truncate(80);
+    if (!title.isEmpty() && title.back().isHighSurrogate()) title.chop(1);
+    return title;
+}
+
 bool isLibraryItem(const QVariant &type)
 {
     return type == QStringLiteral("chart") || type == QStringLiteral("table") || type == QStringLiteral("diagram");
@@ -357,6 +375,8 @@ QRectF itemRect(const QVariantMap &item)
 
 int requiredItemVersion(const QVariantMap &item)
 {
+    if (item.value(QStringLiteral("type")) == QStringLiteral("link"))
+        return NotebookFormat::pageLinksVersion;
     if (item.value(QStringLiteral("type")) == QStringLiteral("note"))
         return PageNoteFileVersion;
     if (item.contains(QStringLiteral("styleScale"))
@@ -408,6 +428,22 @@ QVariantMap newPlacedItem(QVariantMap item, const QVariantList &items)
     const QRectF rect = placement(items, item);
     item.insert(QStringLiteral("id"), newId());
     return itemAt(std::move(item), rect);
+}
+
+QVariantMap pageLinkItem(const QVariantMap &target, const QPointF &anchor)
+{
+    constexpr qreal width = .055;
+    constexpr qreal height = .04125;
+    const QRectF bounds(std::clamp(anchor.x() - width / 2, 0.0, 1.0 - width),
+                        std::clamp(anchor.y() - height / 2, 0.0, 1.0 - height), width, height);
+    return itemAt({
+        {QStringLiteral("id"), newId()},
+        {QStringLiteral("type"), QStringLiteral("link")},
+        {QStringLiteral("targetBookId"), target.value(QStringLiteral("bookId"))},
+        {QStringLiteral("targetPageId"), target.value(QStringLiteral("pageId"))},
+        {QStringLiteral("targetItemId"), target.value(QStringLiteral("itemId"))},
+        {QStringLiteral("targetType"), target.value(QStringLiteral("type"))},
+    }, bounds);
 }
 }
 
@@ -646,17 +682,6 @@ QVariantList Notebook::libraryItems() const
                 if (!isLibraryItem(type))
                     continue;
                 hasDiagram |= type == QStringLiteral("diagram");
-                QString itemTitle = type == QStringLiteral("chart") ? item.value(QStringLiteral("title")).toString()
-                    : type == QStringLiteral("table") ? tableLibraryTitle(item) : QString{};
-                if (type == QStringLiteral("diagram")) {
-                    for (const QVariant &node : item.value(QStringLiteral("nodes")).toList()) {
-                        itemTitle = node.toMap().value(QStringLiteral("text")).toString().simplified();
-                        if (!itemTitle.isEmpty()) break;
-                    }
-                    if (itemTitle.isEmpty()) itemTitle = book.title;
-                    itemTitle.truncate(80);
-                    if (!itemTitle.isEmpty() && itemTitle.back().isHighSurrogate()) itemTitle.chop(1);
-                }
                 result.append(QVariantMap{
                     {QStringLiteral("bookId"), book.id},
                     {QStringLiteral("bookTitle"), book.title},
@@ -664,7 +689,7 @@ QVariantList Notebook::libraryItems() const
                     {QStringLiteral("pageNumber"), index + 1},
                     {QStringLiteral("itemId"), item.value(QStringLiteral("id"))},
                     {QStringLiteral("type"), type},
-                    {QStringLiteral("title"), itemTitle},
+                    {QStringLiteral("title"), libraryItemTitle(item, book.title)},
                     {QStringLiteral("empty"), false},
                     {QStringLiteral("folderId"), book.folderId},
                     {QStringLiteral("favorite"), book.favorite},
@@ -1431,8 +1456,7 @@ QVariantMap Notebook::mergeImport(const QByteArray &contents, bool preview, cons
                 ++unchanged;
                 continue;
             }
-            book.id = copyId;
-            resetPageIds(book);
+            resetBookIds(book, copyId);
             book.title += tr(" (importato)");
             book.trashed = false;
             ++conflicts;
@@ -1641,15 +1665,16 @@ QVariantMap Notebook::receiveBookTransfer(const QByteArray &payload, const QByte
             static const QUuid usbNamespace(QStringLiteral("560adadf-8fbc-4c94-9b9c-96f15f1fd6e9"));
             static const QUuid wirelessNamespace(QStringLiteral("9e855c8c-4fa1-4a41-8a3a-719a3dfffe21"));
             const auto &transferNamespace = baseOverride ? wirelessNamespace : usbNamespace;
-            book.id = QUuid::createUuidV5(transferNamespace, book.id.toUtf8() + sourceRevision).toString(QUuid::WithoutBraces);
-            const int copyIndex = findBook(next, book.id);
+            const QString copyId = QUuid::createUuidV5(transferNamespace, book.id.toUtf8() + sourceRevision)
+                .toString(QUuid::WithoutBraces);
+            const int copyIndex = findBook(next, copyId);
+            resetBookIds(book, copyId);
             if (copyIndex >= 0) {
                 const Book &existing = next.books.at(copyIndex);
                 if (!existing.trashed && existing.pages == book.pages)
                     return reply;
-                book.id = newId();
+                resetBookIds(book, newId());
             }
-            resetPageIds(book);
             book.title += baseOverride ? tr(" (copia wireless)") : tr(" (dal Mac)");
             book.importedRevision.clear();
         }
@@ -1711,6 +1736,81 @@ bool Notebook::createBookWithFirstPage(const QString &title, const QString &fold
     page.id = newId();
     book.pages.append(std::move(page));
     next.books.append(std::move(book));
+    next.activeBook = static_cast<int>(next.books.size()) - 1;
+    next.page = 0;
+    return commit(std::move(next), BooksChanged | DocumentChanged | StrokesChanged | PageContentChanged | ResetInkHistory);
+}
+
+QVariantMap Notebook::mixedPageSource() const
+{
+    if (!currentBook() || !currentPage() || m_fileRevision.isEmpty() || m_importing)
+        return {};
+    return {{QStringLiteral("bookId"), bookId()}, {QStringLiteral("pageId"), pageId()},
+        {QStringLiteral("revision"), QString::fromLatin1(m_fileRevision.toHex())},
+        {QStringLiteral("title"), title()}, {QStringLiteral("content"), pagePreview(page())}};
+}
+
+bool Notebook::createMixedDocument(const QString &sourceBookId, const QString &sourcePageId,
+                                   const QString &sourceRevision, const QString &title, const QString &markdown,
+                                   const QVariantMap &diagram, const QVariantMap &table)
+{
+    const Book *source = currentBook();
+    if (m_importing || !source || !currentPage() || sourceBookId != source->id || sourcePageId != pageId()
+        || sourceRevision.isEmpty() || sourceRevision != QString::fromLatin1(m_fileRevision.toHex()))
+        return fail(tr("La pagina sorgente è cambiata. Riapri l’estrazione."));
+    const QString baseTitle = title.simplified();
+    if (baseTitle.isEmpty() || !baseTitle.isValidUtf16() || baseTitle.contains(QChar::Null))
+        return fail(tr("Inserisci il nome del quaderno."));
+    if (markdown.trimmed().isEmpty())
+        return fail(tr("Inserisci il testo della trascrizione."));
+    const auto fragments = validatedMarkdownFragments(markdown);
+    if (fragments.isEmpty())
+        return false;
+
+    const auto outputItem = [](QVariantMap draft, const QString &type) {
+        const QString givenType = draft.value(QStringLiteral("type")).toString();
+        if (draft.isEmpty() || (!givenType.isEmpty() && givenType != type))
+            return QVariantMap{};
+        draft.insert(QStringLiteral("type"), type);
+        draft.remove(QStringLiteral("handwritingSource"));
+        return newPlacedItem(std::move(draft), {});
+    };
+    const QVariantMap diagramItem = outputItem(diagram, QStringLiteral("diagram"));
+    if (diagramItem.isEmpty())
+        return fail(tr("Controlla le forme, le etichette e i collegamenti del diagramma."));
+    const QVariantMap tableItem = outputItem(table, QStringLiteral("table"));
+    if (tableItem.isEmpty())
+        return fail(tr("Controlla il testo e le dimensioni dell’elemento."));
+
+    Book writingBook;
+    writingBook.id = newId();
+    writingBook.title = baseTitle.left(80).trimmed();
+    if (writingBook.title.back().isHighSurrogate())
+        writingBook.title.chop(1);
+    writingBook.folderId = source->folderId;
+    writingBook.handwritingLanguage = source->handwritingLanguage;
+    for (const QString &fragment : fragments)
+        writingBook.pages.append(newMarkdownPage(fragment));
+    const auto addObjectPage = [](Book &book, const QVariantMap &item) {
+        Page page;
+        page.id = newId();
+        page.items.append(item);
+        book.pages.append(std::move(page));
+        return QVariantMap{{QStringLiteral("bookId"), book.id}, {QStringLiteral("pageId"), book.pages.last().id},
+            {QStringLiteral("itemId"), item.value(QStringLiteral("id"))}, {QStringLiteral("type"), item.value(QStringLiteral("type"))}};
+    };
+    const QVariantMap diagramTarget = addObjectPage(writingBook, diagramItem);
+    const QVariantMap tableTarget = addObjectPage(writingBook, tableItem);
+    // The first page has room below the Markdown frame for both internal links.
+    const QVariantMap diagramLink = pageLinkItem(diagramTarget, {.09, .966});
+    const QVariantMap tableLink = pageLinkItem(tableTarget, {.17, .966});
+    if (diagramLink.isEmpty() || tableLink.isEmpty())
+        return fail(tr("La destinazione del collegamento non è disponibile in questa libreria."));
+    writingBook.pages.first().items.append(diagramLink);
+    writingBook.pages.first().items.append(tableLink);
+
+    State next = m_state;
+    next.books.append(std::move(writingBook));
     next.activeBook = static_cast<int>(next.books.size()) - 1;
     next.page = 0;
     return commit(std::move(next), BooksChanged | DocumentChanged | StrokesChanged | PageContentChanged | ResetInkHistory);
@@ -2034,6 +2134,67 @@ QVariantMap Notebook::openLibraryItem(const QString &bookId, const QString &page
     return openBookPage(bookIndex, pageIndex) ? item : QVariantMap{};
 }
 
+std::optional<Notebook::LinkLocation> Notebook::pageLinkTarget(const QVariantMap &link) const
+{
+    const int bookIndex = findBook(m_state, link.value(QStringLiteral("targetBookId")).toString());
+    if (bookIndex < 0 || m_state.books.at(bookIndex).trashed)
+        return {};
+    const Book &book = m_state.books.at(bookIndex);
+    const int pageIndex = findPage(book, link.value(QStringLiteral("targetPageId")).toString());
+    if (pageIndex < 0)
+        return {};
+    const Page &page = book.pages.at(pageIndex);
+    const int itemIndex = findPageItem(page, link.value(QStringLiteral("targetItemId")).toString());
+    if (itemIndex < 0)
+        return {};
+    const QVariant type = page.items.at(itemIndex).toMap().value(QStringLiteral("type"));
+    if (!isLibraryItem(type) || type != link.value(QStringLiteral("targetType")))
+        return {};
+    return LinkLocation{bookIndex, pageIndex, itemIndex};
+}
+
+QVariantMap Notebook::linkedPageItem(const QString &id) const
+{
+    const Page *page = currentPage();
+    const int index = page ? findPageItem(*page, id) : -1;
+    const QVariantMap link = index < 0 ? QVariantMap{} : page->items.at(index).toMap();
+    if (link.value(QStringLiteral("type")) != QStringLiteral("link"))
+        return {};
+    const auto location = pageLinkTarget(link);
+    if (!location)
+        return {};
+    const Book &book = m_state.books.at(location->book);
+    const Page &targetPage = book.pages.at(location->page);
+    QVariantMap item = PageContent::resolveTableCharts(targetPage.items).at(location->item).toMap();
+    const QString itemTitle = libraryItemTitle(item, book.title);
+    item.insert(QStringLiteral("bookId"), book.id);
+    item.insert(QStringLiteral("pageId"), targetPage.id);
+    item.insert(QStringLiteral("bookTitle"), book.title);
+    item.insert(QStringLiteral("pageNumber"), location->page + 1);
+    item.insert(QStringLiteral("linkId"), id);
+    item.insert(QStringLiteral("displayTitle"), itemTitle.isEmpty() ? book.title : itemTitle);
+    return item;
+}
+
+QVariantMap Notebook::openPageLink(const QString &id)
+{
+    const Page *page = currentPage();
+    const int index = page ? findPageItem(*page, id) : -1;
+    const QVariantMap link = index < 0 ? QVariantMap{} : page->items.at(index).toMap();
+    if (link.value(QStringLiteral("type")) != QStringLiteral("link")) {
+        fail(tr("Il collegamento non è più presente sulla pagina."));
+        return {};
+    }
+    const auto location = pageLinkTarget(link);
+    if (!location) {
+        fail(tr("La destinazione del collegamento non è disponibile in questa libreria."));
+        return {};
+    }
+    const Page &targetPage = m_state.books.at(location->book).pages.at(location->page);
+    const QVariantMap item = PageContent::resolveTableCharts(targetPage.items).at(location->item).toMap();
+    return openBookPage(location->book, location->page) ? item : QVariantMap{};
+}
+
 bool Notebook::openBookPage(int book, int page)
 {
     if (book == m_state.activeBook && page == m_state.page) {
@@ -2210,8 +2371,7 @@ bool Notebook::duplicateBook(const QString &id)
 
     State next = m_state;
     Book copy = next.books.at(index);
-    copy.id = newId();
-    resetPageIds(copy);
+    resetBookIds(copy, newId());
     copy.title = copy.title.left(72).trimmed() + tr(" (copia)");
     copy.importedRevision.clear();
     next.books.append(std::move(copy));
@@ -3225,6 +3385,45 @@ bool Notebook::removePageNote(const QString &id, const QString &expectedBookId,
     return commitInkEdit(std::move(edit));
 }
 
+bool Notebook::savePageLink(const QVariantMap &target, const QPointF &anchor, const QString &expectedBookId,
+                           const QString &expectedPageId)
+{
+    const Page *page = currentPage();
+    if (!page || expectedBookId != bookId() || expectedPageId != page->id)
+        return fail(tr("La pagina del collegamento è cambiata."));
+    if (!canWriteLayer())
+        return fail(tr("Mostra il livello attivo prima di modificare i collegamenti."));
+    if (page->items.size() >= maxItemsPerPage)
+        return fail(tr("La pagina ha raggiunto il limite di 120 elementi."));
+    if (!std::isfinite(anchor.x()) || !std::isfinite(anchor.y()) || anchor.x() < 0 || anchor.x() > 1
+        || anchor.y() < 0 || anchor.y() > 1)
+        return fail(tr("Scegli un punto sulla pagina per il collegamento."));
+
+    const QVariantMap item = pageLinkItem(target, anchor);
+    if (item.isEmpty() || !pageLinkTarget(item))
+        return fail(tr("La destinazione del collegamento non è disponibile in questa libreria."));
+
+    InkEdit edit;
+    edit.itemsAfter.append(item);
+    return commitInkEdit(std::move(edit));
+}
+
+bool Notebook::removePageLink(const QString &id, const QString &expectedBookId, const QString &expectedPageId)
+{
+    const Page *page = currentPage();
+    if (!page || expectedBookId != bookId() || expectedPageId != page->id)
+        return fail(tr("La pagina del collegamento è cambiata."));
+    if (!canWriteLayer())
+        return fail(tr("Mostra il livello attivo prima di modificare i collegamenti."));
+    const int index = findPageItem(*page, id);
+    const QVariantMap item = index < 0 ? QVariantMap{} : page->items.at(index).toMap();
+    if (item.value(QStringLiteral("type")) != QStringLiteral("link"))
+        return fail(tr("Il collegamento non è più presente sulla pagina."));
+    InkEdit edit;
+    edit.itemsBefore.append(item);
+    return commitInkEdit(std::move(edit));
+}
+
 QVariantMap Notebook::tableChartPreview(const QVariantMap &options) const
 {
     const Page *page = currentPage();
@@ -3807,8 +4006,11 @@ bool Notebook::movePageItem(const QString &id, qreal x, qreal y)
     if (moved.size() != 1)
         return fail(tr("La trasformazione supera i bordi della pagina o non è valida."));
     item = moved.first().toMap();
-    if (item.value(QStringLiteral("type")) == QStringLiteral("note")) {
-        if (!canWriteLayer()) return fail(tr("Mostra il livello attivo prima di modificare le note."));
+    const QVariant type = item.value(QStringLiteral("type"));
+    if (type == QStringLiteral("note") || type == QStringLiteral("link")) {
+        if (!canWriteLayer())
+            return fail(type == QStringLiteral("note") ? tr("Mostra il livello attivo prima di modificare le note.")
+                                                       : tr("Mostra il livello attivo prima di modificare i collegamenti."));
         InkEdit edit;
         edit.itemsBefore.append(page->items.at(index));
         edit.itemsAfter.append(item);
@@ -3954,13 +4156,32 @@ int Notebook::pageAtRevision(const Book &book, const QString &revision, const QS
     return page >= 0 ? page : pageNumber - 1;
 }
 
-void Notebook::resetPageIds(Book &book)
+void Notebook::resetBookIds(Book &book, const QString &newBookId)
 {
+    const QString previousBookId = book.id;
     const int last = findPage(book, book.lastViewedPageId);
-    for (qsizetype index = 0; index < book.pages.size(); ++index)
-        book.pages[index].id = legacyPageId(book.id, index);
+    QHash<QString, QString> pageIds;
+    book.id = newBookId;
+    for (qsizetype index = 0; index < book.pages.size(); ++index) {
+        Page &page = book.pages[index];
+        const QString id = legacyPageId(book.id, index);
+        pageIds.insert(page.id, id);
+        page.id = id;
+    }
     if (last >= 0)
         book.lastViewedPageId = book.pages.at(last).id;
+    for (Page &page : book.pages) {
+        for (QVariant &entry : page.items) {
+            auto item = entry.toMap();
+            if (item.value(QStringLiteral("type")) != QStringLiteral("link")
+                || item.value(QStringLiteral("targetBookId")) != previousBookId)
+                continue;
+            item.insert(QStringLiteral("targetBookId"), book.id);
+            const QString targetPage = item.value(QStringLiteral("targetPageId")).toString();
+            item.insert(QStringLiteral("targetPageId"), pageIds.value(targetPage, targetPage));
+            entry = item;
+        }
+    }
 }
 
 void Notebook::preserveReadingPosition(Book &incoming, const Book &local)

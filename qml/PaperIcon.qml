@@ -191,6 +191,22 @@ Canvas {
             c.moveTo(5, 20)
             c.lineTo(19, 20)
             break
+        case "link":
+            c.moveTo(10, 9); c.lineTo(13, 6)
+            c.bezierCurveTo(17, 2, 22, 7, 18, 11)
+            c.lineTo(15, 14)
+            c.moveTo(14, 15); c.lineTo(11, 18)
+            c.bezierCurveTo(7, 22, 2, 17, 6, 13)
+            c.lineTo(9, 10)
+            c.moveTo(9, 15); c.lineTo(15, 9)
+            break
+        case "note":
+            c.moveTo(5, 4); c.lineTo(19, 4); c.lineTo(19, 14)
+            c.lineTo(13, 20); c.lineTo(5, 20); c.closePath()
+            c.moveTo(13, 20); c.lineTo(13, 14); c.lineTo(19, 14)
+            c.moveTo(8, 8); c.lineTo(15, 8)
+            c.moveTo(8, 12); c.lineTo(12, 12)
+            break
         case "image":
             c.rect(3, 4, 18, 16)
             c.moveTo(3, 16)

@@ -18,6 +18,7 @@ Dialog {
     signal saveOnNewPageRequested(var item)
     signal exportCsvRequested(string csv)
     signal deleteRequested(string id)
+    signal tableSourceRequested(string title)
 
     property var originalItem: null
     property var points: []
@@ -312,6 +313,23 @@ Dialog {
                 visible: editor.points.length > 0
                 Layout.fillWidth: true
                 spacing: 8 * editor.uiScale
+
+                RowLayout {
+                    visible: editor.fromLibrary && !editor.existing
+                    Layout.fillWidth: true
+                    ChartLabel {
+                        Layout.fillWidth: true
+                        text: qsTr("Punti manuali")
+                    }
+                    ChartButton {
+                        objectName: "chartChooseTableSource"
+                        text: qsTr("Usa tabella")
+                        onClicked: {
+                            editor.hideKeyboard()
+                            editor.tableSourceRequested(chartTitle.text.trim())
+                        }
+                    }
+                }
 
                 Rectangle {
                     Layout.fillWidth: true

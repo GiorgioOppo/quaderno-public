@@ -2,7 +2,7 @@
 set -eu
 
 usage() {
-    printf '%s\n' "Usage: $0 PAPER_PRO_EXECUTABLE OUTPUT_DIRECTORY [WRITEPAD_SOURCE_TARBALL]"
+    printf '%s\n' "Usage: $0 PAPER_PRO_EXECUTABLE OUTPUT_DIRECTORY [WRITEPAD_SOURCE_TARBALL] [--raster-ocr-dir DIRECTORY]"
 }
 
 die() {
@@ -23,13 +23,29 @@ if [ "$#" -eq 1 ] && [ "$1" = --help ]; then
     usage
     exit 0
 fi
-if [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then
+if [ "$#" -lt 2 ]; then
     usage >&2
     exit 2
 fi
 
 executable=$1
-writepad_source=${3:-}
+output_directory=$2
+shift 2
+writepad_source=
+if [ "$#" -gt 0 ] && [ "$1" != --raster-ocr-dir ]; then
+    writepad_source=$1
+    shift
+fi
+raster_ocr=
+case "$#" in
+    0) ;;
+    2)
+        [ "$1" = --raster-ocr-dir ] && [ -n "$2" ] || { usage >&2; exit 2; }
+        raster_ocr=$2
+        ;;
+    *) usage >&2; exit 2 ;;
+esac
+
 repo=$(CDPATH='' cd -P -- "$(dirname -- "$0")/.." && pwd -P)
 bundle=Quaderno-Paper-Pro-3.29.1.0
 archive="$bundle.zip"
@@ -48,11 +64,11 @@ else
 fi
 
 [ -f "$executable" ] || die "Executable not found: $executable"
-if [ "$#" -eq 3 ]; then
+if [ -n "$writepad_source" ]; then
     [ -f "$writepad_source" ] || die "WritePad source archive not found: $writepad_source"
 fi
-mkdir -p -- "$2"
-output=$(CDPATH='' cd -P -- "$2" && pwd -P)
+mkdir -p -- "$output_directory"
+output=$(CDPATH='' cd -P -- "$output_directory" && pwd -P)
 for file in "$archive" "$source_archive"; do
     if [ -e "$output/$file" ] || [ -L "$output/$file" ]; then
         die "Artifact already exists: $output/$file. Choose a fresh output directory."
@@ -103,6 +119,22 @@ if [ -n "$writepad_source" ]; then
     install -m 0644 "$package_dir/WritePad-LICENSE.txt" "$source_dir/tools/writepad/COPYING"
     COPYFILE_DISABLE=1 tar -C "$stage" -czf "$stage/$source_archive" "$companion"
     tar -tzf "$stage/$source_archive" >/dev/null
+fi
+
+if [ -n "$raster_ocr" ]; then
+    for file in quaderno-raster-ocr quaderno-raster-ocr.onnx quaderno-raster-ocr.txt libonnxruntime.so.1 \
+        ONNXRuntime-LICENSE.txt ONNXRuntime-ThirdPartyNotices.txt PaddleOCR-LICENSE.txt; do
+        asset="$raster_ocr/$file"
+        [ -f "$asset" ] && [ -s "$asset" ] && [ ! -L "$asset" ] ||
+            die "Raster OCR bundle requires a regular, nonempty file: $asset"
+    done
+    check_aarch64 "$raster_ocr/quaderno-raster-ocr"
+    check_aarch64 "$raster_ocr/libonnxruntime.so.1"
+    install -m 0755 -- "$raster_ocr/quaderno-raster-ocr" "$package_dir/"
+    for file in quaderno-raster-ocr.onnx quaderno-raster-ocr.txt libonnxruntime.so.1 \
+        ONNXRuntime-LICENSE.txt ONNXRuntime-ThirdPartyNotices.txt PaddleOCR-LICENSE.txt; do
+        install -m 0644 -- "$raster_ocr/$file" "$package_dir/"
+    done
 fi
 
 (cd "$stage" && zip -X -q -r "$archive" "$bundle" && unzip -tq "$archive")

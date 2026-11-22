@@ -32,6 +32,17 @@ QVariantMap storedNote()
 {
     auto note = draft(); note.insert("id", "test-note"); return note;
 }
+QVariantMap mixedDiagram()
+{
+    const QVariantMap node{{"id", "step"}, {"shape", "process"}, {"text", "Check"},
+        {"x", .2}, {"y", .1}, {"width", .4}, {"height", .3}};
+    return {{"type", "diagram"}, {"nodes", QVariantList{node}}, {"edges", QVariantList{}}};
+}
+QVariantMap mixedTable()
+{
+    return {{"type", "table"}, {"rows", 2}, {"cols", 2},
+        {"cells", QVariantList{"Input", "Value", "2", "=SUM(A2:A2)"}}};
+}
 QByteArray readFile(const QString &path)
 {
     QFile file(path);
@@ -108,6 +119,322 @@ private slots:
         QVERIFY(notebook.pageItems().isEmpty());
         QVERIFY(notebook.undo()); QCOMPARE(notebook.pageItems(), QVariantList{moved});
         QVERIFY(notebook.redo()); QVERIFY(notebook.pageItems().isEmpty());
+    }
+
+    void pageLinkPersistsAndOpensExactObjectWithoutCopying()
+    {
+        QTemporaryDir directory;
+        const QString file = directory.filePath("library.json");
+        Notebook notebook(file);
+        const QVariantMap table{{"type", "table"}, {"rows", 2}, {"cols", 2},
+            {"cells", QVariantList{"Year", "Value", "2025", "12"}}};
+        QVERIFY(notebook.createBookWithItem("Reference table", {}, table));
+        const QVariantMap destination = notebook.libraryItems().first().toMap();
+        const auto targetBook = notebook.bookId();
+        const auto targetPage = notebook.pageId();
+        const auto targetId = destination.value("itemId").toString();
+        QVERIFY(notebook.createBook("Reader"));
+        const auto sourceBook = notebook.bookId();
+        const auto sourcePage = notebook.pageId();
+        QVERIFY(!notebook.savePageLink(destination, {.4, .6}, sourceBook, targetPage));
+        QVERIFY(!notebook.savePageLink(destination, {-.4, .6}, sourceBook, sourcePage));
+        QVERIFY(notebook.savePageLink(destination, {.4, .6}, sourceBook, sourcePage));
+        const QVariantMap marker = notebook.pageItems().first().toMap();
+        QCOMPARE(marker.value("type").toString(), QStringLiteral("link"));
+        QCOMPARE(marker.value("targetItemId").toString(), targetId);
+        const auto markerId = marker.value("id").toString();
+        QVERIFY(notebook.removePageLink(markerId, sourceBook, sourcePage));
+        QVERIFY(notebook.pageItems().isEmpty());
+        QVERIFY(notebook.undo());
+        QCOMPARE(notebook.pageItems(), QVariantList{marker});
+
+        Notebook reopened(file);
+        QVERIFY(reopened.openBook(sourceBook));
+        QCOMPARE(reopened.pageItems(), QVariantList{marker});
+        const auto item = reopened.openPageLink(markerId);
+        QCOMPARE(reopened.bookId(), targetBook);
+        QCOMPARE(reopened.pageId(), targetPage);
+        QCOMPARE(item.value("id").toString(), targetId);
+        QCOMPARE(reopened.libraryItems().size(), 1);
+    }
+
+    void transfersKeepMissingLinkTargetsAndRequireLinkFormat()
+    {
+        QTemporaryDir directory;
+        Notebook notebook(directory.filePath("sender.json"));
+        const QVariantMap table{{"type", "table"}, {"rows", 1}, {"cols", 1}, {"cells", QVariantList{"Value"}}};
+        QVERIFY(notebook.createBookWithItem("Target", {}, table));
+        const QVariantMap destination = notebook.libraryItems().first().toMap();
+        const auto targetBook = notebook.bookId();
+        QVERIFY(notebook.createBook("Reader"));
+        const auto sourceBook = notebook.bookId();
+        const auto sourcePage = notebook.pageId();
+        QVERIFY(notebook.savePageLink(destination, {1, 1}, sourceBook, sourcePage));
+        const QVariantMap marker = notebook.pageItems().first().toMap();
+        const auto markerId = marker.value("id").toString();
+        auto malformed = marker;
+        malformed.insert("targetPageId", QStringLiteral("file:///tmp/external-file"));
+        QVERIFY(PageContent::validatedItem(malformed).isEmpty());
+
+        const auto portable = notebook.exportBookForTransfer(sourceBook);
+        QJsonObject claimedOlder = QJsonDocument::fromJson(portable).object();
+        QCOMPARE(claimedOlder.value("version").toInt(), NotebookFormat::pageLinksVersion);
+        claimedOlder.insert("version", NotebookFormat::pageLinksVersion - 1);
+        QVERIFY(!Notebook::validateBackupData(QJsonDocument(claimedOlder).toJson()).isEmpty());
+
+        Notebook receiver(directory.filePath("receiver.json"));
+        QVERIFY2(receiver.importFromData(portable), qPrintable(receiver.error()));
+        QVERIFY(receiver.openBook(sourceBook));
+        QCOMPARE(receiver.pageItems().first().toMap(), marker);
+        QVERIFY(receiver.openPageLink(markerId).isEmpty());
+        QCOMPARE(receiver.bookId(), sourceBook);
+        QCOMPARE(receiver.pageId(), sourcePage);
+        QVERIFY(!receiver.error().isEmpty());
+
+        const auto targetTransfer = notebook.exportBookForTransfer(targetBook);
+        const auto preview = receiver.receiveBookTransfer(targetTransfer);
+        QCOMPARE(preview.value("action").toString(), QStringLiteral("create"));
+        const auto received = receiver.receiveBookTransfer(targetTransfer, preview.value("token").toByteArray());
+        QVERIFY2(!received.contains("error"), qPrintable(received.value("error").toString()));
+        QVERIFY(receiver.openBook(sourceBook));
+        QCOMPARE(receiver.openPageLink(markerId).value("id"), marker.value("targetItemId"));
+        QCOMPARE(receiver.bookId(), targetBook);
+    }
+
+    void mixedDocumentKeepsEditableTargetsInOneTransferableBook()
+    {
+        QTemporaryDir directory;
+        const QString file = directory.filePath("library.json");
+        Notebook notebook(file);
+        QVERIFY(notebook.createFolder("Examples", {}));
+        const auto folderId = notebook.folders().first().toMap().value("id").toString();
+
+        QVERIFY(notebook.createBookWithItem("Previous diagram", folderId, mixedDiagram()));
+        const auto previousDiagram = notebook.libraryItems().first().toMap();
+        QVERIFY(notebook.createBookWithItem("Previous table", folderId, mixedTable()));
+        const auto previousTableId = notebook.bookId();
+        QVariantMap previousTable;
+        for (const auto &entry : notebook.libraryItems()) {
+            const auto item = entry.toMap();
+            if (item.value("bookId").toString() == previousTableId)
+                previousTable = item;
+        }
+        QVERIFY(notebook.importMarkdownText("Previous edited text", "Previous writing", folderId));
+        const auto previousWriting = notebook.bookId();
+        QVERIFY(notebook.savePageLink(previousDiagram, {.09, .966}, previousWriting, notebook.pageId()));
+        QVERIFY(notebook.savePageLink(previousTable, {.17, .966}, previousWriting, notebook.pageId()));
+
+        QVERIFY(notebook.createBookInFolder("Scanned notes", folderId));
+        QVERIFY(notebook.appendStroke(stroke()));
+        const auto sourceBook = notebook.bookId();
+        const auto sourcePage = notebook.pageId();
+        QMap<QString, QByteArray> originals;
+        for (const auto &value : notebook.books()) {
+            const auto id = value.toMap().value("id").toString();
+            const auto exported = notebook.exportBookForTransfer(id);
+            QVERIFY(!exported.isEmpty());
+            originals.insert(id, exported);
+        }
+        const auto source = notebook.mixedPageSource();
+        QCOMPARE(source.value("bookId").toString(), sourceBook);
+        QCOMPARE(source.value("pageId").toString(), sourcePage);
+        QCOMPARE(source.value("content").toMap(), notebook.pagePreview(0));
+        const QString revision = source.value("revision").toString();
+        QVERIFY(!revision.isEmpty());
+
+        const QString markdown = QStringLiteral("# Procedure\n\nCheck the editable diagram and table.");
+        const qsizetype originalCount = notebook.books().size();
+        QSignalSpy commits(&notebook, &Notebook::booksChanged);
+        QVERIFY2(notebook.createMixedDocument(sourceBook, sourcePage, revision, "Procedure", markdown,
+                                             mixedDiagram(), mixedTable()), qPrintable(notebook.error()));
+        QCOMPARE(commits.count(), 1);
+        QCOMPARE(notebook.books().size(), originalCount + 1);
+        QCOMPARE(notebook.books().last().toMap().value("folderId").toString(), folderId);
+        QCOMPARE(notebook.pageCount(), 3);
+        QCOMPARE(notebook.markdownText(), markdown);
+        for (auto entry = originals.cbegin(); entry != originals.cend(); ++entry)
+            QCOMPARE(notebook.exportBookForTransfer(entry.key()), entry.value());
+        const auto writingBook = notebook.bookId();
+        const auto writingPage = notebook.pageId();
+
+        const auto pageItems = notebook.pageItems();
+        QCOMPARE(pageItems.size(), 3);
+        const auto text = pageItems.at(0).toMap();
+        QCOMPARE(text.value("type").toString(), QStringLiteral("text"));
+        QMap<QString, QVariantMap> links;
+        QSet<int> targetPages;
+        for (const auto &value : pageItems.sliced(1)) {
+            const auto link = value.toMap();
+            QCOMPARE(link.value("type").toString(), QStringLiteral("link"));
+            QCOMPARE(link.value("targetBookId").toString(), writingBook);
+            QVERIFY(link.value("y").toDouble() > text.value("y").toDouble() + text.value("height").toDouble());
+            const auto target = notebook.linkedPageItem(link.value("id").toString());
+            QCOMPARE(target.value("type"), link.value("targetType"));
+            QCOMPARE(target.value("id"), link.value("targetItemId"));
+            QCOMPARE(target.value("bookId"), link.value("targetBookId"));
+            QCOMPARE(target.value("pageId"), link.value("targetPageId"));
+            const int number = notebook.bookPageNumber(writingBook, target.value("pageId").toString());
+            QCOMPARE(target.value("pageNumber").toInt(), number);
+            QCOMPARE(number, target.value("type").toString() == QStringLiteral("diagram") ? 2 : 3);
+            targetPages.insert(number);
+            QVERIFY(!target.value("displayTitle").toString().isEmpty());
+            links.insert(target.value("type").toString(), link);
+        }
+        QCOMPARE(targetPages, (QSet<int>{2, 3}));
+        QCOMPARE(links.keys(), (QStringList{QStringLiteral("diagram"), QStringLiteral("table")}));
+        const auto diagramLink = links.value("diagram");
+        const auto tableLink = links.value("table");
+        const auto diagramLinkId = diagramLink.value("id").toString();
+        const auto tableLinkId = tableLink.value("id").toString();
+        QVERIFY(notebook.linkedPageItem("missing").isEmpty());
+        QCOMPARE(notebook.bookId(), writingBook);
+        QCOMPARE(notebook.pageId(), writingPage);
+
+        Notebook reopened(file);
+        QCOMPARE(reopened.pageItems(), pageItems);
+        auto diagram = reopened.openPageLink(diagramLinkId);
+        QCOMPARE(reopened.bookId(), writingBook);
+        QCOMPARE(reopened.pageId(), diagramLink.value("targetPageId").toString());
+        QCOMPARE(diagram.value("nodes"), mixedDiagram().value("nodes"));
+        auto nodes = diagram.value("nodes").toList();
+        auto node = nodes.first().toMap();
+        node.insert("text", QStringLiteral("Verified"));
+        nodes[0] = node;
+        diagram.insert("nodes", nodes);
+        QVERIFY2(reopened.savePageItem(diagram), qPrintable(reopened.error()));
+
+        QVERIFY(reopened.openPage(writingPage));
+        auto table = reopened.openPageLink(tableLinkId);
+        QCOMPARE(reopened.bookId(), writingBook);
+        QCOMPARE(reopened.pageId(), tableLink.value("targetPageId").toString());
+        auto cells = table.value("cells").toList();
+        QCOMPARE(cells, mixedTable().value("cells").toList());
+        cells[2] = QStringLiteral("12");
+        table.insert("cells", cells);
+        QVERIFY2(reopened.savePageItem(table), qPrintable(reopened.error()));
+        QVERIFY(reopened.openPage(writingPage));
+        QCOMPARE(reopened.linkedPageItem(tableLinkId).value("cells").toList(), cells);
+        QVERIFY(reopened.updateMarkdownText(QStringLiteral("Updated procedure")));
+        QCOMPARE(reopened.linkedPageItem(tableLinkId).value("cells").toList(), cells);
+        QCOMPARE(reopened.linkedPageItem(diagramLinkId).value("nodes").toList(), nodes);
+
+        const auto document = reopened.exportBookForTransfer(writingBook);
+        const auto portable = QJsonDocument::fromJson(document).object();
+        QCOMPARE(portable.value("version").toInt(), NotebookFormat::pageLinksVersion);
+        const auto books = portable.value("books").toArray();
+        QCOMPARE(books.size(), 1);
+        QCOMPARE(books.first().toObject().value("pages").toArray().size(), 3);
+        Notebook receiver(directory.filePath("receiver.json"));
+        const auto preview = receiver.receiveBookTransfer(document);
+        QCOMPARE(preview.value("action").toString(), QStringLiteral("create"));
+        QCOMPARE(preview.value("sourcePages").toInt(), 3);
+        const auto received = receiver.receiveBookTransfer(document, preview.value("token").toByteArray());
+        QVERIFY2(!received.contains("error"), qPrintable(received.value("error").toString()));
+        QCOMPARE(receiver.books().size(), 1);
+        QCOMPARE(receiver.bookId(), writingBook);
+        QCOMPARE(receiver.pageId(), writingPage);
+        QCOMPARE(receiver.markdownText(), QStringLiteral("Updated procedure"));
+        const auto transferredTable = receiver.linkedPageItem(tableLinkId);
+        QCOMPARE(transferredTable.value("cells").toList(), cells);
+        QCOMPARE(receiver.tableCellValues(transferredTable).at(3).toString(), QStringLiteral("12"));
+        QCOMPARE(receiver.linkedPageItem(diagramLinkId).value("nodes").toList(), nodes);
+        for (const auto &value : links) {
+            QVERIFY(!receiver.openPageLink(value.value("id").toString()).isEmpty());
+            QCOMPARE(receiver.bookId(), writingBook);
+            QCOMPARE(receiver.pageId(), value.value("targetPageId").toString());
+            QVERIFY(receiver.openPage(writingPage));
+        }
+        for (auto entry = originals.cbegin(); entry != originals.cend(); ++entry)
+            QCOMPARE(reopened.exportBookForTransfer(entry.key()), entry.value());
+    }
+
+    void copiedMixedBookLinksResolveToTheirOwnPages_data()
+    {
+        QTest::addColumn<QString>("operation");
+        QTest::newRow("duplicate") << QStringLiteral("duplicate");
+        QTest::newRow("transfer-conflict") << QStringLiteral("transfer");
+        QTest::newRow("file-import-conflict") << QStringLiteral("import");
+    }
+
+    void copiedMixedBookLinksResolveToTheirOwnPages()
+    {
+        QFETCH(QString, operation);
+        QTemporaryDir directory;
+        Notebook notebook(directory.filePath("library.json"));
+        QVERIFY(notebook.createBookWithItem("External table", {}, mixedTable()));
+        const auto externalTable = notebook.libraryItems().first().toMap();
+        QVERIFY(notebook.createBook("Source"));
+        const auto source = notebook.mixedPageSource();
+        QVERIFY(notebook.createMixedDocument(notebook.bookId(), notebook.pageId(), source.value("revision").toString(),
+                                             "Mixed", "Text", mixedDiagram(), mixedTable()));
+        const auto originalBook = notebook.bookId();
+        QVERIFY(notebook.savePageLink(externalTable, {.25, .966}, originalBook, notebook.pageId()));
+        const auto links = notebook.pageItems().sliced(1);
+        QCOMPARE(links.size(), 3);
+        const auto incoming = notebook.exportBookForTransfer(originalBook);
+        QVERIFY(!incoming.isEmpty());
+
+        if (operation == QStringLiteral("duplicate")) {
+            QVERIFY(notebook.duplicateBook(originalBook));
+        } else {
+            QVERIFY(notebook.updateMarkdownText(QStringLiteral("Local edit")));
+            if (operation == QStringLiteral("import")) {
+                QVERIFY(notebook.importFromData(incoming));
+            } else {
+                const auto preview = notebook.receiveBookTransfer(incoming);
+                QCOMPARE(preview.value("action").toString(), QStringLiteral("conflict"));
+                const auto result = notebook.receiveBookTransfer(incoming, preview.value("token").toByteArray());
+                QVERIFY2(!result.contains("error"), qPrintable(result.value("error").toString()));
+            }
+        }
+        QCOMPARE(notebook.books().size(), 4);
+        const auto copy = notebook.books().last().toMap().value("id").toString();
+        QVERIFY(copy != originalBook);
+        QCOMPARE(notebook.markdownTextForBook(originalBook), operation == QStringLiteral("duplicate")
+            ? QStringLiteral("Text") : QStringLiteral("Local edit"));
+        QVERIFY(notebook.openBook(copy));
+        QCOMPARE(notebook.markdownText(), QStringLiteral("Text"));
+        QCOMPARE(notebook.pageCount(), 3);
+        const auto rewrittenLinks = notebook.pageItems().sliced(1);
+        QCOMPARE(rewrittenLinks.size(), links.size());
+        for (qsizetype index = 0; index < links.size(); ++index) {
+            const auto before = links.at(index).toMap();
+            const auto after = rewrittenLinks.at(index).toMap();
+            if (before.value("targetBookId").toString() == originalBook) {
+                QCOMPARE(after.value("targetBookId").toString(), copy);
+                QVERIFY(after.value("targetPageId") != before.value("targetPageId"));
+                const auto resolved = notebook.linkedPageItem(after.value("id").toString());
+                QCOMPARE(resolved.value("bookId").toString(), copy);
+                QCOMPARE(resolved.value("pageId"), after.value("targetPageId"));
+                QCOMPARE(resolved.value("type"), before.value("targetType"));
+            } else {
+                QCOMPARE(after, before);
+            }
+        }
+    }
+
+    void mixedDocumentRejectsStaleOrInvalidDraftsWithoutWrites()
+    {
+        QTemporaryDir directory;
+        const QString file = directory.filePath("library.json");
+        Notebook notebook(file);
+        QVERIFY(notebook.createBook("Scanned notes"));
+        const auto sourceBook = notebook.bookId();
+        const auto sourcePage = notebook.pageId();
+        const auto earlier = notebook.mixedPageSource().value("revision").toString();
+        QVERIFY(notebook.appendStroke(stroke()));
+        const auto current = notebook.mixedPageSource().value("revision").toString();
+        QVERIFY(current != earlier);
+        const auto library = notebook.exportLibraryForTransfer();
+        const auto manifest = readFile(file);
+        QSignalSpy changes(&notebook, &Notebook::booksChanged);
+        QVERIFY(!notebook.createMixedDocument(sourceBook, sourcePage, earlier, "Mixed", "Text", mixedDiagram(), mixedTable()));
+        auto invalidTable = mixedTable();
+        invalidTable.insert("rows", 3);
+        QVERIFY(!notebook.createMixedDocument(sourceBook, sourcePage, current, "Mixed", "Text", mixedDiagram(), invalidTable));
+        QCOMPARE(changes.count(), 0);
+        QCOMPARE(notebook.exportLibraryForTransfer(), library);
+        QCOMPARE(readFile(file), manifest);
     }
 
     void staleAndCrossPageDraftsNeverOverwriteNotes()

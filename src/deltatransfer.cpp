@@ -303,6 +303,7 @@ void DeltaTransfer::receiveOffer(const QVariantMap &metadata, const QByteArray &
     m_sizes = sizes;
     m_objectOrder = sizes.keys();
     m_receiveTimer.start(15 * 60 * 1000);
+    emit receivingChanged();
     const QSet<QString> wanted(sizes.keyBegin(), sizes.keyEnd());
     pruneCache(wanted);
 
@@ -500,6 +501,7 @@ void DeltaTransfer::cancelIncoming(const QString &request)
 
 void DeltaTransfer::clearIncoming()
 {
+    const bool wasReceiving = receiving();
     m_receiveTimer.stop();
     m_incomingMetadata.clear();
     m_manifest.clear();
@@ -510,6 +512,7 @@ void DeltaTransfer::clearIncoming()
     m_verified.clear();
     m_wantedHash.clear();
     m_integrityRetries.clear();
+    if (wasReceiving) emit receivingChanged();
 }
 
 void DeltaTransfer::forgetPeer(const QString &peer)

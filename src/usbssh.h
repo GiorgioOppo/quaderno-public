@@ -1,5 +1,7 @@
 #pragma once
 
+#include "paperprosshaccess.h"
+
 #include <QObject>
 #include <QPointer>
 #include <QProcess>
@@ -34,9 +36,11 @@ class UsbSsh : public QObject
     Q_PROPERTY(bool importCompleted READ importCompleted NOTIFY changed)
     Q_PROPERTY(QString importStatus READ importStatus NOTIFY changed)
     Q_PROPERTY(QVariantMap importPreview READ importPreview NOTIFY changed)
+    Q_PROPERTY(PaperProSshAccess *access READ access CONSTANT)
 
 public:
     explicit UsbSsh(bool onTablet, QObject *parent = nullptr);
+    UsbSsh(bool onTablet, bool verifiedDevice, QObject *parent = nullptr);
     ~UsbSsh() override;
 
     QString command() const;
@@ -48,6 +52,7 @@ public:
     bool importCompleted() const { return m_importCompleted; }
     QString importStatus() const { return m_importStatus; }
     QVariantMap importPreview() const { return m_importPreview; }
+    PaperProSshAccess *access() { return &m_access; }
 
     Q_INVOKABLE void refresh();
     Q_INVOKABLE void copyCommand();
@@ -71,6 +76,7 @@ private:
     void clearImportPreview();
 
     const bool m_onTablet;
+    PaperProSshAccess m_access;
     QTcpSocket m_socket;
     QTimer m_timeout;
     QProcess m_importProcess;

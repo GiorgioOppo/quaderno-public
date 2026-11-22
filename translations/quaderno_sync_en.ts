@@ -75,6 +75,10 @@
     <context>
         <name>BleSync</name>
         <message>
+            <source>Scelta del collegamento per la sincronizzazione…</source>
+            <translation>Choosing a connection to sync…</translation>
+        </message>
+        <message>
             <source>Il quaderno supera il limite Bluetooth di %1 MiB. Passa al Wi-Fi locale per inviarlo.</source>
             <translation>The notebook exceeds the %1 MiB Bluetooth limit. Switch to local Wi-Fi to send it.</translation>
         </message>
@@ -271,6 +275,18 @@
             <translation>Secure local Wi-Fi connection active.</translation>
         </message>
         <message>
+            <source>Cerco un collegamento Wi-Fi per sincronizzare…</source>
+            <translation>Checking for a Wi-Fi connection to sync…</translation>
+        </message>
+        <message>
+            <source>Wi-Fi non disponibile. La sincronizzazione continua via Bluetooth.</source>
+            <translation>Wi-Fi is unavailable. Sync continues over Bluetooth.</translation>
+        </message>
+        <message>
+            <source>Collegamento Wi-Fi interrotto. Riconnessione in corso…</source>
+            <translation>Wi-Fi connection interrupted. Reconnecting…</translation>
+        </message>
+        <message>
             <source>Impossibile rimuovere l’abbinamento salvato.</source>
             <translation>Could not remove the saved pairing.</translation>
         </message>
@@ -459,8 +475,8 @@
             <translation>After changes</translation>
         </message>
         <message>
-            <source>Preferisci Wi-Fi, altrimenti Bluetooth</source>
-            <translation>Prefer Wi-Fi, otherwise Bluetooth</translation>
+            <source>Automatico (Bluetooth e Wi-Fi)</source>
+            <translation>Automatic (Bluetooth and Wi-Fi)</translation>
         </message>
         <message>
             <source>Quando sincronizzare</source>
@@ -605,8 +621,8 @@
             <translation>Pair a device to sync automatically.</translation>
         </message>
         <message>
-            <source>Scegli i quaderni da sincronizzare nella finestra wireless.</source>
-            <translation>Choose notebooks to sync in the wireless window.</translation>
+            <source>Pronto a ricevere. Scegli i quaderni da inviare nella finestra wireless.</source>
+            <translation>Ready to receive. Choose notebooks to send in the wireless window.</translation>
         </message>
         <message>
             <source>Sincronizzazione automatica in pausa durante il blocco o la modifica.</source>

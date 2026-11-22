@@ -554,6 +554,180 @@ private slots:
         QCOMPARE(pair.sender.pendingAutomaticCount(), 0);
     }
 
+    void continuousWorkIsAnnouncedBeforeSendingAndSurvivesHandoff()
+    {
+        QTemporaryDir directory;
+        Pair pair(directory.path());
+        QVERIFY(pair.source.createBook("Continuous Wi-Fi handoff"));
+        const QString book = pair.source.bookId();
+        pair.sender.preview(book);
+        QTRY_VERIFY(!pair.sender.previewInfo().isEmpty());
+        pair.sender.apply();
+        QTRY_VERIFY(pair.sender.completed());
+        const QString original = pair.destination.bookTransferRevision(book);
+        pair.sender.setPinned(book, true);
+        pair.sender.setAutoSync(true);
+        QVERIFY(pair.sender.setTransportSelectionPaused(true));
+        QVERIFY(!pair.sender.hasSyncWork());
+        QSignalSpy work(&pair.sender, &BleSync::syncWorkChanged);
+        QVERIFY(pair.source.appendStroke(stroke()));
+        const QString edited = pair.source.bookTransferRevision(book);
+        QTRY_COMPARE_WITH_TIMEOUT(work.size(), 1, 1500);
+        QVERIFY(pair.sender.hasSyncWork());
+        QTest::qWait(1850); // The normal automatic preview delay has passed.
+        QVERIFY(!pair.sender.transportSelectionBusy());
+        QCOMPARE(pair.destination.bookTransferRevision(book), original);
+
+        pair.sender.setConnected(false);
+        pair.receiver->setConnected(false);
+        QVERIFY(pair.sender.hasSyncWork());
+        pair.sender.setConnected(true);
+        pair.receiver->setConnected(true);
+        QVERIFY(pair.sender.setTransportSelectionPaused(false));
+        QTRY_COMPARE_WITH_TIMEOUT(pair.destination.bookTransferRevision(book), edited, 5000);
+        QTRY_VERIFY(pair.sender.completed());
+        QVERIFY(!pair.sender.hasSyncWork());
+        QTRY_COMPARE(work.size(), 2);
+    }
+
+    void triggeredQueueStillAcceptsWorkDuringTransportSelection()
+    {
+        QTemporaryDir directory;
+        Pair pair(directory.path());
+        QVERIFY(pair.source.createBook("Triggered transport selection"));
+        const QString book = pair.source.bookId();
+        pair.sender.setTriggeredAutomaticSync(true);
+        pair.sender.setPinned(book, true);
+        pair.sender.setAutoSync(true);
+        QVERIFY(pair.sender.setTransportSelectionPaused(true));
+        QVERIFY(!pair.sender.hasSyncWork());
+        QVERIFY(pair.sender.requestAutomaticSync());
+        QCOMPARE(pair.sender.pendingAutomaticCount(), 1);
+        QVERIFY(pair.sender.hasSyncWork());
+        QVERIFY(!pair.sender.transportSelectionBusy());
+
+        pair.sender.setConnected(false);
+        pair.receiver->setConnected(false);
+        pair.sender.setConnected(true);
+        pair.receiver->setConnected(true);
+        QCOMPARE(pair.sender.pendingAutomaticCount(), 1);
+        QVERIFY(pair.sender.setTransportSelectionPaused(false));
+        QTRY_COMPARE(pair.sender.previewInfo().value("action").toString(), QStringLiteral("create"));
+        QVERIFY(pair.sender.previewInfo().value("automatic").toBool());
+        QVERIFY(!pair.destination.hasBookId(book));
+        pair.sender.apply();
+        QTRY_VERIFY(pair.sender.completed());
+        QCOMPARE(pair.sender.pendingAutomaticCount(), 0);
+        QVERIFY(!pair.sender.hasSyncWork());
+    }
+
+    void deferredManualPreviewKeepsSelectedBookAndRequiresConfirmation()
+    {
+        QTemporaryDir directory;
+        Pair pair(directory.path());
+        QVERIFY(pair.source.createBook("Selected before handoff"));
+        const QString book = pair.source.bookId();
+        QVERIFY(pair.sender.setTransportSelectionPaused(true));
+        pair.sender.preview(book);
+        QVERIFY(pair.sender.hasSyncWork());
+        QVERIFY(!pair.sender.transportSelectionBusy());
+        pair.sender.cancel();
+        QVERIFY(!pair.sender.hasSyncWork());
+        pair.sender.preview(book);
+        QVERIFY(pair.source.appendStroke(stroke()));
+        const auto revision = pair.source.bookTransferRevision(book);
+        QVERIFY(pair.source.createBook("Opened while connecting"));
+        QVERIFY(pair.sender.previewInfo().isEmpty());
+        QVERIFY(!pair.sender.hasPendingTransfer());
+
+        pair.sender.setConnected(false);
+        pair.receiver->setConnected(false);
+        pair.sender.setConnected(true);
+        pair.receiver->setConnected(true);
+        QVERIFY(pair.sender.setTransportSelectionPaused(false));
+        QTRY_COMPARE(pair.sender.previewInfo().value("bookId").toString(), book);
+        QVERIFY(!pair.sender.previewInfo().value("automatic").toBool());
+        QVERIFY(!pair.destination.hasBookId(book));
+        pair.sender.apply();
+        QTRY_COMPARE(pair.destination.bookTransferRevision(book), revision);
+        QTRY_VERIFY(pair.sender.completed());
+    }
+
+    void pendingCheckpointWaitsForTransportSelectionBeforeReplayingPreview()
+    {
+        QTemporaryDir directory;
+        Pair pair(directory.path());
+        QVERIFY(pair.source.createBook("Interrupted manual preview"));
+        const QString book = pair.source.bookId();
+        pair.sender.preview(book);
+        QTRY_VERIFY(!pair.sender.previewInfo().isEmpty());
+        pair.sender.setConnected(false);
+        pair.receiver->setConnected(false);
+        QVERIFY(pair.sender.hasPendingTransfer());
+        QVERIFY(pair.sender.setTransportSelectionPaused(true));
+        pair.sender.setConnected(true);
+        pair.receiver->setConnected(true);
+        QVERIFY(pair.sender.hasSyncWork());
+        QTest::qWait(2050); // A reconnect alone would have retried the preview.
+        QVERIFY(!pair.sender.transportSelectionBusy());
+        QVERIFY(pair.sender.previewInfo().isEmpty());
+        QVERIFY(pair.source.createBook("Unsent replacement canceled on stop"));
+        pair.sender.preview(pair.source.bookId());
+        pair.sender.setPinned(pair.source.bookId(), true);
+        pair.sender.setAutoSync(true);
+        pair.sender.setConnected(false);
+        pair.receiver->setConnected(false);
+        pair.sender.cancelDeferredTransfer();
+        QVERIFY(pair.sender.hasPendingTransfer()); // Keep the checkpoint of the preview that was already sent.
+        pair.sender.setConnected(true);
+        pair.receiver->setConnected(true);
+        QVERIFY(pair.sender.setTransportSelectionPaused(false));
+        QTRY_COMPARE_WITH_TIMEOUT(pair.sender.previewInfo().value("bookId").toString(), book, 4000);
+        QVERIFY(!pair.sender.previewInfo().value("automatic").toBool());
+        QVERIFY(pair.lastApply.isEmpty());
+        QVERIFY(!pair.destination.hasBookId(book));
+    }
+
+    void transportChangesWaitForBothEndsOfTransferAndResume()
+    {
+        QTemporaryDir directory;
+        Pair pair(directory.path());
+        QVERIFY(pair.source.createBook("No handoff of live approval"));
+        const QString book = pair.source.bookId();
+        bool guardedIncoming = false;
+        connect(pair.receiver.get(), &BleSync::sendMessage, this, [&](const QVariantMap &message, const QByteArray &) {
+            if (message.value("type") == QStringLiteral("deltaNeed"))
+                guardedIncoming = pair.receiver->transportSelectionBusy()
+                    && !pair.receiver->setTransportSelectionPaused(true);
+        });
+        QSignalSpy senderBusy(&pair.sender, &BleSync::transportSelectionBusyChanged);
+        QSignalSpy receiverBusy(pair.receiver.get(), &BleSync::transportSelectionBusyChanged);
+        pair.sender.preview(book);
+        QVERIFY(!pair.sender.setTransportSelectionPaused(true));
+        QTRY_VERIFY(!pair.sender.previewInfo().isEmpty());
+        QVERIFY(guardedIncoming);
+        QVERIFY(!pair.sender.setTransportSelectionPaused(true));
+        QVERIFY(!pair.receiver->setTransportSelectionPaused(true));
+        pair.sender.apply();
+        QVERIFY(!pair.sender.setTransportSelectionPaused(true));
+        QTRY_VERIFY(pair.sender.completed());
+        QTRY_VERIFY(senderBusy.size() >= 2);
+        QTRY_VERIFY(receiverBusy.size() >= 2);
+        QVERIFY(pair.sender.setTransportSelectionPaused(true));
+        pair.sender.sendResume(book, pair.source.pageId());
+        QVERIFY(pair.sender.resumeBusy());
+        QVERIFY(pair.sender.hasSyncWork());
+        QVERIFY(!pair.sender.transportSelectionBusy());
+        QVERIFY(pair.sender.setTransportSelectionPaused(false));
+        QTRY_VERIFY(!pair.receiver->resumeOffer().isEmpty());
+        QVERIFY(!pair.sender.setTransportSelectionPaused(true));
+        QVERIFY(!pair.receiver->setTransportSelectionPaused(true));
+        QVERIFY(pair.receiver->acceptResume());
+        QTRY_VERIFY(!pair.sender.resumeBusy());
+        QVERIFY(!pair.sender.transportSelectionBusy());
+        QVERIFY(!pair.receiver->transportSelectionBusy());
+    }
+
     void transientRemoteEditorBusyRetriesWithFreshPreviewAndPolicyGate()
     {
         QTemporaryDir directory;

@@ -4,6 +4,26 @@
     <context>
         <name>Notebook</name>
         <message>
+            <source>Il collegamento non è più presente sulla pagina.</source>
+            <translation>The link is no longer on this page.</translation>
+        </message>
+        <message>
+            <source>La destinazione del collegamento non è disponibile in questa libreria.</source>
+            <translation>The link destination is unavailable in this library.</translation>
+        </message>
+        <message>
+            <source>La pagina del collegamento è cambiata.</source>
+            <translation>The link’s page has changed.</translation>
+        </message>
+        <message>
+            <source>Mostra il livello attivo prima di modificare i collegamenti.</source>
+            <translation>Show the active layer before modifying links.</translation>
+        </message>
+        <message>
+            <source>Scegli un punto sulla pagina per il collegamento.</source>
+            <translation>Choose a spot on the page for the link.</translation>
+        </message>
+        <message>
             <source>La pagina selezionata è cambiata. Riprova.</source>
             <translation>The selected page changed. Try again.</translation>
         </message>
@@ -330,6 +350,14 @@
         <message>
             <source>Inserisci il testo della trascrizione.</source>
             <translation>Enter the transcription text.</translation>
+        </message>
+        <message>
+            <source>La pagina sorgente è cambiata. Riapri l’estrazione.</source>
+            <translation>The source page has changed. Reopen extraction.</translation>
+        </message>
+        <message>
+            <source>Tabella</source>
+            <translation>Table</translation>
         </message>
         <message>
             <source>Seleziona un tratto di scrittura a mano.</source>

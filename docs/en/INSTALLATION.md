@@ -6,10 +6,10 @@ Quaderno runs on Mac and as a temporary preview on the reMarkable Paper Pro. The
 
 | Platform | Package | Requirements |
 | --- | --- | --- |
-| Mac | `Quaderno-macOS.zip` | Apple silicon and macOS 27.2 or later for the current preview package. Handwriting transcription in source builds requires macOS 27 or later. |
+| Mac | `Quaderno-macOS.zip` | Apple silicon. Check the minimum macOS version of your build. Offline handwriting requires macOS 27 or later and the optional helper. |
 | reMarkable Paper Pro | `Quaderno-Paper-Pro-3.29.1.0.zip` | Model `ferrari`, firmware 3.29.1.0, and Developer Mode. |
 
-If you already have the package for your platform, follow the steps below. To build a package from source, see the [development guide](DEVELOPMENT.md).
+The 0.2.19 preview ships as source. The package names below are the output of the [build and packaging steps](DEVELOPMENT.md).
 
 ## macOS
 
@@ -44,7 +44,9 @@ Run `exit` to return to the Mac terminal.
 
 Extract `Quaderno-Paper-Pro-3.29.1.0.zip` and open Terminal in the extracted directory. Keep `quaderno` and the scripts together in that directory.
 
-To enable transcription on the tablet, keep `quaderno-handwriting` and `quaderno-handwriting-it.dct` alongside `quaderno`. The installer transfers and verifies both files when present.
+To enable pen-stroke transcription on the tablet, keep `quaderno-handwriting`, `quaderno-handwriting-it.dct`, and `quaderno-handwriting-en.dct` alongside `quaderno`. The installer transfers the helper and checks both dictionaries when the add-on is included.
+
+If the ZIP includes image OCR for mixed pages, extract the entire ZIP. The installer transfers and checks the helper, its model, its character dictionary and ONNX Runtime. The offline image text recognizer appears in the compatibility check when the helper loads successfully. [Optional build and packaging](DEVELOPMENT.md#paper-pro)
 
 ```sh
 sh install-paper-pro.sh
@@ -82,7 +84,7 @@ Obsidian Headless 0.0.14 may ask for a password for a managed-encryption vault, 
 
 ### Return to reMarkable
 
-Tap **Esci** (Exit) in Quaderno. The temporary `quaderno-demo.service` stops `xochitl` during the preview and requests a restart when Quaderno exits. A session can last up to ten minutes. If USB disconnects, the service continues until the app closes or the session expires.
+Tap **Esci** (Exit) in Quaderno. The temporary `quaderno-demo.service` stops `xochitl` during the preview and requests a restart when Quaderno exits. A USB trial lasts up to ten minutes. If USB disconnects, the trial continues until the app closes or the session expires.
 
 To end the preview from the Mac, reconnect the tablet if necessary and run the following command.
 
@@ -109,7 +111,7 @@ Run the following from the extracted package directory on your Mac.
 sh install-paper-pro.sh --appload
 ```
 
-On the tablet, open **AppLoad**, tap **Reload** if the menu was already open, and select **Quaderno**. This starts the same temporary session as the USB installer. The entry works while XOVI is active. If you run XOVI in temporary mode, activate it again after rebooting the tablet.
+On the tablet, open **AppLoad**, tap **Reload** if the menu was already open, and select **Quaderno**. The AppLoad session stays open until you exit Quaderno or stop its service. The entry works while XOVI is active. If you run XOVI in temporary mode, activate it again after rebooting the tablet.
 
 To remove the entry, use the removal command printed by the installer, then tap **Reload** in AppLoad. The installed binary and your notebooks stay on the tablet.
 

@@ -123,8 +123,12 @@ int main(int argc, char *argv[])
     EpaperRefresh epaperRefresh;
     ExternalKeyboard externalKeyboard(onDevice);
     WifiSettings wifi(onDevice);
-    UsbSsh usbSsh(onDevice);
     const bool verifiedPaperPro = deviceInfo.paperPro() && deviceInfo.osVersion() == QStringLiteral("3.29.1.0");
+    UsbSsh usbSsh(onDevice, verifiedPaperPro);
+    const auto updateSshLock = [&] { usbSsh.access()->setLocked(pinLock.locked() || standby.sleeping()); };
+    QObject::connect(&pinLock, &PinLock::lockedChanged, usbSsh.access(), updateSshLock);
+    QObject::connect(&standby, &PaperProStandby::sleepingChanged, usbSsh.access(), updateSshLock);
+    updateSshLock();
     BluetoothSettings bluetooth(onDevice, verifiedPaperPro);
     bluetooth.setLocked(pinLock.locked());
     QObject::connect(&pinLock, &PinLock::lockedChanged, &bluetooth, [&] {

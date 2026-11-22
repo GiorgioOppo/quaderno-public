@@ -40,6 +40,7 @@
 #include "notebook.h"
 #include "obsidianintegration.h"
 #include "obsidiansync.h"
+#include "mixedpageanalyzer.h"
 #include "pagepreviewitem.h"
 #include "pagetemplateitem.h"
 #include "paperprostandby.h"
@@ -270,7 +271,7 @@ private slots:
         REGISTER(DiagramItem); REGISTER(EpaperRefresh); REGISTER(ExternalKeyboard); REGISTER(Handwriting);
         REGISTER(InkItem); REGISTER(InkSelectionPreview); REGISTER(SelectionContentItem);
         REGISTER(MacDocumentExchange); REGISTER(MarkdownWeb); REGISTER(Notebook); REGISTER(ObsidianIntegration);
-        REGISTER(ObsidianSync); REGISTER(PagePreviewItem); REGISTER(PageTemplateItem); REGISTER(PaperProStandby);
+        REGISTER(ObsidianSync); REGISTER(MixedPageAnalyzer); REGISTER(PagePreviewItem); REGISTER(PageTemplateItem); REGISTER(PaperProStandby);
         REGISTER(PinLock); REGISTER(UsbSsh); REGISTER(UsbTransfer); REGISTER(WifiSettings); REGISTER(WirelessSync);
         REGISTER(TabletPreferences); REGISTER(LibraryMaintenance); REGISTER(PortableDocuments); REGISTER(CloudAccounts);
 #undef REGISTER

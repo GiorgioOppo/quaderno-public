@@ -2,6 +2,57 @@
 
 [English](CHANGELOG.md) · **Italiano**
 
+## 0.2.19 in sviluppo
+
+- Disegna con il Marker un contorno a mano libera attorno al diagramma, alla tabella o al testo di una pagina mista. Quaderno chiude il contorno quando sollevi la penna.
+- Estende l’OCR locale opzionale all’area **Tabella** di una pagina mista in PDF o con un’immagine come sfondo sul Paper Pro. Con una griglia ben visibile propone celle modificabili e conserva la posizione di quelle vuote. Se la griglia è incerta, puoi rivedere le righe proposte e aggiungere i separatori delle colonne.
+- Il motore OCR locale opzionale propone etichette modificabili per le forme riconosciute nei diagrammi in PDF e immagini.
+
+Superate tutte le 22 suite CTest e le prove di avvio nei layout desktop e tablet su macOS e con l’SDK ARM64 del Paper Pro. Il collaudo sul Paper Pro con firmware 3.29.1.0 ha coperto l’avvio a schermo intero da AppLoad e i contorni con il Marker. Una prova isolata ha usato l’OCR e salvato un quaderno collegato alle pagine modificabili della tabella e del diagramma. Controlla le bozze OCR, in particolare caratteri simili, etichette e posizioni delle celle. [Guida d’uso](docs/GUIDA.md#riconoscere-una-pagina-mista-sul-paper-pro) · [Stato del rilascio](docs/RILASCIO.md)
+
+## 0.2.18 in sviluppo
+
+- Aggiunge un motore OCR locale opzionale per l’area **Testo** del riconoscimento delle pagine miste sul Paper Pro. Legge testo in alfabeto latino da pagine PDF e immagini. Confronta la bozza con l’originale, soprattutto per indirizzi web, percorsi, nomi e punteggiatura.
+
+Vedi [Riconoscere una pagina mista sul Paper Pro](docs/GUIDA.md#riconoscere-una-pagina-mista-sul-paper-pro).
+
+## 0.2.17 in sviluppo
+
+- Salva il risultato del riconoscimento in un unico quaderno modificabile in Scrittura. La prima pagina rimanda al diagramma e alla tabella su pagine dedicate dello stesso quaderno. Un file Quaderno o un’operazione di sincronizzazione trasferisce il testo e i due oggetti modificabili.
+- La duplicazione e la copia conservata in caso di conflitto mantengono i riferimenti alle proprie pagine.
+- Migliora il riconoscimento di riquadri annidati e frecce nei PDF manoscritti. I bordi della tabella producono meno righe spurie. Le trascrizioni e le etichette restano verificabili nella bozza.
+
+Vedi [Riconoscere una pagina mista sul Paper Pro](docs/GUIDA.md#riconoscere-una-pagina-mista-sul-paper-pro).
+
+## 0.2.16 in sviluppo
+
+- Sul Paper Pro puoi selezionare le aree di diagramma, tabella e testo su un foglio o in un PDF importato. Rivedi le bozze elaborate sul tablet e salva insieme tre quaderni modificabili. La pagina di partenza resta disponibile.
+- In Scrittura puoi vedere un’anteprima degli elementi collegati, aprirli e modificarli. Per usare i collegamenti sull’altro dispositivo, invia separatamente il quaderno di Scrittura e quelli delle destinazioni.
+
+Vedi [Riconoscere una pagina mista sul Paper Pro](docs/GUIDA.md#riconoscere-una-pagina-mista-sul-paper-pro).
+
+## 0.2.15 in sviluppo
+
+- Aggiunge le impostazioni per l’accesso SSH sul Paper Pro con firmware 3.29.1.0. Il Wi-Fi usa l’impostazione persistente di reMarkable. Il controllo USB-C blocca o consente nuove connessioni fino al prossimo riavvio. La voce Bluetooth indica l’assenza di un listener SSH dedicato nel firmware.
+
+Vedi [Accesso SSH sul Paper Pro](docs/IMPOSTAZIONI.md#accesso-ssh-sul-paper-pro).
+
+## 0.2.14 in sviluppo
+
+- Introduce un menu per Libri, Scrittura, Grafici, Tabelle e Diagrammi. Libri si apre in modalità lettura, con evidenziazioni, sottolineature, Post-it e collegamenti agli oggetti della libreria. Scrittura tiene a portata di mano le impostazioni della penna e il lazo.
+- I collegamenti ancorati aprono il grafico, la tabella o il diagramma originale e offrono un comando per tornare alla pagina di partenza. Richiedono il formato portabile 12. Trasferisci a parte gli eventuali quaderni che contengono le destinazioni.
+- La creazione di un grafico da tabella permette di scegliere le colonne X e Y. Una tabella sulla stessa pagina resta collegata. Una tabella su un’altra pagina fornisce una copia modificabile dei valori calcolati. Il menu Tabelle raccoglie formule, CSV, conversione della scrittura e creazione dei grafici.
+- L’editor Diagrammi ha una palette, il trascinamento delle forme, i connettori e un ispettore. Il menu della sezione raccoglie riconoscimento a mano libera, importazione ed esportazione draw.io.
+
+Vedi [le cinque sezioni e i loro flussi](docs/FUNZIONI_E_FLUSSI.md#le-cinque-sezioni).
+
+## 0.2.13 in sviluppo
+
+- Avvia la sincronizzazione automatica sul Bluetooth LE abbinato. Controlla le modifiche pendenti prima di provare l’indirizzo Wi-Fi locale attuale del Paper Pro. Trasferisce i dati sul Wi-Fi quando il collegamento è autenticato e usa il Bluetooth se il Wi-Fi manca o cade.
+- Conserva la coda, le parti salvate e il controllo dei conflitti al cambio di collegamento. Un’applicazione interrotta con esito incerto richiede una nuova revisione. Il passaggio sui dispositivi fisici resta da collaudare.
+
+Vedi il [protocollo di sincronizzazione automatica](docs/PROTOCOLLO_SYNC.md#sincronizzazione-automatica).
+
 ## 0.2.12 in sviluppo
 
 - Aggiunge uno schema bilingue delle cinque sezioni, dei formati, dei collegamenti tra funzioni e delle integrazioni disponibili sui due dispositivi.
@@ -21,7 +72,7 @@ Vedi lo [schema di funzioni e flussi](docs/FUNZIONI_E_FLUSSI.md).
 - Rende esplicito il trasferimento delle annotazioni dell’intero libro e mostra lo stato di sincronizzazione in Libri. Evidenziazioni e sottolineature appartengono già ai normali contenuti di pagina; i trasferimenti conservano tutte le pagine e i livelli nascosti, oltre alle nuove note. Documenta i requisiti: app aperte e sbloccate, stesso libro nativo di Quaderno e modalità di sincronizzazione appropriata.
 - Introduce il formato portabile **11** per le note di pagina e metadati di versione 11 per i nuovi salvataggi locali. Le esportazioni portabili senza contenuti nuovi continuano a usare il formato minimo necessario. La negoziazione wireless comunica il formato supportato e rifiuta contenuti incompatibili prima di inviare le parti; per i destinatari precedenti con protocollo incrementale ma senza capacità esplicita usa il formato 9 come limite. Aggiorna entrambe le app per le nuove note.
 - Recupera ovali e rettangoli disegnati a mano con piccole aperture o lati irregolari. Riconosce punte esplicite disegnate insieme a una linea retta o a gomito e punte separate con un breve tratto iniziale. Le linee senza punta o ambigue restano a penna.
-- **Verifiche:** superate tutte le 20 suite macOS. Le verifiche finali di post-it, appendice PDF, sincronizzazione e riconoscimento dei diagrammi sono passate su Mac e ARM. Entrambe le build hanno superato la prova di avvio con interfaccia desktop e tablet. Installata via Wi-Fi sul Paper Pro dopo un backup verificato sul tablet. L’esportazione della libreria aveva lo stesso SHA-256 prima e dopo l’aggiornamento. Superati l’avvio nativo e-ink a 1620 × 2160 e l’apertura da AppLoad. La riproduzione locale di un disegno reale ha recuperato quattro forme e quattro frecce esplicite e ha conservato a penna una linea senza punta. La prova fisica di scrittura e trasferimento dei documenti richiede controlli separati.
+- **Verifiche:** superate la suite macOS e le prove ARM64 interessate. L’avvio sul tablet da AppLoad ha conservato la libreria. La riproduzione dei tratti ha verificato il recupero di altre forme e punte di freccia esplicite.
 
 Vedi [note sui libri](docs/NOTE_LIBRI.md), [flussi per sezione](docs/FUNZIONALITA.md), [sincronizzazione](docs/PROTOCOLLO_SYNC.md) e [compatibilità dei dati](docs/DATI.md#versioni-della-libreria).
 
@@ -32,7 +83,7 @@ Vedi [note sui libri](docs/NOTE_LIBRI.md), [flussi per sezione](docs/FUNZIONALIT
 - Permette di scegliere esplicitamente la destinazione quando sono possibili più diagrammi, oppure di crearne uno separato. Conserva l’inchiostro incerto ed evita di duplicare la geometria dei tratti originali mantenuti sul foglio. Una proposta senza aggiunte valide non può essere applicata.
 - Applica la sostituzione dell’oggetto e l’eventuale rimozione dei tratti in un’unica operazione Annulla/Ripeti della pagina. Il recupero persistente conserva un diagramma di base modificabile e i tratti rimossi dalle aggiunte; le estensioni successive sullo stesso livello condividono quella base. Il recupero ripristina il diagramma originale invece di eliminarlo.
 - Introduce il formato portabile **10** quando servono `styleScale` o `handwritingSource.baseDiagram` e i metadati di versione 10 per i nuovi salvataggi locali. Aggiorna entrambe le app prima di trasferire questi quaderni; le esportazioni portabili con contenuti precedenti continuano a scegliere il formato minimo necessario.
-- **Verifiche:** le build Mac e ARM hanno superato tutte le sette suite interessate: regressioni, lazo, riconoscimento diagrammi, riconoscimento contestuale, sincronizzazione incrementale, UI e integrazione diagrammi (86,20 s su Mac, 81,91 s su ARM; due esclusioni previste su ARM per funzioni solo macOS). Superati gli avvii rigorosi desktop/tablet e dei pacchetti estratti. Installata sul Paper Pro dopo un nuovo backup e verificato l’avvio nativo e-paper/AppLoad a 1620 × 2160. Tutti i sei quaderni hanno mantenuto hash canonici, contenuti delle cartelle e numero di byte esportati. Il 18 novembre 2026 l’utente ha confermato sul Paper Pro che una nuova forma e freccia a mano libera aggiornano il diagramma completo come unico elemento modificabile, conservando le etichette precedenti. La sessione AppLoad è stata inoltre osservata per 72,36 secondi senza errori QML. L’app Mac **0.2.0** installata è invariata; è pronto un pacchetto 0.2.10 separato. Aggiorna entrambe le app prima di trasferire quaderni in formato 10.
+- **Verifiche:** superate le suite Mac e ARM64 interessate e le prove di avvio con rendering. Sul tablet, aggiungere una forma e una freccia ha aggiornato il diagramma esistente conservandone le etichette.
 
 Vedi [estensione dei diagrammi](docs/DIAGRAMMI.md#ampliare-un-diagramma-già-convertito) e [compatibilità dei dati](docs/DATI.md#versioni-della-libreria).
 
@@ -43,7 +94,7 @@ Vedi [estensione dei diagrammi](docs/DIAGRAMMI.md#ampliare-un-diagramma-già-con
 - Applica i vincoli sugli SSID attendibili solo al Wi-Fi; l’eventuale requisito di ricarica del tablet vale per entrambi i collegamenti. Conserva i blocchi immediati per PIN, sospensione ed editor, la revisione del primo trasferimento, la politica sui conflitti e la revisione manuale degli esiti di applicazione incerti.
 - Migliora il recupero con attese crescenti tra tentativi di collegamento, riprove limitate del trasferimento e un punto di ripresa salvato per il lavoro automatico interrotto prima dell’applicazione. Riusa le parti ricevute compatibili attraverso una nuova anteprima, senza ripetere una conferma precedente.
 - Considera incerti i trasferimenti precedenti rimasti pendenti senza fase/versione salvata e le applicazioni manuali interrotte: il recupero automatico non può reinviarli senza una nuova revisione manuale. Le 11 verifiche mirate di migrazione/ripresa sono superate sia su Mac sia su ARM.
-- **Verifica:** sono superati build Mac e ARM, sei suite interessate per piattaforma (preferenze, sync BLE, sync incrementale, collegamento wireless, UI e integrazione delle impostazioni) e avvii rigorosi renderizzati desktop/tablet. ARM ha completato 6/6 suite in 136,73 secondi, con una sola esclusione UI prevista per macOS. Installata sul Paper Pro dopo un nuovo backup, con avvio nativo e-paper/AppLoad a 1620 × 2160 verificato. Tutti i sei quaderni hanno conservato hash canonici, contenuti delle cartelle e numero di byte esportati. Il 18 novembre 2026 l’utente ha confermato che nelle impostazioni Wi-Fi/Bluetooth del Paper Pro sono visibili la modalità dopo le modifiche e tutte e tre le scelte di collegamento. La conferma riguarda i controlli, non i trasferimenti completi; restano le prove fisiche di invio Wi-Fi/Bluetooth tra dispositivi. L’app Mac 0.2.0 installata resta invariata; un pacchetto Mac 0.2.9 separato è pronto. Per il nuovo flusso entrambe devono essere aggiornate, aperte e sbloccate; si tratta di sincronizzazione locale nell’app, non di un servizio cloud Internet o di un processo sempre attivo.
+- **Verifiche:** superate le suite Mac e ARM64 interessate e le prove di avvio con rendering. Sul tablet erano disponibili le tre opzioni di collegamento e la sincronizzazione dopo le modifiche. I trasferimenti tra dispositivi richiedevano una prova separata.
 
 Vedi [sincronizzazione automatica](docs/PROTOCOLLO_SYNC.md#sincronizzazione-automatica-nella-029) e [impostazioni](docs/IMPOSTAZIONI.md).
 
@@ -55,7 +106,7 @@ Vedi [sincronizzazione automatica](docs/PROTOCOLLO_SYNC.md#sincronizzazione-auto
 - Notifiche dedicate per dispositivo abbinato e quaderni fissati nelle automazioni di sincronizzazione, evitando che variazioni di stato estranee riattivino quei binding. Le suite interessate impostazioni/BLE/sync sono superate 3/3 sia su Mac sia su ARM.
 - Riuso di diagrammi modificabili con **Inserisci dalla libreria**. Le copie sono indipendenti; modificare dalla pagina aperta nell’indice cambia il proprio oggetto originale. Il Markdown con allegati include ora PNG del diagramma e file `.drawio` modificabile; i trasferimenti dei quaderni conservano geometria e tratti recuperabili.
 - Orientamento automatico opzionale sul Paper Pro con sensore supportato, filtro di stabilità e cambio differito durante le interazioni. Resta l’orientamento manuale; un orientamento di lettura fisso ha precedenza. La rotazione automatica è disattivata per impostazione iniziale.
-- **Verifiche:** la prima build 0.2.8 ha superato 15 suite Mac (129,56 secondi) e ARM (130,23 secondi), 24 verifiche geometriche, 17 UI (38,82 secondi), avvii rigorosi e controlli dei pacchetti estratti. L’installazione sul Paper Pro ha superato l’avvio nativo a 1620 × 2160 senza errori QML; cinque quaderni hanno mantenuto hash canonici, cartelle e numero di byte esportati. Il 18 novembre 2026 l’utente ha confermato la rotazione automatica da verticale a orizzontale. Il riconoscimento fisico inizialmente non ha trovato forme in un disegno reale, da cui le correzioni di tolleranza sopra indicate. Le build corrette Mac e ARM hanno superato 34 verifiche geometriche e 17 UI (2/2 suite: 37,43 secondi su Mac, 37,37 secondi su ARM), con avvii rigorosi desktop/tablet. La build corretta è installata sul Paper Pro e ha superato l’avvio rigoroso nativo/AppLoad a 1620 × 2160 senza errori QML. È stato creato un nuovo backup; tutti i sei quaderni attuali hanno mantenuto hash canonici, contenuti delle cartelle e numero di byte esportati. Il 18 novembre 2026 l’utente ha confermato che riconoscimento, applicazione del risultato e apertura dell’editor per modificarlo funzionano nel diagramma di prova sul Paper Pro; gli archivi precedenti sono conservati separatamente. L’app Mac 0.2.0 installata resta invariata. Account OAuth reali e trasferimenti richiedono ancora registrazioni del manutentore e verifiche.
+- **Verifiche:** superate le prove di avvio, geometria e interfaccia su Mac e ARM64 dopo le correzioni al riconoscimento. Sul tablet sono state verificate la rotazione automatica e la revisione e modifica di un diagramma di prova.
 
 Vedi [Diagrammi](docs/DIAGRAMMI.md) e [impostazioni](docs/IMPOSTAZIONI.md).
 
@@ -64,9 +115,9 @@ Vedi [Diagrammi](docs/DIAGRAMMI.md) e [impostazioni](docs/IMPOSTAZIONI.md).
 - Venti nuove impostazioni per profili d’uso, ordine degli strumenti e mano preferita, fuso orario, contrasto, gesture, lettura per singolo libro, pressione, filtro del palmo, inserimento con lazo, correzioni OCR, tolleranza delle forme, profili di refresh, Wi-Fi attendibile e sync programmato, conflitti, backup, cache e destinazioni Apple preferite. Vedi [impostazioni](docs/IMPOSTAZIONI.md).
 - Dialoghi Google Drive, Dropbox e OneDrive con accesso OAuth ufficiale. Esplorazione delle cartelle, download dei documenti supportati, caricamento di nuove copie e trasferimento di quaderni `.quaderno` modificabili con anteprima d’importazione. Il primo accesso Google dal Paper Pro usa il browser del Mac attraverso un inoltro SSH temporaneo; i trasferimenti successivi avvengono direttamente dal tablet via Wi-Fi.
 - I token cloud restano esclusi da esportazioni e backup dei quaderni. macOS usa il Portachiavi; il Paper Pro usa file privati. Blocco e sospensione annullano autorizzazioni e trasferimenti in corso.
-- Servono ancora le registrazioni OAuth di Quaderno per accedere davvero agli account. Non vengono presi in prestito né inventati identificativi sviluppatore. L’utente ha confermato che le tre finestre degli account cloud si aprono sul Paper Pro; accesso reale ai provider e trasferimenti cloud restano da verificare. App Mac installata invariata.
+- L’accesso ai provider richiede le registrazioni OAuth di Quaderno. Verificata l’apertura delle finestre degli account sul tablet. Autenticazione e trasferimenti cloud richiedevano prove separate.
 
-La prima build Mac ha superato tutte le 12 suite automatiche CTest (34,47 secondi). Le correzioni successive normalizzano i binding booleani del dialogo cloud e lo collegano all’overlay della finestra, impedendo al Loader senza dimensioni di nasconderlo. Le nuove regressioni coprono account iniziale vuoto e percorso reale Main/impostazioni/Loader. I pacchetti Mac e Paper Pro ricompilati hanno superato i test interessati e i controlli d’avvio rafforzati; l’installazione nativa corretta sul Paper Pro si avvia senza gli avvisi. Il 18 novembre 2026 l’utente ha confermato che appaiono tutte le finestre Google Drive, Dropbox e OneDrive. Questo non verifica accesso o trasferimenti, che richiedono ancora registrazioni OAuth ufficiali e prove con account reali. Archivi e resoconti precedenti restano conservati come evidenza superata. Eseguibile e informazioni di versione dell’app Mac 0.2.0 installata restano invariati.
+Superati i test automatici su Mac. Le prove di regressione dell’interfaccia coprono lo stato senza account e l’apertura delle finestre dalle impostazioni del tablet.
 
 ## Sviluppo 0.2.6
 
@@ -75,23 +126,23 @@ La prima build Mac ha superato tutte le 12 suite automatiche CTest (34,47 second
 - Pannello Account e servizi per Obsidian, Apple/iCloud, Google Drive, Dropbox, OneDrive e Quaderno wireless, distinguendo funzioni dirette sul Paper Pro da browser e file gestiti sul Mac. Nessuna nuova autenticazione cloud OAuth o accesso diretto a iCloud dichiarati.
 - [Documentazione delle impostazioni](docs/IMPOSTAZIONI.md) in inglese e italiano, percorsi aggiornati e prove di regressione per preferenze e interazioni.
 
-Tutte le otto suite automatiche e gli avvii dei pacchetti sono superati su Mac e ARM; le prove UI/avvio interessate sono state ripetute con successo dopo la correzione finale. Installata e aperta tramite AppLoad sul Paper Pro, con rendering completo a 1620 × 2160, controllo rigoroso degli errori QML superato e conservazione dei cinque quaderni, delle cartelle e delle esportazioni. La telemetria nativa del Marker è stata verificata e ricontrollata dopo il riavvio. L’utente ha confermato **100% / Carica completa** nell’indicatore della penna e i tocchi corretti con dito/Marker breve su tabelle e grafici in **orizzontale a destra (90°)**. Le prove automatiche coprono i quattro angoli; la conferma fisica della rotazione riguarda i 90° a destra. L’orologio segue il fuso orario del sistema del dispositivo; Quaderno non offre un selettore del fuso. L’app Mac 0.2.0 installata rimane invariata. Consulta lo [stato delle verifiche](docs/IMPOSTAZIONI.md#ambito-delle-verifiche).
+Superate le suite Mac e ARM64 e le prove d’avvio dei pacchetti. Sul tablet sono stati verificati lo stato della batteria del Marker e i tocchi su tabelle e grafici in orizzontale a destra. Le prove automatiche coprono i quattro orientamenti. [Stato delle verifiche](docs/IMPOSTAZIONI.md#ambito-delle-verifiche)
 
 ## Sviluppo 0.2.5
 
 Modifica diretta dei grafici sul foglio: un tocco del dito, un clic del mouse o un tocco breve della penna/Marker apre l’editor del grafico. I grafici indipendenti aprono le proprie proprietà; quelli collegati a una tabella aprono impostazioni e scelta delle colonne sorgente, mantenendo il collegamento. Muovere o tenere appoggiata la penna continua la scrittura. Lazo, gomma, evidenziatore e strumenti per le forme conservano il comportamento esistente; Elementi rimane disponibile per spostare e modificare gli oggetti. Aprire un elemento dalla libreria continua a mostrare soltanto il foglio.
 
-Superate compilazioni e tutte le sei suite su Mac (85 casi funzionali e 12 verifiche di inizializzazione/chiusura) e ARM (82 e 12, con tre esclusioni previste per funzioni macOS), insieme agli avvii renderizzati desktop/tablet su entrambe le piattaforme. Passano tutte le otto nuove prove dei grafici e le regressioni della navigazione 0.2.4. Installata sul Paper Pro tramite USB il 18 novembre 2026, con verifica dell’avvio nativo, del binario in esecuzione tramite AppLoad, dei backup e dell’integrità dei quaderni. Lo stesso giorno l’utente ha confermato sul Paper Pro l’apertura dell’editor del grafico esistente provato con dito e tocco breve della penna, senza attivare Elementi. L’app Mac 0.2.0 è rimasta invariata. Consulta la [modifica diretta dei grafici](docs/LASSO.md#modificare-un-grafico-con-un-tocco).
+Superate la compilazione, le suite Mac e ARM64 e le prove di avvio con rendering. Sul Paper Pro dito e tocco breve del Marker hanno aperto l’editor del grafico. [Modifica diretta dei grafici](docs/LASSO.md#modificare-un-grafico-con-un-tocco)
 
 ## Sviluppo 0.2.4
 
-Aprire un elemento esistente da **Tabelle** o **Grafici** mostra la pagina di origine senza aprire automaticamente l’editor. Per modificare una tabella, tocca una cella; per un grafico, attiva **Elementi** e toccalo. Superate compilazioni e tutte le sei suite su Mac (77 casi funzionali e 12 verifiche di inizializzazione/chiusura) e ARM (74 e 12, con tre esclusioni previste per funzioni macOS), insieme agli avvii renderizzati desktop/tablet su entrambe le piattaforme. Tre nuove prove UI riproducono il difetto originale e passano con la correzione. Installata sul Paper Pro tramite USB il 18 novembre 2026, con verifica dell’avvio nativo, del binario installato, dei backup e dell’integrità dei quaderni. Lo stesso giorno l’utente ha confermato sul Paper Pro che aprire elementi esistenti da Tabelle e Grafici mostra il foglio senza aprire automaticamente l’editor. L’app Mac 0.2.0 è rimasta invariata. Consulta la [navigazione dalla libreria](docs/LASSO.md#aprire-tabelle-e-grafici-dalla-libreria).
+Aprire un elemento esistente da **Tabelle** o **Grafici** mostra la pagina di origine. Per modificare una tabella, tocca una cella. Per un grafico, attiva **Elementi** e toccalo. Superate le suite Mac e ARM64, gli avvii con rendering e l’apertura della pagina dalla libreria sul tablet. [Navigazione dalla libreria](docs/LASSO.md#aprire-tabelle-e-grafici-dalla-libreria)
 
 ## Sviluppo 0.2.3
 
 Correzione della modifica diretta delle celle dopo la conversione della scrittura. Il tocco su una cella apre l’editor sulla sua riga e colonna e mostra la formula originale modificabile. Dito e mouse aprono anche le celle vuote; un tocco breve della penna apre le celle compilate, mentre nelle celle vuote la penna continua a scrivere. Muovere o tenere appoggiata la penna continua la scrittura; anche la modalità Elementi apre la cella selezionata.
 
-Compilazioni Mac e SDK ARM riuscite, con sei suite superate per piattaforma: 74 casi funzionali su Mac e 71 su ARM, oltre a 12 verifiche di inizializzazione/chiusura per piattaforma e tre esclusioni previste su ARM per funzioni macOS. Superati gli avvii renderizzati su Mac nei layout desktop e tablet ed entrambi gli avvii con l’SDK ARM. Installata sul Paper Pro tramite USB il 18 novembre 2026, con verifica dell’avvio nativo, del binario in esecuzione tramite AppLoad, dei backup e dell’integrità dei quaderni. Lo stesso giorno l’utente ha confermato tocchi con dito e penna, modifica e ricalcolo delle formule nel caso di prova fisico **QA Celle 0.2.2**. L’app Mac 0.2.0 è rimasta invariata. Consulta [modifica delle celle e stato della verifica](docs/LASSO.md#modificare-una-cella-dopo-la-conversione).
+Superate la compilazione, le suite Mac e ARM64 e le prove di avvio con rendering. Sul tablet sono stati verificati i tocchi con dito e Marker, la modifica delle celle e il ricalcolo delle formule. [Modifica delle celle e stato della verifica](docs/LASSO.md#modificare-una-cella-dopo-la-conversione)
 
 ## Sviluppo 0.2.2
 

@@ -42,15 +42,14 @@ ApplicationWindow {
     onOrientationBusyChanged: if (!orientationBusy) Qt.callLater(window.applyPreferredOrientation)
     onWidthChanged: Qt.callLater(window.syncOrientationOverlay)
     onHeightChanged: Qt.callLater(window.syncOrientationOverlay)
-    onEditingChanged: { if (!editing) placingBookNote = false; Qt.callLater(window.applyPreferredOrientation) }
-    onShowingSettingsChanged: { if (showingSettings) placingBookNote = false; Qt.callLater(window.applyPreferredOrientation) }
+    onEditingChanged: { if (!editing) bookAnchorKind = ""; Qt.callLater(window.applyPreferredOrientation) }
+    onShowingSettingsChanged: { if (showingSettings) bookAnchorKind = ""; Qt.callLater(window.applyPreferredOrientation) }
 
     readonly property real uiScale: (tabletMode ? Math.max(1, Math.min(width, height) / 790) : 1) * tabletPreferences.interfaceScale / 100
     readonly property real gutter: (logicalWidth < 480 * uiScale ? 12 : 24) * uiScale
     readonly property real line: Math.max(1, Math.round(uiScale))
     readonly property bool wideLibrary: logicalWidth >= 690 * uiScale
     readonly property bool compactLibraryActions: logicalWidth < 890 * uiScale
-    readonly property bool stackedInkToolbar: logicalWidth < 440 * uiScale
     readonly property color ink: tabletPreferences.highContrast ? "#000000" : "#1c1c1e"
     readonly property color muted: tabletPreferences.highContrast ? "#202020" : "#515159"
     readonly property color border: tabletPreferences.highContrast ? "#606060" : "#d1d1d6"
@@ -70,10 +69,11 @@ ApplicationWindow {
         || csvOpenPicker.visible || appleBooksDialog.visible || markdownEditor.visible || imagePicker.visible
         || insertLibraryItemDialog.visible || tableCsvSavePicker.visible || imageProperties.visible || documentDropArea.dialogOpen
         || quickControls.visible || readingPreferencesDialog.visible || cloudImportDialog.visible || cloudUploadPicker.visible
+        || mixedPageDialog.visible
         || Boolean(cloudDialogLoader.item?.visible)
-    readonly property bool editorPopupOpen: existingEditorPopupOpen || workspaceTools.dialogOpen || bookNoteDialog.visible
+    readonly property bool editorPopupOpen: existingEditorPopupOpen || workspaceTools.dialogOpen || bookNoteDialog.visible || bookLinkDialog.visible
     readonly property bool wirelessEditorBusy: inkPage.drawing || selectionOverlay.active || editingItems
-        || placingBookNote || bookNoteDialog.dirty || (editorPopupOpen && !wirelessDialog.visible)
+        || bookAnchorKind.length > 0 || bookNoteDialog.dirty || (editorPopupOpen && !wirelessDialog.visible)
     onWirelessEditorBusyChanged: wireless.transfer.setEditorBusy(wirelessEditorBusy)
     readonly property bool fastPanelRefresh: tabletPreferences.refreshProfile === "fast" || (tabletPreferences.refreshProfile !== "clean"
         && (pinLock.locked || !editing || showingSettings || editorPopupOpen
@@ -151,8 +151,12 @@ ApplicationWindow {
     }
     property string selectionMessage: ""
     property string selectedPageItem: ""
-    property bool placingBookNote: false
-    property string bookNotePlacementContext: ""
+    property string bookAnchorKind: ""
+    property string bookAnchorContext: ""
+    readonly property bool placingBookNote: bookAnchorKind === "note"
+    property var bookLinkReturn: null
+    property string linkedPageItem: ""
+    property string editorToolContext: ""
     property var newLibraryItemBook: null
     property string importedBookId: ""
     property string penColor: "#222622"
@@ -169,7 +173,9 @@ ApplicationWindow {
         { id: "rectangle", label: qsTr("Rettangolo"), width: 2.5 },
         { id: "ellipse", label: qsTr("Ellisse"), width: 2.5 }
     ]
-    readonly property var selectedTool: penToolsModel.find(tool => tool.id === penTool)
+    readonly property var selectedTool: penToolsModel.find(tool => tool.id === penTool) || penToolsModel[0]
+    readonly property bool pointTool: penTool === "read" || penTool === "select"
+    onEditorWorkspaceChanged: Qt.callLater(window.adaptToolsToWorkspace)
 
     onClosing: close => {
         if (bookNoteDialog.dirty) {
@@ -292,6 +298,7 @@ ApplicationWindow {
 
     function showBook(id: string) {
         if (notebook.openBook(id)) {
+            bookLinkReturn = null
             selectEditorWorkspace("")
             showCurrentBook()
         }
@@ -301,6 +308,11 @@ ApplicationWindow {
         const item = notebook.openLibraryItem(entry.bookId, entry.pageId, entry.itemId)
         if (!item.id && !item.workspace)
             return
+        bookLinkReturn = null
+        showLibraryObject(item)
+    }
+
+    function showLibraryObject(item: var) {
         selectEditorWorkspace(({chart: "charts", table: "tables", diagram: "diagrams"})[item.type] || "")
         showCurrentBook()
     }
@@ -314,6 +326,7 @@ ApplicationWindow {
         settingsView.closeDialogs()
         showingSettings = false
         editing = true
+        adaptToolsToWorkspace()
         restoreReadingPreferences()
         syncAutomation.bookOpened(notebook.bookId)
         pageView.forceActiveFocus()
@@ -322,6 +335,15 @@ ApplicationWindow {
     function selectEditorWorkspace(workspace: string) {
         editorWorkspaceBookId = notebook.bookId
         editorWorkspaceOverride = workspace
+    }
+
+    function adaptToolsToWorkspace() {
+        if (!editing) return
+        const key = notebook.bookId + "/" + editorWorkspace
+        if (editorToolContext === key) return
+        editorToolContext = key
+        selectTool(editorWorkspace === "books" ? "read"
+            : editorWorkspace === "charts" || editorWorkspace === "tables" ? "select" : "pen")
     }
 
     function canImportOnSheet(key: string): bool {
@@ -335,8 +357,19 @@ ApplicationWindow {
         const item = itemId.length ? notebook.pageItems.find(entry => entry.id === itemId) : null
         if (itemId.length && !item) return
         switch (action) {
-        case "highlighter": case "underline": selectTool(action); break
+        case "highlighter": case "underline":
+            selectTool(penTool === action && editorWorkspace === "books" ? "read" : action)
+            break
+        case "read": case "eraser": selectTool(action); break
+        case "mixedPage":
+            if (tabletMode) mixedPageDialog.openForPage()
+            break
         case "bookNote": window.startBookNote(); break
+        case "bookLink": beginBookAnchor("link"); break
+        case "linkedEdit":
+            if (item && item.id === linkedPageItem)
+                editPageItem(item.type, item)
+            break
         case "annotatedPages":
             pageOverview.open()
             pageOverview.pageFilter = "annotated"
@@ -352,6 +385,7 @@ ApplicationWindow {
         case "library": insertLibraryItemDialog.begin(); break
         case "chartEdit": if (item && item.type === "chart") editPageItem("chart", item); break
         case "newChart": chartDialog.openDraft(""); break
+        case "chartSources": tableChartDialog.openSources("", false); break
         case "chartFromTable": if (item && item.type === "table") tableChartDialog.openFor(item, null); break
         case "chartCsv":
             if (item && item.type === "chart") {
@@ -361,6 +395,7 @@ ApplicationWindow {
             break
         case "tableEdit": if (item && item.type === "table") editPageItem("table", item); break
         case "newTable": editPageItem("table", null); break
+        case "tableInk": case "chartInk": selectTool(penTool === "pen" ? "select" : "pen"); break
         case "importCsv":
             csvOpenPicker.begin(true)
             break
@@ -372,6 +407,30 @@ ApplicationWindow {
         case "diagramEdit": if (item && item.type === "diagram") editPageItem("diagram", item); break
         case "diagramImport":
             diagramOpenPicker.begin(true)
+            break
+        case "diagramExport":
+            if (item && item.type === "diagram") {
+                diagramSavePicker.draft = item
+                diagramSavePicker.selectedFile = diagramExport.suggestedFile(notebook.title)
+                diagramSavePicker.open()
+            }
+            break
+        case "penTools": penTools.open(); break
+        case "lasso": setLasso(!lassoActive); break
+        case "layers": pageLayers.open(); break
+        case "undo": selectionOverlay.clear(); notebook.undo(); break
+        case "redo": selectionOverlay.clear(); notebook.redo(); break
+        case "fullPage":
+            editingItems = false
+            lassoActive = false
+            setFullPage(true)
+            break
+        case "elements":
+            bookAnchorKind = ""
+            inkPage.cancelDrawing()
+            lassoActive = false
+            editingItems = !editingItems
+            selectedPageItem = ""
             break
         }
     }
@@ -408,7 +467,8 @@ ApplicationWindow {
     }
 
     function selectTool(tool: string) {
-        placingBookNote = false
+        bookAnchorKind = ""
+        linkedPageItem = ""
         inkPage.cancelDrawing()
         selectionOverlay.clear()
         penTool = tool
@@ -422,6 +482,8 @@ ApplicationWindow {
         selectionOverlay.clear()
         settingsView.closeDialogs()
         editing = false
+        editorToolContext = ""
+        bookLinkReturn = null
         fullPage = false
         editingItems = false
         lassoActive = false
@@ -437,6 +499,8 @@ ApplicationWindow {
         selectionOverlay.clear()
         librarySearch.active = false
         editing = false
+        editorToolContext = ""
+        bookLinkReturn = null
         fullPage = false
         showingSettings = true
         settingsView.open()
@@ -492,6 +556,8 @@ ApplicationWindow {
         selectedPageItem = item && item.id ? item.id : ""
         if (type === "note") {
             bookNoteDialog.openFor(item, Qt.point(item.x, item.y))
+        } else if (type === "link") {
+            bookLinkDialog.openExisting(item)
         } else if (type === "image") {
             imageProperties.item = item
             imageProperties.open()
@@ -509,23 +575,86 @@ ApplicationWindow {
     function startBookNote() {
         if (!editing || showingSettings || pinLock.locked || standby.sleeping) return
         if (bookNoteDialog.hasDraft && bookNoteDialog.dirty) { bookNoteDialog.resume(); return }
-        if (!editing || showingSettings || pinLock.locked || standby.sleeping || editorPopupOpen || !notebook.canWriteLayer) return
+        beginBookAnchor("note")
+    }
+
+    function beginBookAnchor(kind: string) {
+        if (!editing || showingSettings || pinLock.locked || standby.sleeping || editorPopupOpen || !notebook.canWriteLayer)
+            return
+        if (bookAnchorKind === kind) {
+            bookAnchorKind = ""
+            return
+        }
         inkPage.cancelDrawing()
         selectionOverlay.clear()
         editingItems = false; lassoActive = false
-        bookNotePlacementContext = notebook.bookId + "/" + notebook.pageId
-        placingBookNote = true
+        bookAnchorContext = notebook.bookId + "/" + notebook.pageId
+        bookAnchorKind = kind
     }
+
     function placeBookNote(point: point) {
-        if (!placingBookNote || bookNotePlacementContext !== notebook.bookId + "/" + notebook.pageId
-            || pinLock.locked || standby.sleeping || !notebook.canWriteLayer) return
-        placingBookNote = false
-        bookNoteDialog.openFor(null, point)
+        if (placingBookNote) placeBookAnchor(point)
     }
+
+    function placeBookAnchor(point: point) {
+        if (!bookAnchorKind || bookAnchorContext !== notebook.bookId + "/" + notebook.pageId
+            || pinLock.locked || standby.sleeping || !notebook.canWriteLayer) return
+        const kind = bookAnchorKind
+        bookAnchorKind = ""
+        if (kind === "link") bookLinkDialog.openAt(point)
+        else bookNoteDialog.openFor(null, point)
+    }
+
     function editBookNote(id: string) {
-        if (pinLock.locked || standby.sleeping || editorPopupOpen || !notebook.canWriteLayer) return
-        const item = notebook.pageItems.find(value => value.type === "note" && value.id === id)
-        if (item) editPageItem("note", item)
+        if (pinLock.locked || standby.sleeping || editorPopupOpen) return
+        const item = notebook.pageItems.find(value => value.id === id)
+        if (item?.type === "link") openBookLink(id, false)
+        else if (item?.type === "note" && notebook.canWriteLayer) editPageItem("note", item)
+    }
+
+    function openBookLink(id: string, editOriginal: bool) {
+        if (!editing || showingSettings || pinLock.locked || standby.sleeping || notebook.importing || editorPopupOpen) return
+        const source = bookLinkReturn || {bookId: notebook.bookId, pageId: notebook.pageId,
+            workspace: editorWorkspace, fullPage: fullPage}
+        const item = notebook.openPageLink(id)
+        if (!item.id) return
+        bookLinkReturn = source
+        showLibraryObject(item)
+        linkedPageItem = item.id
+        setFullPage(false)
+        if (editOriginal)
+            editPageItem(item.type, item)
+    }
+
+    function returnToBookLink() {
+        const source = bookLinkReturn
+        if (!source || pinLock.locked || standby.sleeping || editorPopupOpen) return
+        bookLinkReturn = null
+        linkedPageItem = ""
+        if (notebook.openBook(source.bookId)) {
+            notebook.openPage(source.pageId)
+            selectEditorWorkspace(source.workspace)
+            showCurrentBook()
+            setFullPage(source.fullPage)
+        }
+    }
+
+    function handlePageTap(point: point) {
+        if (bookAnchorKind) {
+            placeBookAnchor(Qt.point(point.x / inkPage.width, point.y / inkPage.height))
+            return
+        }
+        const noteId = inkPage.noteItemAt(point)
+        if (noteId.length) { editBookNote(noteId); return }
+        if (penTool === "read" || (!pointTool && !["pen", "pencil", "marker"].includes(penTool))) return
+        const cell = inkPage.tableCellAt(point)
+        if (cell.id) { editTableCell(cell.id, cell.row, cell.column); return }
+        const chartId = inkPage.chartItemAt(point)
+        if (chartId.length) { editPageChart(chartId); return }
+        const diagramId = inkPage.diagramItemAt(point)
+        if (diagramId.length) { editPageDiagram(diagramId); return }
+        const textId = inkPage.textItemAt(point)
+        if (textId.length) editPageText(textId)
     }
     function resumeBookNote() {
         if (!pinLock.locked && !standby.sleeping && bookNoteDialog.suspended) bookNoteDialog.resume()
@@ -628,7 +757,7 @@ ApplicationWindow {
     }
 
     function setLasso(active: bool) {
-        placingBookNote = false
+        bookAnchorKind = ""
         inkPage.cancelDrawing()
         editingItems = false
         selectedPageItem = ""
@@ -648,8 +777,10 @@ ApplicationWindow {
         lassoActive = false
         selectionOverlay.begin(selection)
         lassoOperation = "replace"
-        if (tabletMode && editorWorkspace !== "diagrams" && handwriting.available && selectionOverlay.hasHandwriting) {
-            if (tabletPreferences.lassoInsertTarget === "cells" && notebook.pageItems.some(item => item.type === "table"))
+        if (tabletMode && editorWorkspace !== "diagrams" && editorWorkspace !== "charts"
+            && handwriting.available && selectionOverlay.hasHandwriting) {
+            if ((editorWorkspace === "tables" || tabletPreferences.lassoInsertTarget === "cells")
+                && notebook.pageItems.some(item => item.type === "table"))
                 tableHandwritingDialog.openFor(selection)
             else handwriting.recognize(selection.strokes, recognitionLanguage)
         }
@@ -708,8 +839,8 @@ ApplicationWindow {
                  && !window.pinLock.locked && !window.standby.sleeping && !inkPage.drawing
                  && !window.editorPopupOpen && !selectionOverlay.previewTranscript && !settingsView.dialogOpen && !organizer.dialogOpen
         onActivated: {
-            if (window.placingBookNote) {
-                window.placingBookNote = false
+            if (window.bookAnchorKind) {
+                window.bookAnchorKind = ""
             } else if (selectionOverlay.active) {
                 selectionOverlay.clear()
             } else if (librarySearch.active) {
@@ -721,6 +852,8 @@ ApplicationWindow {
                 window.setLasso(false)
             } else if (window.editingItems) {
                 window.editingItems = false
+            } else if (window.bookLinkReturn) {
+                window.returnToBookLink()
             } else {
                 window.showLibrary()
             }
@@ -753,8 +886,6 @@ ApplicationWindow {
         onActivated: window.fitCanvasToView()
     }
 
-    ButtonGroup { id: penColors }
-
     UsbTransfer { id: usbTransfer }
 
     Handwriting {
@@ -769,7 +900,8 @@ ApplicationWindow {
     }
 
     Binding { target: window.standby; property: "drawing"; value: inkPage.drawing }
-    Binding { target: window.standby; property: "allowed"; value: !window.existingEditorPopupOpen && !window.notebook.importing && !handwriting.busy }
+    Binding { target: window.standby; property: "allowed"; value: !window.existingEditorPopupOpen && !bookLinkDialog.visible
+        && !window.notebook.importing && !handwriting.busy }
     Binding { target: window.standby; property: "idleMinutes"; value: tabletPreferences.idleMinutes }
     Binding { target: window.standby; property: "keepAwakeWhileCharging"; value: tabletPreferences.keepAwakeWhileCharging }
     Timer {
@@ -794,8 +926,10 @@ ApplicationWindow {
             Qt.callLater(window.applyPreferredOrientation)
             if (!window.standby.sleeping) Qt.callLater(window.resumeBookNote)
             if (window.standby.sleeping) {
-                window.placingBookNote = false
+                window.bookAnchorKind = ""
                 bookNoteDialog.suspend()
+                bookLinkDialog.close()
+                mixedPageDialog.dismiss()
                 inkPage.cancelDrawing()
                 tableHandwritingDialog.clearPrivateState()
                 diagramHandwritingDialog.clearPrivateState()
@@ -816,8 +950,10 @@ ApplicationWindow {
             Qt.callLater(window.applyPreferredOrientation)
             if (!window.pinLock.locked) Qt.callLater(window.resumeBookNote)
             if (window.pinLock.locked) {
-                window.placingBookNote = false
+                window.bookAnchorKind = ""
                 bookNoteDialog.suspend()
+                bookLinkDialog.close()
+                mixedPageDialog.dismiss()
                 inkPage.cancelDrawing()
                 librarySearch.active = false
                 nameDialog.close()
@@ -902,12 +1038,14 @@ ApplicationWindow {
                 spacing: 4 * window.uiScale
 
                 TopButton {
-                    text: qsTr("Libreria")
+                    objectName: "editorBackButton"
+                    text: !window.bookLinkReturn ? qsTr("Libreria")
+                        : window.bookLinkReturn.workspace === "books" ? qsTr("Torna al libro") : qsTr("Torna alla pagina")
                     visible: window.editing || window.showingSettings
                     iconName: "left"
                     iconOnly: window.logicalWidth < 530 * window.uiScale
                     quiet: true
-                    onClicked: window.showLibrary()
+                    onClicked: if (window.bookLinkReturn) window.returnToBookLink(); else window.showLibrary()
                 }
 
                 InkLabel {
@@ -959,7 +1097,7 @@ ApplicationWindow {
                 }
 
                 TopButton {
-                    visible: !window.showingSettings
+                    visible: !window.showingSettings && (!window.editing || window.editorWorkspace === "writing")
                     text: qsTr("Markdown e Obsidian")
                     iconName: "text"
                     iconOnly: true
@@ -971,6 +1109,7 @@ ApplicationWindow {
 
                 TopButton {
                     visible: !window.showingSettings && window.wireless.available
+                        && (!window.editing || window.editorWorkspace !== "books" || window.hasResumeOffer)
                     text: qsTr("Sincronizzazione wireless")
                     iconName: "sync"
                     iconOnly: true
@@ -1586,26 +1725,37 @@ ApplicationWindow {
                 bookId: window.notebook.bookId
                 pageId: window.notebook.pageId
                 pageItems: window.notebook.pageItems
+                notebook: window.notebook
+                linkedItemId: window.linkedPageItem
                 active: window.editing && !window.showingSettings && !window.pinLock.locked && !window.standby.sleeping
                 actionsEnabled: !window.editorPopupOpen && !inkPage.drawing && !window.notebook.importing
                     && !settingsView.dialogOpen && !organizer.dialogOpen
                 canWrite: window.notebook.canWriteLayer
                 markdownBook: window.notebook.markdownBook
                 hasStrokes: window.notebook.strokes.length > 0
+                allowMixedPageImport: window.tabletMode
+                    && (window.notebook.hasPageBackground || hasStrokes || pageItems.length > 0)
                 diagramReviewAllowed: window.diagramReviewAllowed
                 autoDiagramRecognition: tabletPreferences.autoDiagramRecognition
                 penTool: window.penTool
-                syncStatus: window.bookSyncStatus
+                placing: window.bookAnchorKind
+                lassoActive: window.lassoActive
+                editingItems: window.editingItems
+                canUndo: !window.editingItems && window.notebook.canUndo
+                canRedo: !window.editingItems && window.notebook.canRedo
+                hasReaderControls: window.notebook.hasPageBackground
+                syncStatus: window.wireless.paired ? window.bookSyncStatus : ""
                 onActionRequested: (action, itemId) => window.workspaceAction(action, itemId)
+                onLinkedItemRequested: (linkId, editOriginal) => window.openBookLink(linkId, editOriginal)
                 onAutomaticRecognitionChanged: enabled => tabletPreferences.autoDiagramRecognition = enabled
             }
 
             Rectangle {
-                visible: !window.fullPage
+                visible: !window.fullPage && window.editorWorkspace === "writing"
                 Layout.fillWidth: true
                 Layout.leftMargin: 8 * window.uiScale
                 Layout.rightMargin: Layout.leftMargin
-                Layout.topMargin: 8 * window.uiScale
+                Layout.topMargin: 5 * window.uiScale
                 implicitHeight: 50 * window.uiScale
                 radius: 12 * window.uiScale
                 color: "white"
@@ -1613,244 +1763,84 @@ ApplicationWindow {
                 Flickable {
                     id: favoriteToolsViewport
                     anchors.fill: parent
-                    anchors.margins: 4 * window.uiScale
+                    anchors.margins: 3 * window.uiScale
                     contentWidth: Math.max(width, favoriteTools.implicitWidth)
                     contentHeight: height
                     clip: true
                     boundsBehavior: Flickable.StopAtBounds
                     flickableDirection: Flickable.HorizontalFlick
+
                     RowLayout {
-                    id: favoriteTools
-                    width: favoriteToolsViewport.contentWidth
-                    height: favoriteToolsViewport.height
-                    spacing: 2 * window.uiScale
-                    layoutDirection: tabletPreferences.handedness === "left" ? Qt.RightToLeft : Qt.LeftToRight
+                        id: favoriteTools
+                        width: favoriteToolsViewport.contentWidth
+                        height: favoriteToolsViewport.height
+                        spacing: 2 * window.uiScale
+                        layoutDirection: tabletPreferences.handedness === "left" ? Qt.RightToLeft : Qt.LeftToRight
 
-                    TopButton {
-                        visible: !window.notebook.hasPageBackground
-                        text: qsTr("Modello")
-                        iconName: "paper"
-                        quiet: true
-                        iconOnly: window.logicalWidth < 700 * window.uiScale
-                        onClicked: {
-                            inkPage.cancelDrawing()
-                            pageTemplateDialog.open()
-                        }
-                    }
-
-                    Repeater {
-                        model: tabletPreferences.toolbarActions
                         TopButton {
-                            required property string modelData
-                            objectName: "toolbarAction_" + modelData
-                            text: ({pen: qsTr("Penna"), highlighter: qsTr("Evidenziatore"), eraser: qsTr("Gomma"),
-                                lasso: qsTr("Lazo"), shapes: qsTr("Forme"), text: qsTr("Testo"),
-                                table: qsTr("Tabella"), chart: qsTr("Grafico")})[modelData] || modelData
-                            iconName: ({pen:"pen", highlighter:"pen", eraser:"eraser", lasso:"lasso", shapes:"diagram",
-                                text:"text", table:"table", chart:"chart"})[modelData]
+                            objectName: "writingPenTools"
+                            text: qsTr("Tratto")
+                            iconName: "pen"
+                            quiet: true
+                            iconOnly: window.logicalWidth < 560 * window.uiScale
+                            enabled: window.notebook.canWriteLayer
+                            onClicked: window.workspaceAction("penTools", "")
+                        }
+
+                        Repeater {
+                            model: tabletPreferences.toolbarActions
+                            TopButton {
+                                required property string modelData
+                                objectName: "toolbarAction_" + modelData
+                                text: ({pen: qsTr("Penna"), highlighter: qsTr("Evidenziatore"), eraser: qsTr("Gomma"),
+                                    lasso: qsTr("Lazo"), shapes: qsTr("Forme"), text: qsTr("Testo"),
+                                    table: qsTr("Tabella"), chart: qsTr("Grafico")})[modelData] || modelData
+                                iconName: ({pen:"pen", highlighter:"pen", eraser:"eraser", lasso:"lasso", shapes:"diagram",
+                                    text:"text", table:"table", chart:"chart"})[modelData]
+                                quiet: true
+                                iconOnly: true
+                                ToolTip.visible: hovered && !window.tabletMode
+                                ToolTip.text: text
+                                enabled: window.notebook.canWriteLayer || ["text", "table", "chart"].includes(modelData)
+                                filled: modelData === "lasso" ? window.lassoActive : modelData === window.penTool
+                                onClicked: {
+                                    if (modelData === "lasso") window.setLasso(!window.lassoActive)
+                                    else if (modelData === "shapes") window.workspaceAction("penTools", "")
+                                    else if (["text", "table", "chart"].includes(modelData)) window.editPageItem(modelData, null)
+                                    else window.selectTool(modelData)
+                                }
+                            }
+                        }
+
+                        Item { Layout.fillWidth: true }
+
+                        TopButton {
+                            visible: !window.notebook.hasPageBackground
+                            text: qsTr("Modello")
+                            iconName: "paper"
+                            quiet: true
+                            iconOnly: window.logicalWidth < 660 * window.uiScale
+                            onClicked: pageTemplateDialog.open()
+                        }
+
+                        TopButton {
+                            text: qsTr("Livelli")
+                            iconName: "layers"
+                            iconOnly: true
+                            quiet: true
+                            filled: !window.notebook.canWriteLayer
+                            onClicked: window.workspaceAction("layers", "")
+                        }
+
+                        TopButton {
+                            visible: window.inkClipboard.length > 0
+                            text: qsTr("Incolla")
+                            iconName: "paste"
                             quiet: true
                             iconOnly: true
-                            ToolTip.visible: hovered && !window.tabletMode
-                            ToolTip.text: text
-                            enabled: modelData === "text" || modelData === "table" || modelData === "chart" || window.notebook.canWriteLayer
-                            filled: modelData === "lasso" ? window.lassoActive : modelData === window.penTool
-                            onClicked: {
-                                if (modelData === "lasso") window.setLasso(!window.lassoActive)
-                                else if (modelData === "shapes") penTools.open()
-                                else if (["text", "table", "chart"].includes(modelData)) window.editPageItem(modelData, null)
-                                else window.selectTool(modelData)
-                            }
+                            enabled: window.notebook.canWriteLayer
+                            onClicked: window.openInkTransform(window.inkClipboard, true, [])
                         }
-                    }
-
-                    TopButton {
-                        visible: window.editorWorkspace !== "diagrams"
-                        text: qsTr("Diagramma")
-                        iconName: "diagram"
-                        quiet: true
-                        iconOnly: window.logicalWidth < 760 * window.uiScale
-                        ToolTip.visible: !window.tabletMode && hovered && iconOnly
-                        ToolTip.text: text
-                        onClicked: window.editPageItem("diagram", null)
-                    }
-
-                    TopButton {
-                        visible: window.editorWorkspace !== "writing"
-                        text: qsTr("Inserisci immagine")
-                        iconName: "image"
-                        iconOnly: true
-                        quiet: true
-                        onClicked: window.workspaceAction("image", "")
-                    }
-
-                    TopButton {
-                        visible: window.editorWorkspace !== "writing"
-                        text: qsTr("Inserisci dalla libreria")
-                        iconName: "layers"
-                        iconOnly: true
-                        quiet: true
-                        onClicked: window.workspaceAction("library", "")
-                    }
-
-                    Item { Layout.fillWidth: true }
-
-                    TopButton {
-                        text: qsTr("Incolla")
-                        iconName: "paste"
-                        quiet: true
-                        iconOnly: window.logicalWidth < 760 * window.uiScale
-                        visible: window.inkClipboard.length > 0
-                        enabled: window.notebook.canWriteLayer
-                        onClicked: window.openInkTransform(window.inkClipboard, true, [])
-                    }
-
-                    TopButton {
-                        visible: window.notebook.pageItems.length > 0
-                        text: window.editingItems ? qsTr("Scrivi") : qsTr("Elementi")
-                        iconName: "rename"
-                        quiet: true
-                        iconOnly: window.logicalWidth < 700 * window.uiScale
-                        filled: window.editingItems
-                        Accessible.name: window.editingItems ? qsTr("Torna alla scrittura") : qsTr("Modifica e sposta elementi")
-                        onClicked: {
-                            inkPage.cancelDrawing()
-                            window.lassoActive = false
-                            window.editingItems = !window.editingItems
-                            window.selectedPageItem = ""
-                        }
-                    }
-                }
-                }
-
-            }
-
-            Rectangle {
-                visible: !window.fullPage
-                Layout.fillWidth: true
-                Layout.leftMargin: 8 * window.uiScale
-                Layout.rightMargin: Layout.leftMargin
-                Layout.topMargin: 5 * window.uiScale
-                implicitHeight: (window.stackedInkToolbar ? 94 : 50) * window.uiScale
-                radius: 12 * window.uiScale
-                color: "white"
-
-                GridLayout {
-                    anchors.fill: parent
-                    anchors.margins: 3 * window.uiScale
-                    columns: window.stackedInkToolbar ? 4 : 9
-                    columnSpacing: 2 * window.uiScale
-                    rowSpacing: 0
-
-                    Repeater {
-                        model: [
-                            { name: qsTr("Nero"), ink: "#222622" },
-                            { name: qsTr("Blu"), ink: "#274f7c" },
-                            { name: qsTr("Rosso"), ink: "#9c3c38" }
-                        ]
-
-                        TopButton {
-                            id: swatch
-                            required property var modelData
-
-                            text: modelData.name
-                            iconOnly: window.logicalWidth < 680 * window.uiScale
-                            checkable: true
-                            checked: window.penColor === modelData.ink
-                            ButtonGroup.group: penColors
-                            leftPadding: (iconOnly ? 16 : 10) * uiScale
-                            rightPadding: leftPadding
-                            onClicked: {
-                                window.penColor = modelData.ink
-                                window.editingItems = false
-                                window.selectedPageItem = ""
-                            }
-
-                            contentItem: Row {
-                                spacing: 6 * swatch.uiScale
-
-                                Rectangle {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    width: 14 * swatch.uiScale
-                                    height: width
-                                    radius: width / 2
-                                    color: swatch.modelData.ink
-                                }
-
-                                Text {
-                                    visible: !swatch.iconOnly
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    text: swatch.text
-                                    font: swatch.font
-                                    color: window.ink
-                                }
-                            }
-
-                            background: Rectangle {
-                                color: swatch.down || swatch.checked ? window.accentLight
-                                    : swatch.hovered ? window.surface : "transparent"
-                                border.color: swatch.checked || swatch.activeFocus ? window.accent : window.border
-                                border.width: swatch.checked || swatch.activeFocus ? 2 * window.line : 0
-                                radius: 10 * swatch.uiScale
-                            }
-                        }
-                    }
-
-                    TopButton {
-                        text: window.selectedTool.label
-                        iconName: window.penTool === "eraser" ? "eraser" : "pen"
-                        iconOnly: window.logicalWidth < 600 * window.uiScale
-                        quiet: true
-                        filled: window.penTool === "eraser"
-                        Accessible.name: qsTr("Strumenti di scrittura, %1").arg(text)
-                        onClicked: {
-                            inkPage.cancelDrawing()
-                            penTools.open()
-                        }
-                    }
-
-                    Item { visible: !window.stackedInkToolbar; Layout.fillWidth: true }
-
-                    TopButton {
-                        text: qsTr("Pagina intera")
-                        iconName: "expand"
-                        iconOnly: true
-                        quiet: true
-                        onClicked: {
-                            inkPage.cancelDrawing()
-                            window.editingItems = false
-                            window.lassoActive = false
-                            window.setFullPage(true)
-                        }
-                    }
-
-                    TopButton {
-                        text: qsTr("Livelli")
-                        iconName: "layers"
-                        iconOnly: true
-                        quiet: true
-                        filled: !window.notebook.canWriteLayer && window.editing
-                        onClicked: {
-                            inkPage.cancelDrawing()
-                            pageLayers.open()
-                        }
-                    }
-
-                    TopButton {
-                        text: qsTr("Annulla")
-                        iconName: "undo"
-                        iconOnly: true
-                        quiet: true
-                        enabled: !window.editingItems && window.notebook.canUndo
-                        onClicked: window.notebook.undo()
-                    }
-
-                    TopButton {
-                        text: qsTr("Ripeti")
-                        iconName: "redo"
-                        iconOnly: true
-                        quiet: true
-                        enabled: !window.editingItems && window.notebook.canRedo
-                        onClicked: window.notebook.redo()
                     }
                 }
             }
@@ -1996,7 +1986,7 @@ ApplicationWindow {
                     enabled: tabletPreferences.gestureNavigationEnabled && window.editing && !window.showingSettings && !window.pinLock.locked
                         && !window.standby.sleeping && !window.editorPopupOpen && !window.lassoActive
                         && !settingsView.dialogOpen && !organizer.dialogOpen && !window.notebook.importing
-                        && !window.editingItems && !window.displayingSelection && !window.placingBookNote && !inkPage.drawing && !inkPage.touchBlocked
+                        && !window.editingItems && !window.displayingSelection && !window.bookAnchorKind && !inkPage.drawing && !inkPage.touchBlocked
                     onZoomRequested: value => {
                         if (window.notebook.hasPageBackground) window.readingZoom = value
                         else window.canvasZoom = value
@@ -2049,6 +2039,7 @@ ApplicationWindow {
                             !selectionOverlay.selectedItems.some(selected => selected.id === item.id)) : window.notebook.pageItems
                         editingItems: window.editingItems && !window.editorPopupOpen
                         selectedId: window.selectedPageItem
+                        linkedId: window.linkedPageItem
                         onEditRequested: item => window.editPageItem(item.type, item)
                         onEditCellRequested: (item, row, column) => window.editTableCell(item.id, row, column)
                         onMoveRequested: (id, x, y) => {
@@ -2064,50 +2055,24 @@ ApplicationWindow {
                         // Pen taps are resolved by InkItem together with stroke input,
                         // so a dot written in an empty cell remains handwriting.
                         acceptedDevices: PointerDevice.TouchScreen
-                        onTapped: eventPoint => {
-                            const point = inkPage.mapFromItem(null, eventPoint.scenePosition)
-                            if (window.placingBookNote) {
-                                window.placeBookNote(Qt.point(point.x / inkPage.width, point.y / inkPage.height))
-                                return
-                            }
-                            const noteId = inkPage.noteItemAt(point)
-                            if (noteId.length > 0) { window.editBookNote(noteId); return }
-                            if (!["pen", "pencil", "marker"].includes(window.penTool)) return
-                            const cell = inkPage.tableCellAt(point)
-                            if (cell.id) {
-                                window.editTableCell(cell.id, cell.row, cell.column)
-                                return
-                            }
-                            const id = inkPage.textItemAt(point)
-                            if (id.length > 0) {
-                                window.editPageText(id)
-                                return
-                            }
-                            const chartId = inkPage.chartItemAt(point)
-                            if (chartId.length > 0) {
-                                window.editPageChart(chartId)
-                                return
-                            }
-                            const diagramId = inkPage.diagramItemAt(point)
-                            if (diagramId.length > 0)
-                                window.editPageDiagram(diagramId)
-                        }
+                        onTapped: eventPoint => window.handlePageTap(inkPage.mapFromItem(null, eventPoint.scenePosition))
                     }
 
                     InkItem {
                         id: inkPage
                         objectName: "inkPage"
                         inputOverlay: window.contentItem
-                        pointPicking: window.placingBookNote
+                        pointPicking: Boolean(window.bookAnchorKind) || (window.pointTool && !window.lassoActive)
                         markerInkTarget: bookNoteDialog.markerTarget
                         anchors.fill: parent
                         anchors.margins: window.fullPage ? 0 : window.line
                         z: 1
                         enabled: window.editing && !window.editorPopupOpen && !window.editingItems
-                                 && !window.pinLock.locked && !window.standby.sleeping && !window.displayingSelection && window.notebook.canWriteLayer
+                                 && !window.pinLock.locked && !window.standby.sleeping && !window.displayingSelection
+                                 && (window.notebook.canWriteLayer || pointPicking)
                         acceptsMouse: !window.tabletMode
                         inkColor: window.penTool === "highlighter" ? "#f0bf32" : window.penColor
-                        inkTool: window.penTool
+                        inkTool: window.pointTool ? "pen" : window.penTool
                         smartShapes: window.smartShapesEnabled
                         pressureExponent: tabletPreferences.penPressureCurve === "light" ? 0.65 : tabletPreferences.penPressureCurve === "firm" ? 1.5 : 1
                         shapeTolerance: tabletPreferences.shapeTolerance === "strict" ? 0.65 : tabletPreferences.shapeTolerance === "relaxed" ? 1.35 : 1
@@ -2133,6 +2098,7 @@ ApplicationWindow {
                             window.lassoActive = false
                             window.selectionMessage = ""
                             window.selectedPageItem = ""
+                            window.linkedPageItem = ""
                             if (zoomBookId !== window.notebook.bookId) {
                                 zoomBookId = window.notebook.bookId
                                 window.canvasZoom = 1
@@ -2149,7 +2115,7 @@ ApplicationWindow {
                         onChartItemTapped: id => window.editPageChart(id)
                         onDiagramItemTapped: id => window.editPageDiagram(id)
                         onNoteItemTapped: id => window.editBookNote(id)
-                        onPagePointPicked: point => window.placeBookNote(point)
+                        onPagePointPicked: point => window.handlePageTap(Qt.point(point.x * width, point.y * height))
                         onStrokeCompleted: stroke => {
                             window.pinLock.recordActivity()
                             window.standby.recordActivity()
@@ -2272,14 +2238,19 @@ ApplicationWindow {
                         anchors.right: parent.right
                         anchors.margins: 8 * window.uiScale
                         z: 7
-                        visible: window.placingBookNote
+                        visible: window.bookAnchorKind.length > 0
                         height: notePlacementControls.implicitHeight + 12 * window.uiScale
                         color: "#fff2a6"; border.color: "#6a6041"; radius: 10 * window.uiScale
                         RowLayout {
                             id: notePlacementControls
                             anchors.fill: parent; anchors.margins: 6 * window.uiScale
-                            InkLabel { Layout.fillWidth: true; wrapMode: Text.Wrap; text: qsTr("Tocca il punto della pagina in cui aggiungere il post-it.") }
-                            TopButton { text: qsTr("Annulla"); onClicked: window.placingBookNote = false }
+                            InkLabel {
+                                Layout.fillWidth: true
+                                wrapMode: Text.Wrap
+                                text: window.bookAnchorKind === "link" ? qsTr("Tocca il punto in cui inserire il collegamento.")
+                                    : qsTr("Tocca il punto della pagina in cui aggiungere il post-it.")
+                            }
+                            TopButton { text: qsTr("Annulla"); onClicked: window.bookAnchorKind = "" }
                         }
                     }
 
@@ -2293,7 +2264,7 @@ ApplicationWindow {
                         z: 6
                         visible: !window.notebook.hasPageBackground && window.canvasZoom > 1.01
                             && !selectionOverlay.active && !window.editorPopupOpen
-                        enabled: !inkPage.drawing && !readingGestures.active && !window.placingBookNote
+                        enabled: !inkPage.drawing && !readingGestures.active && !window.bookAnchorKind
                         text: qsTr("%1%").arg(Math.round(window.canvasZoom * 100))
                         Accessible.name: qsTr("Adatta il foglio alla vista")
                         ToolTip.visible: !window.tabletMode && hovered
@@ -2400,7 +2371,7 @@ ApplicationWindow {
                     }
 
                     TopButton {
-                        visible: !window.fullPage
+                        visible: !window.fullPage && window.editorWorkspace !== "books"
                         text: qsTr("Nuova pagina")
                         iconName: "plus"
                         iconOnly: window.logicalWidth < 520 * window.uiScale
@@ -2619,6 +2590,16 @@ ApplicationWindow {
         notebook: window.notebook
         uiScale: window.uiScale
         tabletMode: window.tabletMode
+        onSaveRequested: chart => {
+            if (window.saveEditedItem(chart)) {
+                tableChartDialog.close()
+                if (chartDialog.visible) chartDialog.close()
+            } else {
+                tableChartDialog.errorText = window.notebook.error
+            }
+        }
+        onClosed: if (window.newLibraryItemBook?.type === "chart" && !chartDialog.visible)
+            window.newLibraryItemBook = null
         onDeleteRequested: id => {
             if (window.notebook.removePageItem(id)) {
                 window.selectedPageItem = ""
@@ -2846,6 +2827,7 @@ ApplicationWindow {
         showTouchKeyboard: window.showTouchKeyboard
         uiScale: window.uiScale
         tabletMode: window.tabletMode
+        onTableSourceRequested: title => tableChartDialog.openSources(title, !!window.newLibraryItemBook)
         onExportCsvRequested: csv => {
             csvSavePicker.csvData = csv
             csvSavePicker.open()
@@ -2963,14 +2945,14 @@ ApplicationWindow {
         }
         function onStrokesChanged() { window.diagramRecognitionDismissed = false; window.scheduleDiagramRecognition() }
         function onDocumentChanged() {
-            if (window.placingBookNote && window.bookNotePlacementContext !== window.notebook.bookId + "/" + window.notebook.pageId)
-                window.placingBookNote = false
+            if (window.bookAnchorKind && window.bookAnchorContext !== window.notebook.bookId + "/" + window.notebook.pageId)
+                window.bookAnchorKind = ""
             if (window.editorWorkspaceBookId !== window.notebook.bookId) window.selectEditorWorkspace("")
             window.updateDiagramRecognitionContext()
         }
         function onPageContentChanged() { window.scheduleDiagramRecognition() }
         function onLayersChanged() {
-            if (!window.notebook.canWriteLayer) window.placingBookNote = false
+            if (!window.notebook.canWriteLayer) window.bookAnchorKind = ""
             window.updateDiagramRecognitionContext()
             selectionOverlay.clear()
         }
@@ -3329,7 +3311,7 @@ ApplicationWindow {
 
     Dialog {
         id: penTools
-        title: qsTr("Strumenti di scrittura")
+        title: window.editorWorkspace === "diagrams" ? qsTr("Strumenti per lo schizzo") : qsTr("Strumenti di scrittura")
         anchors.centerIn: Overlay.overlay
         width: Math.min(440 * window.uiScale, window.logicalWidth - 24 * window.uiScale)
         padding: 16 * window.uiScale
@@ -3359,6 +3341,26 @@ ApplicationWindow {
 
             InkLabel {
                 text: window.penTool === "eraser" ? qsTr("Ampiezza della gomma") : qsTr("Spessore del tratto")
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 5 * window.uiScale
+                Repeater {
+                    model: [
+                        { name: qsTr("Nero"), ink: "#222622" },
+                        { name: qsTr("Blu"), ink: "#274f7c" },
+                        { name: qsTr("Rosso"), ink: "#9c3c38" }
+                    ]
+                    TopButton {
+                        required property var modelData
+                        Layout.fillWidth: true
+                        Layout.preferredWidth: 1
+                        text: modelData.name
+                        filled: window.penColor === modelData.ink
+                        onClicked: window.penColor = modelData.ink
+                    }
+                }
             }
 
             RowLayout {
@@ -3616,6 +3618,29 @@ ApplicationWindow {
         onActivity: { window.pinLock.recordActivity(); window.standby.recordActivity() }
         onDrawingChanged: window.standby.drawing = inkPage.drawing || drawing
         onApplicationCloseRequested: window.close()
+    }
+
+    LinkTargetDialog {
+        id: bookLinkDialog
+        notebook: window.notebook
+        uiScale: window.uiScale
+        logicalWidth: window.logicalWidth
+        tabletMode: window.tabletMode
+        onOpenRequested: linkId => window.openBookLink(linkId, false)
+    }
+
+    MixedPageDialog {
+        id: mixedPageDialog
+        notebook: window.notebook
+        uiScale: window.uiScale
+        tabletMode: window.tabletMode
+        showTouchKeyboard: window.showTouchKeyboard
+        recognitionLanguage: window.recognitionLanguage
+        onCreated: {
+            window.bookLinkReturn = null
+            window.selectEditorWorkspace("writing")
+            window.showCurrentBook()
+        }
     }
 
     DiagramHandwritingDialog {

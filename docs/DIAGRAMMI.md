@@ -12,7 +12,14 @@ Le verifiche precedenti riguardano il riconoscimento della 0.2.8: la prima insta
 
 Apri **Diagrammi** per creare un quaderno dedicato oppure trovare i diagrammi già presenti in altri quaderni. Un quaderno di diagrammi vuoto rimane accessibile anche prima della prima forma riconosciuta. Aprire una voce della libreria mostra la pagina; l’azione di modifica apre l’editor.
 
-Puoi disegnare con la penna sulla pagina oppure costruire il diagramma nell’editor. Sono disponibili processo, inizio/fine, decisione, dati e nota, con etichette e frecce modificabili. L’editor consente spostamento e ridimensionamento, selezione e lazo, duplicazione, griglia, allineamento, distribuzione, zoom, collegamenti diretti o ortogonali e annulla/ripristina della bozza.
+Nell’**editor della 0.2.14 in sviluppo**, apri **Forme e connettori** per costruire il diagramma. Su uno schermo ampio la palette e l’ispettore sono ai lati del foglio. Quando lo spazio è ridotto, sono sopra e sotto l’area di disegno.
+
+1. Tocca o trascina dalla palette un processo, un inizio/fine, una decisione, una forma per i dati o una nota. Trascina la forma sul foglio per spostarla e usa la maniglia di ridimensionamento.
+2. Trascina la maniglia del connettore dalla prima forma alla seconda, oppure scegli **Collega** e tocca in ordine le due forme.
+3. Seleziona una forma o una freccia per modificarne etichetta e proprietà nell’ispettore. Puoi cambiare il tipo di forma, duplicarla, invertire il verso della freccia o scegliere un percorso diretto od ortogonale.
+4. Usa il lazo e i comandi di disposizione per allineare e distribuire le forme. Griglia, zoom e panoramica aiutano a posizionarle. Usa Annulla e Ripristina nell’editor durante la modifica della bozza.
+
+Per lavorare a mano libera, disegna sul foglio e usa **Riconosci diagramma**. Dalla stessa barra puoi importare un file draw.io compatibile.
 
 Salvare nell’editor aggiorna l’oggetto diagramma. La cronologia della bozza nell’editor e Annulla sulla pagina sono meccanismi distinti.
 
@@ -67,7 +74,8 @@ I tratti non riconosciuti e i gruppi di testo esclusi o vuoti non vengono rimoss
 ## Utilizzare il diagramma nelle altre sezioni
 
 - **Scrittura:** copia il diagramma in un quaderno di scrittura come oggetto modificabile. L’esportazione Markdown con allegati include un’immagine e un file `.drawio`; il solo testo Markdown non può contenere la geometria modificabile di Quaderno.
-- **Libri, Grafici e Tabelle:** diagrammi e altri oggetti possono convivere sulla pagina. Copiare un oggetto crea una copia indipendente, non un collegamento che aggiorna automaticamente entrambi i documenti.
+- **Libri:** usa **Collega elemento** per aprire il diagramma originale da una pagina del libro e tornare al punto di partenza. Trasferisci a parte il quaderno del diagramma quando si trova in un quaderno diverso.
+- **Grafici e Tabelle:** diagrammi e altri oggetti possono convivere sulla pagina. Copiare un oggetto crea una copia indipendente, non un collegamento che aggiorna automaticamente entrambi i documenti.
 - **PDF:** l’esportazione della pagina disegna il diagramma insieme agli altri contenuti.
 - **draw.io:** importa diagrammi `.drawio`/XML supportati ed esporta file `.drawio` modificabili. Elementi esterni non supportati possono essere omessi o semplificati: controlla gli avvisi dell’importazione.
 - **Trasferimento e backup:** il documento portabile `.quaderno` e i flussi di trasferimento e backup dei quaderni conservano il modello modificabile. Non serve un nuovo servizio dedicato ai diagrammi.

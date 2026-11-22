@@ -100,7 +100,10 @@ case "$model" in *Ferrari*|*ferrari*|'reMarkable Paper Pro') ;; *) exit 43 ;; es
 }
 #endif
 
-UsbSsh::UsbSsh(bool onTablet, QObject *parent) : QObject(parent), m_onTablet(onTablet)
+UsbSsh::UsbSsh(bool onTablet, QObject *parent) : UsbSsh(onTablet, false, parent) {}
+
+UsbSsh::UsbSsh(bool onTablet, bool verifiedDevice, QObject *parent)
+    : QObject(parent), m_onTablet(onTablet), m_access(onTablet && verifiedDevice)
 {
     localUsbAddress();
     m_status = tr("Premi Verifica per controllare il servizio SSH.");

@@ -6,10 +6,10 @@ Quaderno gira su Mac e, in una sessione di prova, sul reMarkable Paper Pro. La b
 
 | Destinazione | Pacchetto | Requisito |
 | --- | --- | --- |
-| Mac | `Quaderno-macOS.zip` | Mac con Apple Silicon e macOS 27.2 o successivo per l’anteprima attuale. La funzione di trascrizione richiede macOS 27 anche nelle build dai sorgenti. |
+| Mac | `Quaderno-macOS.zip` | Mac con Apple silicon. Controlla la versione minima di macOS della tua build. La trascrizione offline richiede macOS 27 o successivo e il componente opzionale. |
 | reMarkable Paper Pro | `Quaderno-Paper-Pro-3.29.1.0.zip` | Modello `ferrari`, firmware 3.29.1.0 e modalità sviluppatore. |
 
-Se hai già il pacchetto della tua piattaforma, segui le istruzioni qui sotto. Per generarlo dai sorgenti, consulta la [guida di sviluppo e compilazione](SVILUPPO.md).
+L’anteprima 0.2.19 è distribuita come sorgente. I nomi dei pacchetti indicati qui corrispondono ai file prodotti seguendo la [guida di sviluppo e compilazione](SVILUPPO.md).
 
 ## macOS
 
@@ -44,7 +44,9 @@ Torna al terminale del Mac con `exit`.
 
 Estrai `Quaderno-Paper-Pro-3.29.1.0.zip` e apri il Terminale nella cartella estratta. Tieni `quaderno` e gli script nella stessa cartella.
 
-Per attivare la trascrizione sul tablet, tieni `quaderno-handwriting` e `quaderno-handwriting-it.dct` accanto a `quaderno`. L’installatore trasferisce e verifica entrambi i file quando sono presenti.
+Per attivare la trascrizione dei tratti della penna, tieni `quaderno-handwriting`, `quaderno-handwriting-it.dct` e `quaderno-handwriting-en.dct` accanto a `quaderno`. Quando il pacchetto include il componente, l’installatore lo trasferisce e verifica entrambi i dizionari.
+
+Se lo ZIP include il motore OCR per le pagine miste, estrai tutto il pacchetto. L’installatore trasferisce e verifica il motore, il modello, il dizionario dei caratteri e ONNX Runtime. La verifica di compatibilità segnala il riconoscimento locale nelle immagini quando il motore si carica correttamente. [Compilazione e pacchetto opzionale](SVILUPPO.md#paper-pro)
 
 ```sh
 sh install-paper-pro.sh
@@ -109,7 +111,7 @@ Dalla cartella del pacchetto sul Mac esegui il comando seguente.
 sh install-paper-pro.sh --appload
 ```
 
-Sul tablet, apri **AppLoad**, premi **Reload** se il menu era già aperto e scegli **Quaderno**. Si avvia la stessa sessione temporanea usata via USB. La voce funziona mentre XOVI è attivo. Se usi XOVI in modalità temporanea, riattivalo dopo il riavvio del tablet.
+Sul tablet, apri **AppLoad**, premi **Reload** se il menu era già aperto e scegli **Quaderno**. La sessione avviata da AppLoad resta aperta finché esci da Quaderno o arresti il suo servizio. La voce funziona mentre XOVI è attivo. Se usi XOVI in modalità temporanea, riattivalo dopo il riavvio del tablet.
 
 Per togliere la voce usa il comando di rimozione stampato dall’installer. Poi premi **Reload** in AppLoad. La rimozione conserva il binario installato e i quaderni.
 

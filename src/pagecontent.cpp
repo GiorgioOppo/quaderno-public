@@ -22,6 +22,7 @@
 #include <QRegularExpression>
 #include <QSet>
 #include <QUrl>
+#include <QUuid>
 
 #include <algorithm>
 #include <array>
@@ -153,6 +154,33 @@ bool readDiagramId(const QVariant &value, QString &id)
 bool readDiagramLabel(const QVariant &value, qsizetype limit, QString &label)
 {
     return readText(value, limit, label) && label.isValidUtf16() && !label.contains(QChar::Null);
+}
+
+QVariantMap validatedLink(const QVariantMap &item, QVariantMap validated)
+{
+    QString book;
+    QString page;
+    QString target;
+    QString type;
+    const auto readReference = [](const QVariant &value, QString &id) {
+        return readText(value, 128, id) && !id.trimmed().isEmpty() && id.isValidUtf16() && !id.contains(QChar::Null);
+    };
+    const auto bookKey = QStringLiteral("targetBookId");
+    const auto pageKey = QStringLiteral("targetPageId");
+    const auto targetKey = QStringLiteral("targetItemId");
+    const auto typeKey = QStringLiteral("targetType");
+    if (!readReference(item.value(bookKey), book) || !readText(item.value(pageKey), 36, page)
+        || !readReference(item.value(targetKey), target) || !readText(item.value(typeKey), 7, type)
+        || (type != QStringLiteral("table") && type != QStringLiteral("chart") && type != QStringLiteral("diagram")))
+        return {};
+    const auto pageUuid = QUuid::fromString(page);
+    if (pageUuid.isNull() || pageUuid.toString(QUuid::WithoutBraces) != page)
+        return {};
+    validated.insert(bookKey, book);
+    validated.insert(pageKey, page);
+    validated.insert(targetKey, target);
+    validated.insert(typeKey, type);
+    return validated;
 }
 
 QVariantMap validatedNote(const QVariantMap &item, QVariantMap validated)
@@ -695,6 +723,8 @@ QVariantMap imageFromFile(const QUrl &file, QString &error)
 qreal preferredItemHeight(const QVariantMap &item, qreal width)
 {
     const QString type = item.value(QStringLiteral("type")).toString();
+    if (type == QStringLiteral("link"))
+        return 0.04125;
     if (type == QStringLiteral("note"))
         return 0.0375;
     if (type == QStringLiteral("chart"))
@@ -801,6 +831,8 @@ QVariantMap validatedItem(const QVariantMap &item)
         return validatedDiagram(item, std::move(validated));
     if (type == QStringLiteral("note"))
         return validatedNote(item, std::move(validated));
+    if (type == QStringLiteral("link"))
+        return validatedLink(item, std::move(validated));
     if (type == QStringLiteral("image")) {
         if (storedImage(item).isNull())
             return {};
@@ -1088,6 +1120,28 @@ void paintItems(QPainter &painter, QSizeF pageSize, const QVariantList &items)
         const QString type = item.value(QStringLiteral("type")).toString();
         if (type == QStringLiteral("note")) {
             paintNoteMarker(painter, rect, item, ++noteNumber);
+            continue;
+        }
+        if (type == QStringLiteral("link")) {
+            const qreal inset = qMin(rect.width(), rect.height());
+            painter.setRenderHint(QPainter::Antialiasing);
+            painter.setBrush(QColor("#e9f0fa"));
+            painter.setPen(QPen(QColor("#155cc2"), qMax<qreal>(0.5, inset * .045)));
+            painter.drawRoundedRect(rect, inset * .16, inset * .16);
+            const qreal iconSize = inset * .76;
+            painter.translate(rect.center() - QPointF(iconSize / 2, iconSize / 2));
+            painter.scale(iconSize / 24, iconSize / 24);
+            painter.setBrush(Qt::NoBrush);
+            painter.setPen(QPen(QColor("#155cc2"), 1.8, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+            QPainterPath icon;
+            icon.moveTo(10, 9); icon.lineTo(13, 6);
+            icon.cubicTo(17, 2, 22, 7, 18, 11);
+            icon.lineTo(15, 14);
+            icon.moveTo(14, 15); icon.lineTo(11, 18);
+            icon.cubicTo(7, 22, 2, 17, 6, 13);
+            icon.lineTo(9, 10);
+            icon.moveTo(9, 15); icon.lineTo(15, 9);
+            painter.drawPath(icon);
             continue;
         }
         if (type == QStringLiteral("diagram")) {

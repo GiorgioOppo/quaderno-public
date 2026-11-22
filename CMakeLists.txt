@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21.1)
-project(Quaderno VERSION 0.2.12 LANGUAGES CXX)
+project(Quaderno VERSION 0.2.19 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -22,7 +22,7 @@ set(qml_sources qml/Main.qml qml/PaperButton.qml qml/PaperIcon.qml qml/SettingsV
     qml/InkSelection.qml qml/SelectionOverlay.qml qml/UsbTransferDialog.qml qml/UsbImportDialog.qml qml/TableChartDialog.qml
     qml/WirelessSyncDialog.qml qml/DocumentDropArea.qml qml/PdfDragHandle.qml qml/MarkdownDialog.qml qml/MarkdownEditor.qml
     qml/ObsidianSyncDialog.qml qml/DiagramEditor.qml qml/DiagramHandwritingDialog.qml qml/DiagramArrangement.js
-    qml/WorkspaceTools.qml qml/BookNoteDialog.qml)
+    qml/WorkspaceTools.qml qml/BookNoteDialog.qml qml/LinkTargetDialog.qml qml/MixedPageDialog.qml)
 get_target_property(qt_disabled_gui_features Qt6::Gui QT_DISABLED_PUBLIC_FEATURES)
 foreach(qml_file IN LISTS qml_sources)
     get_filename_component(qml_name "${qml_file}" NAME)
@@ -52,6 +52,11 @@ qt_add_qml_module(quaderno
         src/chartitem.cpp src/chartitem.h
         src/diagramitem.cpp src/diagramitem.h
         src/diagramrecognizer.cpp src/diagramrecognizer.h
+        src/mixedpageanalyzer.cpp src/mixedpageanalyzer.h
+        src/mixedpagegeometry.cpp src/mixedpagegeometry.h
+        src/mixedpageregions.cpp src/mixedpageregions.h
+        src/mixedpagetable.cpp src/mixedpagetable.h
+        src/mixedpagetextink.cpp src/mixedpagetextink.h
         src/diagramexport.cpp src/diagramexport.h src/diagramimport.cpp
         src/chartrecognizer.cpp src/chartrecognizer.h
         src/handwriting.cpp src/handwriting.h
@@ -77,6 +82,7 @@ qt_add_qml_module(quaderno
         src/pinlock.cpp src/pinlock.h
         src/paperprostandby.cpp src/paperprostandby.h
         src/usbssh.cpp src/usbssh.h
+        src/paperprosshaccess.cpp src/paperprosshaccess.h
         src/usbtransfer.cpp src/usbtransfer.h
         src/wifisettings.cpp src/wifisettings.h
         src/bluetoothsettings.cpp src/bluetoothsettings.h
@@ -86,6 +92,7 @@ qt_add_qml_module(quaderno
         src/syncchannel.cpp src/syncchannel.h
         src/blepipe.cpp src/blepipe.h
         src/wifisynclink.cpp src/wifisynclink.h
+        src/syncrendezvous.cpp src/syncrendezvous.h
         src/macdocumentexchange.cpp src/macdocumentexchange.h
         src/markdownweb.cpp src/markdownweb.h
         src/obsidianintegration.cpp src/obsidianintegration.h

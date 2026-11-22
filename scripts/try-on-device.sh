@@ -95,6 +95,17 @@ if [ "${1:-}" = --check ]; then
         fi
         printf '%s\n' 'Offline Italian handwriting engine detected.'
     fi
+    raster_ocr="$app_dir/quaderno-raster-ocr"
+    if [ -e "$raster_ocr" ] || [ -L "$raster_ocr" ]; then
+        for file in quaderno-raster-ocr quaderno-raster-ocr.onnx quaderno-raster-ocr.txt libonnxruntime.so.1; do
+            asset="$app_dir/$file"
+            [ -f "$asset" ] && [ -s "$asset" ] && [ ! -L "$asset" ] ||
+                die "The offline image text recognizer is missing a regular file: $file."
+        done
+        [ -x "$raster_ocr" ] && timeout 20 "$raster_ocr" --check ||
+            die "Cannot start the offline image text recognizer or load its model."
+        printf '%s\n' 'Offline image text recognizer detected.'
+    fi
     printf '%s\n' 'Paper Pro executable, libraries and e-paper plugins detected.'
     exit 0
 fi

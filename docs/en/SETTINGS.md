@@ -2,11 +2,11 @@
 
 **English** · [Italiano](../IMPOSTAZIONI.md)
 
-This guide describes the **0.2.9 development** settings. Automatic synchronization now includes Wi-Fi/Bluetooth selection and an after-changes mode. Mac and ARM builds, six affected suites per platform and strict rendered startups passed. Version 0.2.9 is installed on Paper Pro and passed native e-paper/AppLoad startup at 1620 × 2160. The user confirmed that the new sync controls are visible on Paper Pro; end-to-end Wi-Fi/Bluetooth transfer checks remain pending, and the installed Mac 0.2.0 app is unchanged. See the [sync workflow](SYNC_PROTOCOL.md#automatic-synchronization-in-029) and [verification boundary](#verification-boundary). OAuth provider sign-in and transfers still require official registrations and live account checks.
+The **0.2.15 development** version adds SSH access controls on Paper Pro with firmware 3.29.1.0. OAuth provider sign-in and cloud transfers still require official registrations and live account checks. [SSH access](#ssh-access-on-paper-pro) · [Automatic sync](SYNC_PROTOCOL.md#automatic-synchronization) · [Verification boundary](#verification-boundary)
 
 ## Find a setting
 
-Open **Settings** from the library. Categories are **General**, **Wi-Fi**, **Bluetooth**, **Display**, **Pen and recognition**, **Storage and backup**, **Pen and battery**, **Accounts and services**, **Security**, **Language and keyboard**, **USB-C**, and **About**. **Search settings** filters category names and keywords, not notebook content. Clear the search to restore all categories.
+Open **Settings** from the library. Categories are **General**, **Wi-Fi**, **Bluetooth**, **Display**, **Pen and recognition**, **Storage and backup**, **Pen and battery**, **Accounts and services**, **Security**, **Language and keyboard**, **USB-C**, and **About**. Paper Pro also has **SSH access**. **Search settings** filters category names and keywords, not notebook content. Clear the search to restore all categories.
 
 Settings are saved for this installation. They do not travel with a synchronized notebook. If saving fails, the previous preferences remain active and an error is shown. Manual actions remain available alongside the automatic options.
 
@@ -29,7 +29,7 @@ Settings are saved for this installation. They do not travel with a synchronized
 | 13 | **Display → Refresh profile** | Balanced, cleaner or faster changes automatic display refresh behavior. The independent automatic-refresh switch remains available; manual **Refresh screen** remains available with every profile and with automation off. A full refresh can visibly flash; these are not screen-frequency settings. |
 | 14 | **Display → Reading defaults** and **Reading preferences** in a book | Set initial zoom, margins, orientation and swipe behavior globally or for the current book. Book-specific values take precedence on this device; see below. |
 | 15 | **Display → Accessibility** | High contrast and bold labels improve interface legibility. Interface size remains 100%, 115% or 130%; none changes notebook data or formulas. |
-| 16 | **Wi-Fi / Bluetooth → Automatic synchronization** | Manual, after changes, on opening a selected notebook, or every 5/15/30/60 minutes. Choose automatic Wi-Fi/Bluetooth selection, Wi-Fi only or Bluetooth only. Trusted SSIDs constrain Wi-Fi; charging-only applies to both connections. Pair the devices and select the notebooks first. [Workflow](SYNC_PROTOCOL.md#automatic-synchronization-in-029) |
+| 16 | **Wi-Fi / Bluetooth → Automatic synchronization** | Manual, after changes, on opening a selected notebook, or every 5/15/30/60 minutes. Choose **Automatic (Bluetooth and Wi-Fi)**, **Wi-Fi only** or **Bluetooth only**. Trusted SSIDs constrain Wi-Fi and the charging-only option applies to both connections. Pair the devices and select the notebooks first. [Workflow](SYNC_PROTOCOL.md#automatic-synchronization) |
 | 17 | **Wi-Fi / Bluetooth → Conflicts** | Ask before resolving two changed copies, or keep both as separate notebooks. Automatic sync does not silently replace a conflicting copy. An uncertain transfer result still requires manual review. |
 | 18 | **Storage and backup → Local backups** | Create a backup now or schedule daily/weekly snapshots while Quaderno is open. Keep 1, 5, 10 or 20 verified versions. These are local backups, not a transfer to the Mac. |
 | 19 | **Storage and backup → Space and cache** | Inspect library, objects, derived cache and backup sizes. Choose 32/64/128/256 MiB cache limits and clear verified disposable cache files. Originals, handwriting, formulas and backups are preserved. |
@@ -59,7 +59,7 @@ This preference is local to the installation, separate from the diagram objects 
 
 ## Automatic work, storage and privacy
 
-Automatic sync covers selected notebooks and an already paired peer while both apps are open and unlocked. **Automatic** prefers a usable Wi-Fi connection and can fall back to paired Bluetooth; the two single-transport choices do not fall back. Bluetooth must already be enabled. Trusted network names are exact SSIDs, not passwords, and constrain Wi-Fi only: an empty list means no name restriction, while an unknown restricted SSID prevents automatic Wi-Fi use. The charging-only option applies to both connections. PIN lock, standby, open editors, pending review and active operations pause dispatch. An apply already committing finishes its atomic operation before later work is gated. See [automatic synchronization](SYNC_PROTOCOL.md#automatic-synchronization-in-029) for triggers, recovery and limits.
+Automatic sync covers selected notebooks and an already paired peer while both apps are open and unlocked. In **Automatic (Bluetooth and Wi-Fi)**, the apps use Bluetooth to detect pending work. They switch to Wi-Fi if Paper Pro and Mac are reachable on the same subnet and the configured rules allow it. Turn on Bluetooth on both devices before using this mode. **Wi-Fi only** and **Bluetooth only** use the selected connection. Trusted SSIDs constrain automatic Wi-Fi. With a configured list, the system must be able to read the SSID and it must match an entry exactly. The charging-only option applies to both connections. PIN lock, standby, open editors, pending review and active operations pause dispatch. An apply already committing finishes its atomic operation before later work is gated. [Automatic synchronization triggers, recovery and limits](SYNC_PROTOCOL.md#automatic-synchronization).
 
 Scheduled local backups also wait until Quaderno is open and available. A new snapshot must succeed before retention removes older verified snapshots belonging to this library. Altered, foreign or unverified folders are not deleted. Backups contain notebook data and a separate copy of local book-reading preferences; they exclude cloud tokens, PIN and global settings. Copy backups to another device to protect against loss of the tablet. Restoring the portable notebook file does not automatically restore its separate reading-preferences sidecar.
 
@@ -72,6 +72,16 @@ The cache size applies separately to cached page images in memory and derived PD
 **Quaderno sleep** offers 2, 5, 10, 20, 30 or 60 minutes, default 20. **Stay awake while charging** defers this automatic sleep while charging is reported; **Sleep now** still works. The separate PIN automatic-lock timeout continues to apply. Available reading-light controls adjust the current session.
 
 Choose Italian or English independently from the Italian QWERTY or English (US) QWERTY keyboard layout. A detected physical Bluetooth or USB keyboard hides the on-screen keyboard. See [Connect a Bluetooth keyboard](USER_GUIDE.md#connect-a-bluetooth-keyboard).
+
+## SSH access on Paper Pro
+
+On Paper Pro in Developer Mode, open **Settings → SSH access**. The panel reads the service status when it opens. Use **Enable** or **Disable** to change access and **Refresh status** to check it again.
+
+- **Wi-Fi.** Quaderno uses reMarkable’s official setting, which persists across restarts. Once enabled, use the tablet’s Wi-Fi IP address from a computer on the same network. [reMarkable Developer Mode](https://developer.remarkable.com/documentation/developer-mode#using-developer-mode)
+- **USB-C.** The control applies to the two USB SSH listeners verified on firmware 3.29.1.0. Disabling them blocks new connections over the cable until you enable access again in the panel or restart the tablet. Existing sessions can continue.
+- **Bluetooth.** The status is **Unavailable** because the checked firmware has no dedicated SSH listener for a Bluetooth PAN.
+
+Change access on Paper Pro. On Mac, use **Settings → USB-C** to check whether SSH responds at `10.11.99.1:22`.
 
 ## Accounts and cloud files
 
@@ -86,6 +96,8 @@ Obsidian Sync retains its separate CLI setup and subscription requirement; Quade
 Apple workflows still use Quaderno on Mac for Notes, Books, Numbers, Keynote and Journal handoff. Books import accepts local DRM-free PDF/EPUB files. There is no direct Apple Account/iCloud sign-in on Paper Pro. See [Notes, Books and iCloud on Mac](USER_GUIDE.md#notes-books-and-icloud-on-mac) and [Wireless sync](USER_GUIDE.md#wireless-sync).
 
 ## Verification boundary
+
+For **0.2.15**, the SSH configuration on Paper Pro with firmware 3.29.1.0 was checked in read-only mode. Switching the services on the physical device remains to be tested.
 
 For **0.2.9**, the Mac build and six affected suites passed: tablet preferences, BLE sync (24 checks), incremental sync (10), wireless connection (12), UI (56) and settings integration (19). Strict rendered desktop/tablet startups also passed. The wireless checks include a real local TCP connection and the configured keepalive parameters; they do not verify the tablet radios. The ARM build and all six suites also passed in 136.73 seconds: preferences 28, BLE sync 24, incremental sync 10, wireless connection 12, UI 55 with one expected macOS-only skip, and settings integration 19. Strict ARM desktop/tablet startups passed. The final migration/recovery protection passed 11 additional checks per platform. Version 0.2.9 is installed on Paper Pro after a fresh backup, with native e-paper/AppLoad startup at 1620 × 2160 verified. Canonical hashes, folder contents and exported byte count remained unchanged for all six notebooks. On November 18, 2026, the user confirmed that the after-changes mode and all three connection choices are visible in the Paper Pro Wi-Fi/Bluetooth settings. This confirms the physical controls only; end-to-end automatic Wi-Fi/Bluetooth transfers still require testing. Both apps need updating for the complete new workflow; the separate Mac 0.2.9 archive passed signature, dependency, archive and extracted startup checks without replacing the installed app. Packaged guides retain their packaging-time status; this source guide records the later installation result. Earlier verification below applies to the named builds, not to these new synchronization paths. The installed Mac 0.2.0 app has not been changed.
 

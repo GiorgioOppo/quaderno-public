@@ -2,6 +2,57 @@
 
 **English** · [Italiano](CHANGELOG.it.md)
 
+## 0.2.19 development
+
+- Draw freehand outlines with the Marker when selecting the diagram, table or text in a mixed page. Quaderno closes the outlines when you lift the pen.
+- Extend optional local OCR to the **Table** area of a mixed PDF page or a page with an image background on Paper Pro. A clear grid can yield editable cells and preserve blank positions. For layouts without a clear grid, review the proposed rows and add column separators as needed.
+- Use the optional on-device OCR engine to propose editable labels for shapes recognized in PDF and image diagrams.
+
+All 22 CTest suites and the desktop and tablet startup checks passed on macOS and with the Paper Pro ARM64 SDK. Physical Paper Pro testing on firmware 3.29.1.0 covered full-screen AppLoad launch and Marker outlines. An isolated run exercised OCR and saved one notebook with links to editable table and diagram pages. Review OCR drafts, especially similar characters, labels and cell positions. [User guide](docs/en/USER_GUIDE.md#recognize-a-mixed-page-on-paper-pro) · [Release status](docs/en/RELEASE.md)
+
+## 0.2.18 development
+
+- Add an optional on-device OCR engine for the **Text** area of mixed-page recognition on Paper Pro. It reads Latin-script text from rendered PDF pages and images. Review the draft against the source, especially links, paths, names and punctuation.
+
+See [Recognize a mixed page on Paper Pro](docs/en/USER_GUIDE.md#recognize-a-mixed-page-on-paper-pro).
+
+## 0.2.17 development
+
+- Save mixed-page conversions as one editable notebook in Writing. Its first page links to the diagram and table on dedicated pages in the same notebook. One Quaderno file or sync operation carries the text and both editable objects.
+- Duplicating a notebook or keeping a conflict copy preserves its links to its own pages.
+- Improve detection of nested boxes and arrows in handwritten PDFs. Table borders produce fewer stray rows. Transcriptions and labels can still be reviewed in the draft.
+
+See [Recognize a mixed page on Paper Pro](docs/en/USER_GUIDE.md#recognize-a-mixed-page-on-paper-pro).
+
+## 0.2.16 development
+
+- On Paper Pro, select diagram, table and text areas on a notebook page or imported PDF. Review the locally generated drafts and save three editable notebooks together. The source page stays available.
+- In Writing, preview linked objects and open or edit their originals. Send the Writing notebook and its target notebooks separately to keep the links usable on the other device.
+
+See [Recognize a mixed page on Paper Pro](docs/en/USER_GUIDE.md#recognize-a-mixed-page-on-paper-pro).
+
+## 0.2.15 development
+
+- Add SSH access settings on Paper Pro with firmware 3.29.1.0. Wi-Fi uses the persistent reMarkable setting. The USB-C control blocks or allows new connections for the current boot. The Bluetooth row reports that the firmware has no dedicated SSH listener.
+
+See [SSH access on Paper Pro](docs/en/SETTINGS.md#ssh-access-on-paper-pro).
+
+## 0.2.14 development
+
+- Give Books, Writing, Charts, Tables and Diagrams separate page menus. Books open in reading mode and offer highlights, underlines, sticky notes and links to library objects; Writing keeps pen settings and the lasso close at hand.
+- Add anchored links from a book page to the original chart, table or diagram and a return action to the source page. Page links require portable format 12. Transfer notebooks containing linked targets separately.
+- Let chart authors pick X and Y columns from tables. A source on the same page stays linked; a source on another page provides an editable copy of its calculated values. The table menu groups formulas, CSV, handwriting conversion and chart creation.
+- Build flowcharts with a shape palette, drag-to-place controls, connectors and an inspector. The diagram menu groups sketch recognition and draw.io import and export.
+
+See [the five sections and their workflows](docs/en/FUNCTIONS_AND_WORKFLOWS.md#the-five-sections).
+
+## 0.2.13 development
+
+- Start automatic sync on paired Bluetooth LE. Check for pending changes before trying the Paper Pro’s current local Wi-Fi address. Transfer over Wi-Fi when the connection is authenticated and fall back to Bluetooth if Wi-Fi is unavailable or drops.
+- Keep the notebook queue, saved chunks and conflict checks across transport changes. An interrupted apply with an uncertain result requires fresh review. The handoff between physical devices remains to be tested.
+
+See the [automatic sync protocol](docs/en/SYNC_PROTOCOL.md#automatic-synchronization).
+
 ## 0.2.12 development
 
 - Add a bilingual map of the five sections, file formats, cross-section workflows, device features and integrations.
@@ -21,7 +72,7 @@ See the [function and workflow map](docs/en/FUNCTIONS_AND_WORKFLOWS.md).
 - Make whole-book annotation transfer explicit and show its synchronization status in Books. Highlights and underlining already belong to normal page content; transfers preserve all pages and hidden layers as well as new notes. Document the need for both apps to remain open and unlocked, a matching native Quaderno book, and the appropriate automation trigger.
 - Introduce portable format **11** for page notes and version 11 metadata for new local saves. Portable exports without new content continue using their minimum required format. Advertise the supported notebook format during wireless negotiation and reject incompatible content before sending chunks; a previous incremental peer without an explicit capability is treated as supporting format 9. Update both apps for new notes.
 - Recover hand-drawn ovals and process boxes with small gaps or irregular sides. Recognize explicit arrowheads drawn with a straight or elbow shaft and separate arrowheads with a short stem. Leave unheaded or ambiguous connectors as ink.
-- **Validation:** All 20 macOS suites passed. The final checks for book notes, the PDF appendix, synchronization and diagram recognition passed on Mac and ARM. Both builds passed rendered desktop and tablet startup. Installed on Paper Pro over Wi-Fi after a verified on-device backup. The library export had the same SHA-256 before and after the update. Native 1620 × 2160 e-paper startup and the AppLoad session passed. A local replay of a real sample recovered four more shapes and four explicit arrows while leaving a line without an arrowhead in ink. Physical drawing and wireless document transfer require separate checks.
+- **Validation:** The macOS suite and affected ARM64 checks passed. Device startup via AppLoad preserved the library. Replay checks covered additional shapes and explicit arrowheads.
 
 See [book notes](docs/en/BOOK_NOTES.md), [section workflows](docs/en/FEATURES.md), [synchronization](docs/en/SYNC_PROTOCOL.md) and [data format compatibility](docs/en/DATA.md#library-format-versions).
 
@@ -32,7 +83,7 @@ See [book notes](docs/en/BOOK_NOTES.md), [section workflows](docs/en/FEATURES.md
 - Choose the target explicitly when several diagrams are possible, or create a separate diagram. Keep uncertain ink and prevent duplicate geometry from retained original strokes. A proposal without valid additions cannot be applied.
 - Apply the item replacement and optional ink removal in one page Undo/Redo operation. Persistent recovery retains an editable baseline diagram and removed addition strokes; later extensions on the same layer share that baseline. Recovery restores the original diagram instead of removing it.
 - Introduce portable format **10** when `styleScale` or `handwritingSource.baseDiagram` is required, and use metadata version 10 for new local saves. Update both apps before transferring affected notebooks; older-content portable exports still choose their minimum required format.
-- **Validation:** Mac and ARM builds passed all seven affected suites: regression, lasso, diagram recognition, contextual recognition, incremental sync, UI and diagram integration (86.20 s on Mac, 81.91 s on ARM; two expected macOS-only skips on ARM). Strict rendered desktop/tablet and extracted-package startups passed. Installed on Paper Pro after a fresh backup and verified native e-paper/AppLoad startup at 1620 × 2160. All six notebooks retained their canonical hashes, folder contents and exported byte count. On November 18, 2026, the user confirmed on Paper Pro that adding a hand-drawn shape and arrow updates the complete diagram as one editable item while preserving previous labels. The live AppLoad session was also observed for 72.36 seconds without QML runtime errors. The installed Mac **0.2.0** app remains unchanged; a separate 0.2.10 package is ready. Update both apps before transferring format 10 notebooks.
+- **Validation:** The affected Mac and ARM64 suites and rendered startup checks passed. Device checks confirmed that an added shape and arrow update the existing diagram and retain its labels.
 
 See [extending diagrams](docs/en/DIAGRAMS.md#extend-an-already-converted-diagram) and [data format compatibility](docs/en/DATA.md#library-format-versions).
 
@@ -43,7 +94,7 @@ See [extending diagrams](docs/en/DIAGRAMS.md#extend-an-already-converted-diagram
 - Restrict trusted SSID rules to Wi-Fi; the optional tablet-charging requirement applies to both connections. Keep immediate PIN, sleep and editor guards, explicit first-transfer review, conflict policy and manual review for an uncertain apply result.
 - Improve recovery with increasing waits between connection attempts, bounded transfer retries, and a saved checkpoint for safely interrupted automatic work. Reuse matching received chunks through a fresh preview, without replaying an earlier approval.
 - Treat legacy pending transfers without a saved phase/revision and interrupted manual applies as uncertain; automatic catch-up cannot resend them without a fresh manual review. The 11 focused migration/recovery checks passed on both Mac and ARM.
-- **Validation:** Mac and ARM builds, six affected suites on each platform (preferences, BLE sync, incremental sync, wireless connection, UI and settings integration) and strict rendered desktop/tablet startups passed. ARM finished 6/6 suites in 136.73 seconds, with one expected macOS-only UI skip. Installed on Paper Pro after a fresh backup, with native e-paper/AppLoad startup at 1620 × 2160 verified. All six notebooks retained canonical hashes, folder contents and exported byte count. On November 18, 2026, the user confirmed that the after-changes mode and all three connection choices are visible in the Paper Pro Wi-Fi/Bluetooth settings. This confirms the controls, not end-to-end transfers; physical Wi-Fi/Bluetooth transfer checks remain pending. The installed Mac 0.2.0 app remains unchanged; a separate 0.2.9 Mac package is ready. Both apps must be updated, open and unlocked for the new workflow; this is local app synchronization, not an Internet cloud service or a background daemon.
+- **Validation:** The affected Mac and ARM64 suites and rendered startups passed. The tablet exposed all three connection choices and after-changes synchronization. End-to-end physical transfers required separate testing.
 
 See [automatic synchronization](docs/en/SYNC_PROTOCOL.md#automatic-synchronization-in-029) and [settings](docs/en/SETTINGS.md).
 
@@ -55,7 +106,7 @@ See [automatic synchronization](docs/en/SYNC_PROTOCOL.md#automatic-synchronizati
 - Use dedicated paired-device and pinned-notebook notifications for sync automation, avoiding unrelated status changes retriggering those bindings. The affected settings/BLE/sync suites passed 3/3 on both Mac and ARM.
 - Reuse editable diagrams through **Insert from library**. Copies are independent; editing from an indexed entry changes its original object. Markdown with assets now includes a diagram PNG and editable `.drawio` companion; notebook transfers preserve editable geometry and recovery ink.
 - Add optional automatic Paper Pro orientation from a supported sensor, with stability filtering and deferred changes during interaction. Manual orientation remains available; fixed reading orientation takes precedence. Automatic rotation is off by default.
-- **Validation:** the first 0.2.8 build passed 15 suites on Mac (129.56 seconds) and ARM (130.23 seconds), 24 geometry checks, 17 UI checks (38.82 seconds), strict startups and extracted-package checks. Its Paper Pro installation passed native startup at 1620 × 2160 without QML errors; five notebooks retained canonical hashes, folders and exported byte count. On November 18, 2026, the user confirmed automatic portrait-to-landscape rotation. Physical recognition initially returned no shapes for a real drawing, prompting the tolerance fixes above. The corrected Mac and ARM builds passed 34 geometry checks and 17 UI checks (2/2 suites: 37.43 seconds on Mac, 37.37 seconds on ARM), with strict desktop/tablet startup. The corrected build is installed on Paper Pro and passed strict native/AppLoad startup at 1620 × 2160 without QML errors. A fresh backup was made and all six current notebooks retained canonical hashes, folder contents and exported byte count. On November 18, 2026, the user confirmed that recognition, applying the result and opening the editor to modify it work on the tested flowchart on Paper Pro; earlier archives are preserved separately. The installed Mac 0.2.0 app remains unchanged. Live OAuth accounts and transfers still require maintainer registrations and validation.
+- **Validation:** Mac and ARM64 startup, geometry and UI checks passed after the recognition corrections. Device checks confirmed automatic rotation and reviewing and editing a tested flowchart.
 
 See [Diagrams](docs/en/DIAGRAMS.md) and [settings](docs/en/SETTINGS.md).
 
@@ -64,9 +115,9 @@ See [Diagrams](docs/en/DIAGRAMS.md) and [settings](docs/en/SETTINGS.md).
 - Twenty additional settings cover usage profiles, toolbar order and handedness, clock time zone, contrast, gestures, per-book reading preferences, pressure response, palm rejection, lasso insertion, OCR corrections, shape tolerance, e-paper update profiles, trusted Wi-Fi and scheduled sync, conflict handling, backups, cache size and preferred Apple destinations. See [settings](docs/en/SETTINGS.md).
 - Google Drive, Dropbox and OneDrive account dialogs use official OAuth sign-in. Browse folders, download supported documents, upload new copies and transfer editable `.quaderno` notebooks with an import preview. Google sign-in on Paper Pro uses the Mac browser through a temporary SSH loopback forward; subsequent cloud transfers run directly on the tablet over Wi-Fi.
 - Cloud tokens are excluded from notebook exports and backups. macOS uses Keychain; Paper Pro uses private files. Locking or sleeping cancels pending authorization and transfers.
-- Maintainer-owned OAuth registrations are still required before real account sign-in. No developer client identifiers are borrowed or fabricated. The user has confirmed that all three cloud account windows open on Paper Pro; live provider sign-in and cloud transfers remain unverified. The installed Mac app is unchanged.
+- Provider sign-in requires OAuth registrations for Quaderno. The tablet account dialogs were verified. Live sign-in and cloud transfers required separate testing.
 
-The initial Mac build passed all 12 automated CTest suites (34.47 seconds). Subsequent corrections normalize the cloud dialog’s Boolean bindings and attach it to the window overlay, so a zero-size Loader cannot hide it. Added regressions cover both an empty account state and the actual Main/settings/Loader path. Rebuilt Mac and Paper Pro packages passed the affected tests and hardened startup checks; the corrected native Paper Pro installation starts cleanly. On November 18, 2026, the user confirmed that the Google Drive, Dropbox and OneDrive windows all appear. This does not verify provider sign-in or transfers, which still need official OAuth registrations and real-account testing. Earlier archives and reports are retained as superseded evidence. The installed Mac 0.2.0 executable and version information remain unchanged.
+The automated Mac checks passed. Follow-up UI regressions covered the empty account state and opening the dialogs from tablet settings.
 
 ## 0.2.6 development
 
@@ -75,23 +126,23 @@ The initial Mac build passed all 12 automated CTest suites (34.47 seconds). Subs
 - Accounts and services hub for Obsidian, Apple/iCloud, Google Drive, Dropbox, OneDrive and Quaderno wireless, showing direct Paper Pro functions separately from Mac browser/file workflows. No new cloud OAuth login or direct iCloud access is claimed.
 - English and Italian [settings documentation](docs/en/SETTINGS.md), updated navigation paths, and preference/interaction regressions.
 
-All eight automated suites passed on Mac and ARM, along with package startup checks; affected UI/startup checks were repeated successfully after the final correction. Installed and opened through AppLoad on Paper Pro, with full 1620 × 2160 rendering, a clean strict QML-error check, and all five notebooks, folders and notebook exports preserved. Native Marker telemetry was verified and rechecked after restart. The user confirmed **100% / Fully charged** in the pen display and correct finger/brief Marker taps on tables and charts in **landscape right (90°)**. Automated tests cover all four angles; the physical rotation confirmation covers 90° right. The clock follows the device's system time zone; Quaderno has no time-zone selector. The installed Mac 0.2.0 app remains unchanged. See the [validation status](docs/en/SETTINGS.md#verification-boundary).
+The Mac and ARM64 suites and package startup checks passed. Device checks covered Marker battery reporting and tapping tables and charts in landscape right. Automated coverage includes all four orientations. [Validation status](docs/en/SETTINGS.md#verification-boundary)
 
 ## 0.2.5 development
 
 Direct chart editing from the page: a finger tap, mouse click, or brief pen/Marker tap opens the chart editor. Standalone charts open their properties; table-linked charts open their settings and source-column selection while retaining the table link. Moving or holding the pen continues writing. Lasso, eraser, highlighter, and shape tools keep their existing behavior, and Items remains available for moving and editing objects. Opening an item from the library still shows only its page.
 
-Builds and all six suites passed on Mac (85 behavioral cases plus 12 setup/cleanup checks) and ARM (82 plus 12, with three expected macOS-only skips), along with rendered desktop/tablet startups on both platforms. All eight new chart cases and the existing 0.2.4 navigation regressions pass. Installed on Paper Pro over USB on November 18, 2026, with native startup, the running AppLoad binary, backups, and notebook integrity verified. That day, the user confirmed that finger and brief pen taps open the tested existing chart’s editor on Paper Pro without enabling Items. The installed Mac 0.2.0 app remains unchanged. See [direct chart editing](docs/en/LASSO.md#edit-a-chart-with-a-tap).
+Mac and ARM64 builds, tests and rendered startup checks passed. Finger and brief Marker taps opened the chart editor on Paper Pro. [Direct chart editing](docs/en/LASSO.md#edit-a-chart-with-a-tap)
 
 ## 0.2.4 development
 
-Opening an existing item from **Tables** or **Charts** shows its source page without automatically opening an editor. Tap a table cell to edit it, or enable **Items** and tap a chart. Builds and all six suites passed on Mac (77 behavioral cases plus 12 setup/cleanup checks) and ARM (74 plus 12, with three expected macOS-only skips), along with rendered desktop/tablet startups on both platforms. Three new UI cases reproduce the original bug and pass with the fix. Installed on Paper Pro over USB on November 18, 2026, with native startup, the installed binary, backups, and notebook integrity verified. That day, the user confirmed that opening existing items from Tables and Charts shows the page without automatically opening an editor on Paper Pro. The installed Mac 0.2.0 app remains unchanged. See [library navigation](docs/en/LASSO.md#open-tables-and-charts-from-the-library).
+Opening an existing item from **Tables** or **Charts** shows its source page. Tap a table cell to edit it, or enable **Items** and tap a chart. The Mac and ARM64 suites and rendered startup checks passed. Device checks confirmed that the library opens the item’s page. [Library navigation](docs/en/LASSO.md#open-tables-and-charts-from-the-library)
 
 ## 0.2.3 development
 
 Fix direct editing of table cells after handwriting conversion. Tapping a cell opens the editor at its row and column and exposes the original formula for editing. Finger taps and mouse clicks also open empty cells; brief pen taps open occupied cells while empty-cell pen contacts keep producing ink. Moving or holding the pen continues writing, and Items mode opens the selected cell too.
 
-Mac and ARM SDK builds passed, along with six suites on each platform: 74 behavioral cases on Mac and 71 on ARM, plus 12 setup/cleanup checks per platform and three expected macOS-only skips on ARM. Rendered Mac startup in desktop and tablet layouts and both ARM SDK startups passed. Installed over USB on Paper Pro on November 18, 2026, with native startup, the running AppLoad binary, backups, and notebook integrity verified. That day, the user confirmed finger and pen taps, editing, and formula recalculation in the **QA Celle 0.2.2** physical test scenario. The installed Mac 0.2.0 app remains unchanged. See [cell editing and validation status](docs/en/LASSO.md#edit-a-table-cell-after-conversion).
+Mac and ARM64 builds, tests and rendered startup checks passed. Device checks covered finger and Marker input, editing cells and recalculating formulas. [Cell editing and validation](docs/en/LASSO.md#edit-a-table-cell-after-conversion)
 
 ## 0.2.2 development
 

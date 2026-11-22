@@ -1908,4 +1908,52 @@
             <translation>Rotate the tablet while holding it upright and wait briefly. When flat, it keeps its orientation.</translation>
         </message>
     </context>
+  <context>
+    <name>PaperProSshAccess</name>
+    <message>
+      <source>Nuove connessioni consentite.</source>
+      <translation>New connections allowed.</translation>
+    </message>
+    <message>
+      <source>Nuove connessioni disattivate.</source>
+      <translation>New connections disabled.</translation>
+    </message>
+    <message>
+      <source>Configurazione e stato del servizio non coincidono.</source>
+      <translation>The current service state differs from its configuration.</translation>
+    </message>
+    <message>
+      <source>Nessun servizio SSH disponibile su una rete Bluetooth PAN.</source>
+      <translation>No SSH service is available over a Bluetooth PAN.</translation>
+    </message>
+    <message>
+      <source>Il servizio SSH del firmware non è verificabile su questo collegamento.</source>
+      <translation>Could not verify the firmware SSH service on this connection.</translation>
+    </message>
+    <message>
+      <source>Stato non verificato.</source>
+      <translation>Status unverified.</translation>
+    </message>
+    <message>
+      <source>Impossibile leggere lo stato SSH del Paper Pro.</source>
+      <translation>Could not read the Paper Pro SSH status.</translation>
+    </message>
+    <message>
+      <source>Impostazione SSH verificata.</source>
+      <translation>SSH setting verified.</translation>
+    </message>
+    <message>
+      <source>Il firmware non ha confermato la modifica SSH.</source>
+      <translation>The firmware did not confirm the SSH change.</translation>
+    </message>
+    <message>
+      <source>Il collegamento SSH non può essere modificato.</source>
+      <translation>This SSH connection cannot be changed.</translation>
+    </message>
+  </context>
+  <context>
+    <name>MixedPageAnalyzer</name>
+    <message><source>Impossibile leggere l’immagine della pagina.</source><translation>Could not read the page image.</translation></message>
+    <message><source>Indica almeno un’area per ogni parte della pagina.</source><translation>Mark at least one area for each part of the page.</translation></message>
+  </context>
 </TS>

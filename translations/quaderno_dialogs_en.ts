@@ -90,6 +90,14 @@
     <context>
         <name>ChartDialog</name>
         <message>
+            <source>Punti manuali</source>
+            <translation>Manual points</translation>
+        </message>
+        <message>
+            <source>Usa tabella</source>
+            <translation>Use table</translation>
+        </message>
+        <message>
             <source>Usa valori X distinti per le barre.</source>
             <translation>Use distinct X values for bars.</translation>
         </message>
@@ -312,6 +320,10 @@
     <context>
         <name>PageDecorations</name>
         <message>
+            <source>Gestisci collegamento</source>
+            <translation>Manage link</translation>
+        </message>
+        <message>
             <source>Proprietà immagine</source>
             <translation>Image properties</translation>
         </message>
@@ -334,6 +346,61 @@
         <message>
             <source>Apri post-it %1</source>
             <translation>Open sticky note %1</translation>
+        </message>
+    </context>
+    <context>
+        <name>LinkTargetDialog</name>
+        <message>
+            <source>Diagrammi</source>
+            <translation>Diagrams</translation>
+        </message>
+        <message>
+            <source>Tabelle</source>
+            <translation>Tables</translation>
+        </message>
+        <message>
+            <source>Grafici</source>
+            <translation>Charts</translation>
+        </message>
+        <message>
+            <source>Collegamento</source>
+            <translation>Link</translation>
+        </message>
+        <message>
+            <source>Collega a un elemento</source>
+            <translation>Link to an item</translation>
+        </message>
+        <message>
+            <source>%1 · %2, pagina %3</source>
+            <translation>%1 · %2, page %3</translation>
+        </message>
+        <message>
+            <source>%1, pagina %2</source>
+            <translation>%1, page %2</translation>
+        </message>
+        <message>
+            <source>Destinazione non disponibile.</source>
+            <translation>Destination unavailable.</translation>
+        </message>
+        <message>
+            <source>Scegli un elemento della libreria. Tocca il collegamento sulla pagina per aprire l’originale.</source>
+            <translation>Choose an item from the library. Tap the link on the page to open the original.</translation>
+        </message>
+        <message>
+            <source>Nessun elemento disponibile in questa categoria.</source>
+            <translation>No items are available in this category.</translation>
+        </message>
+        <message>
+            <source>Apri destinazione</source>
+            <translation>Open destination</translation>
+        </message>
+        <message>
+            <source>Rimuovi collegamento</source>
+            <translation>Remove link</translation>
+        </message>
+        <message>
+            <source>La pagina del collegamento è cambiata.</source>
+            <translation>The link’s page has changed.</translation>
         </message>
     </context>
     <context>
@@ -766,6 +833,66 @@
     <context>
         <name>TableChartDialog</name>
         <message>
+            <source>%1 (%2)</source>
+            <translation>%1 (%2)</translation>
+        </message>
+        <message>
+            <source>Modifica grafico da tabella</source>
+            <translation>Edit table-based chart</translation>
+        </message>
+        <message>
+            <source>Tabella senza nome</source>
+            <translation>Untitled table</translation>
+        </message>
+        <message>
+            <source>%1 · %2, pag. %3</source>
+            <translation>%1 · %2, p. %3</translation>
+        </message>
+        <message>
+            <source>Origine dati · %1</source>
+            <translation>Data source · %1</translation>
+        </message>
+        <message>
+            <source>Cambia</source>
+            <translation>Change</translation>
+        </message>
+        <message>
+            <source>Cambia tabella di origine</source>
+            <translation>Change source table</translation>
+        </message>
+        <message>
+            <source>Questa pagina</source>
+            <translation>This page</translation>
+        </message>
+        <message>
+            <source>Altre pagine</source>
+            <translation>Other pages</translation>
+        </message>
+        <message>
+            <source>Tabella di origine</source>
+            <translation>Source table</translation>
+        </message>
+        <message>
+            <source>Copia i valori attuali. Per includere modifiche future, crea un nuovo grafico dalla tabella.</source>
+            <translation>Copies the current values. To include later changes, create a new chart from the table.</translation>
+        </message>
+        <message>
+            <source>Tipo di grafico</source>
+            <translation>Chart type</translation>
+        </message>
+        <message>
+            <source>La pagina o la tabella è cambiata. Controlla l’origine dei dati.</source>
+            <translation>The page or table has changed. Check the data source.</translation>
+        </message>
+        <message>
+            <source>Scegli una tabella di origine.</source>
+            <translation>Choose a source table.</translation>
+        </message>
+        <message>
+            <source>Nessuna tabella disponibile. Crea o importa prima una tabella.</source>
+            <translation>No tables available. Create or import a table first.</translation>
+        </message>
+        <message>
             <source>Grafico da tabella</source>
             <translation>Chart from table</translation>
         </message>
@@ -1125,6 +1252,34 @@
     <context>
         <name>DiagramEditor</name>
         <message>
+            <source>Forme</source>
+            <translation>Shapes</translation>
+        </message>
+        <message>
+            <source>Connettore</source>
+            <translation>Connector</translation>
+        </message>
+        <message>
+            <source>Proprietà</source>
+            <translation>Properties</translation>
+        </message>
+        <message>
+            <source>Seleziona una forma o un connettore.</source>
+            <translation>Select a shape or connector.</translation>
+        </message>
+        <message>
+            <source>Tipo di forma</source>
+            <translation>Shape type</translation>
+        </message>
+        <message>
+            <source>Tocca una forma per inserirla o trascinala sul foglio.</source>
+            <translation>Tap a shape to insert it or drag it onto the canvas.</translation>
+        </message>
+        <message>
+            <source>Trascina il punto sul bordo per collegare due forme.</source>
+            <translation>Drag the handle to connect two shapes.</translation>
+        </message>
+        <message>
             <source>Altre azioni</source>
             <translation>More actions</translation>
         </message>
@@ -1233,8 +1388,8 @@
             <translation>End</translation>
         </message>
         <message>
-            <source>Freccia ortogonale</source>
-            <translation>Right-angle arrow</translation>
+            <source>Ortogonale</source>
+            <translation>Orthogonal</translation>
         </message>
         <message>
             <source>Griglia</source>
@@ -1973,6 +2128,114 @@
     <context>
         <name>WorkspaceTools</name>
         <message>
+            <source>Collega elemento</source>
+            <translation>Link an item</translation>
+        </message>
+        <message>
+            <source>Modifica originale</source>
+            <translation>Edit original</translation>
+        </message>
+        <message>
+            <source>Riconosci pagina mista</source>
+            <translation>Recognize mixed page</translation>
+        </message>
+        <message>
+            <source>Elementi collegati</source>
+            <translation>Linked items</translation>
+        </message>
+        <message>
+            <source>Destinazione non disponibile.</source>
+            <translation>Destination unavailable.</translation>
+        </message>
+        <message>
+            <source>Tabella</source>
+            <translation>Table</translation>
+        </message>
+        <message>
+            <source>Grafico</source>
+            <translation>Chart</translation>
+        </message>
+        <message>
+            <source>Diagramma</source>
+            <translation>Diagram</translation>
+        </message>
+        <message>
+            <source>%1 · %2, pagina %3</source>
+            <translation>%1 · %2, page %3</translation>
+        </message>
+        <message>
+            <source>Apri</source>
+            <translation>Open</translation>
+        </message>
+        <message>
+            <source>Modifica</source>
+            <translation>Edit</translation>
+        </message>
+        <message>
+            <source>Dati e aspetto</source>
+            <translation>Data and appearance</translation>
+        </message>
+        <message>
+            <source>Esporta draw.io</source>
+            <translation>Export draw.io</translation>
+        </message>
+        <message>
+            <source>Fine modifica</source>
+            <translation>Finish editing</translation>
+        </message>
+        <message>
+            <source>Forme e connettori</source>
+            <translation>Shapes and connectors</translation>
+        </message>
+        <message>
+            <source>Gestisci annotazioni</source>
+            <translation>Manage annotations</translation>
+        </message>
+        <message>
+            <source>Gomma</source>
+            <translation>Eraser</translation>
+        </message>
+        <message>
+            <source>Inserisci diagramma</source>
+            <translation>Insert diagram</translation>
+        </message>
+        <message>
+            <source>Lazo</source>
+            <translation>Lasso</translation>
+        </message>
+        <message>
+            <source>Lazo per le celle</source>
+            <translation>Cell lasso</translation>
+        </message>
+        <message>
+            <source>Leggi</source>
+            <translation>Read</translation>
+        </message>
+        <message>
+            <source>Livelli</source>
+            <translation>Layers</translation>
+        </message>
+        <message>
+            <source>Pagina intera</source>
+            <translation>Full page</translation>
+        </message>
+        <message>
+            <source>Ripeti</source>
+            <translation>Redo</translation>
+        </message>
+        <message>
+            <source>Schizzo a mano</source>
+            <translation>Freehand sketch</translation>
+        </message>
+        <message>
+            <source>Scrivi nelle celle</source>
+            <translation>Write in cells</translation>
+        </message>
+        <message>
+            <source>Sposta elementi</source>
+            <translation>Move items</translation>
+        </message>
+        <message>
             <source>Altro</source>
             <translation>More</translation>
         </message>
@@ -2145,4 +2408,31 @@
             <translation>Cancel</translation>
         </message>
     </context>
+  <context>
+    <name>MixedPageDialog</name>
+    <message><source>Diagramma</source><translation>Diagram</translation></message>
+    <message><source>Tabella</source><translation>Table</translation></message>
+    <message><source>Testo</source><translation>Text</translation></message>
+    <message><source>Riconosci pagina mista</source><translation>Recognize mixed page</translation></message>
+    <message><source>Usa al massimo 12 righe, 8 colonne e 500 caratteri per cella.</source><translation>Use up to 12 rows, 8 columns, and 500 characters per cell.</translation></message>
+    <message><source>Rivedi le tre bozze. Il testo collegherà tabella e diagramma nello stesso quaderno.</source><translation>Review the three drafts. The text will link to the table and diagram in the same notebook.</translation></message>
+    <message><source>%1 - Convertito</source><translation>%1 - Converted</translation></message>
+    <message><source>Scegli una parte e disegna un contorno attorno al contenuto. Puoi disegnare più contorni per una parte.</source><translation>Choose a part and draw an outline around its content. You can draw more than one outline for each part.</translation></message>
+    <message><source>Pagina origine</source><translation>Source page</translation></message>
+    <message><source>Rimuovi ultimo contorno</source><translation>Remove last outline</translation></message>
+    <message><source>Titolo del quaderno</source><translation>Notebook title</translation></message>
+    <message><source>Rivedi forme e frecce</source><translation>Review shapes and arrows</translation></message>
+    <message><source>Disegna il diagramma</source><translation>Draw the diagram</translation></message>
+    <message><source>Una linea per riga. Separa le colonne con Tab o |.</source><translation>Use one line per row. Separate columns with Tab or |.</translation></message>
+    <message><source>Rivedi o scrivi il testo della pagina.</source><translation>Review or enter the page text.</translation></message>
+    <message><source>Analisi delle aree…</source><translation>Analyzing selected areas…</translation></message>
+    <message><source>Riconoscimento locale · %1 / %2</source><translation>On-device recognition · %1 / %2</translation></message>
+    <message><source>Il motore di scrittura non è disponibile. Puoi completare le bozze a mano.</source><translation>The handwriting engine is unavailable. You can complete the drafts manually.</translation></message>
+    <message><source>Alcune righe richiedono una trascrizione manuale.</source><translation>Some lines need manual transcription.</translation></message>
+    <message><source>Ferma riconoscimento</source><translation>Stop recognition</translation></message>
+    <message><source>Indietro</source><translation>Back</translation></message>
+    <message><source>Annulla</source><translation>Cancel</translation></message>
+    <message><source>Crea quaderno</source><translation>Create notebook</translation></message>
+    <message><source>Riconosci</source><translation>Recognize</translation></message>
+  </context>
 </TS>

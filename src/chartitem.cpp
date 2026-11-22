@@ -49,3 +49,20 @@ QVariantMap Notebook::libraryItemCopy(const QString &bookId, const QString &page
         copy.remove(key);
     return copy;
 }
+
+QVariantMap Notebook::tableChartSnapshot(const QString &bookId, const QString &pageId, const QString &tableId,
+                                        const QVariantMap &options) const
+{
+    const QVariantMap table = libraryItemCopy(bookId, pageId, tableId);
+    if (table.value(QStringLiteral("type")) != QStringLiteral("table"))
+        return {};
+    QVariantMap chart = options;
+    chart.insert(QStringLiteral("type"), QStringLiteral("chart"));
+    chart = PageContent::chartFromTable(table, chart);
+    for (const auto &key : {QStringLiteral("sourceTable"), QStringLiteral("xColumn"), QStringLiteral("yColumn"),
+                            QStringLiteral("hasHeader")})
+        chart.remove(key);
+    if (chart.value(QStringLiteral("id")).toString().isEmpty())
+        chart.remove(QStringLiteral("id"));
+    return chart;
+}

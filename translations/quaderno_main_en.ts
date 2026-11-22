@@ -4,6 +4,30 @@
     <context>
         <name>Main</name>
         <message>
+            <source>%1%</source>
+            <translation>%1%</translation>
+        </message>
+        <message>
+            <source>Strumenti per lo schizzo</source>
+            <translation>Sketch tools</translation>
+        </message>
+        <message>
+            <source>Tocca il punto in cui inserire il collegamento.</source>
+            <translation>Tap where you want to place the link.</translation>
+        </message>
+        <message>
+            <source>Torna al libro</source>
+            <translation>Back to book</translation>
+        </message>
+        <message>
+            <source>Torna alla pagina</source>
+            <translation>Back to page</translation>
+        </message>
+        <message>
+            <source>Tratto</source>
+            <translation>Stroke</translation>
+        </message>
+        <message>
             <source>Adatta il foglio alla vista</source>
             <translation>Fit the sheet to view</translation>
         </message>
@@ -927,6 +951,46 @@
         <message>
             <source>SSH via USB‑C</source>
             <translation>SSH over USB‑C</translation>
+        </message>
+        <message>
+            <source>Accesso SSH</source>
+            <translation>SSH access</translation>
+        </message>
+        <message>
+            <source>Wi-Fi Bluetooth USB-C cavo accesso remoto</source>
+            <translation>Wi-Fi Bluetooth USB-C cable remote access</translation>
+        </message>
+        <message>
+            <source>In modalità sviluppatore puoi scegliere da quali collegamenti il Paper Pro accetta nuove sessioni SSH.</source>
+            <translation>In Developer Mode, choose which connections the Paper Pro accepts new SSH sessions over.</translation>
+        </message>
+        <message>
+            <source>Attiva</source>
+            <translation>Enable</translation>
+        </message>
+        <message>
+            <source>Disattiva</source>
+            <translation>Disable</translation>
+        </message>
+        <message>
+            <source>Attiva SSH via %1</source>
+            <translation>Enable SSH over %1</translation>
+        </message>
+        <message>
+            <source>Disattiva SSH via %1</source>
+            <translation>Disable SSH over %1</translation>
+        </message>
+        <message>
+            <source>I controlli SSH richiedono un Paper Pro con firmware supportato.</source>
+            <translation>SSH controls require a Paper Pro with supported firmware.</translation>
+        </message>
+        <message>
+            <source>L’impostazione Wi-Fi si conserva al riavvio. La modifica USB‑C vale fino al riavvio. Le sessioni già aperte possono continuare.</source>
+            <translation>The Wi-Fi setting is saved across restarts. The USB‑C change lasts until the tablet restarts. Open SSH sessions may continue.</translation>
+        </message>
+        <message>
+            <source>Aggiorna stato</source>
+            <translation>Refresh status</translation>
         </message>
         <message>
             <source>Comando SSH</source>
@@ -2121,8 +2185,12 @@
             <translation>The network list restricts Wi-Fi only. Bluetooth uses the paired device and must already be enabled. A transfer in progress keeps its connection.</translation>
         </message>
         <message>
-            <source>Preferisci Wi-Fi, altrimenti Bluetooth</source>
-            <translation>Prefer Wi-Fi, otherwise Bluetooth</translation>
+            <source>Automatico (Bluetooth e Wi-Fi)</source>
+            <translation>Automatic (Bluetooth and Wi-Fi)</translation>
+        </message>
+        <message>
+            <source>Il Bluetooth rileva le modifiche. Quaderno usa il Wi-Fi locale quando riesce a collegarsi.</source>
+            <translation>Bluetooth checks for changes. Quaderno uses local Wi-Fi when it can connect.</translation>
         </message>
         <message>
             <source>Quando sincronizzare</source>

@@ -2,6 +2,7 @@
 
 #include "blepipe.h"
 #include "blesync.h"
+#include "syncrendezvous.h"
 #include "syncchannel.h"
 #include "wifisynclink.h"
 
@@ -89,6 +90,7 @@ signals:
 private:
     friend class WirelessSyncTests;
     enum class Link { None, Bluetooth, Wifi, Waiting };
+    enum class Rendezvous { Inactive, Discovering, Idle, Connecting, Wifi, Bluetooth };
     bool prepareConnection(Link link, const QString &code, bool automatic = false);
     void connectBluetooth(const QString &code, bool allowActivation, bool automatic = false);
     void connectWifi(const QString &address, const QString &code, bool automatic);
@@ -100,6 +102,15 @@ private:
     void activateBluetooth();
     void startChannel();
     void acceptPeer();
+    bool canRendezvous() const;
+    bool canOfferWifi() const;
+    void beginRendezvous();
+    void updateRendezvous();
+    void receivePrimaryMessage(const QVariantMap &metadata, const QByteArray &payload);
+    void receiveHandoffMessage(const QVariantMap &metadata, const QByteArray &payload);
+    void sendRendezvous(SyncRendezvous::Kind kind, const QString &address = {});
+    void useHandoffWifi();
+    void fallbackRendezvous(bool notifyPeer);
     void linkEnded(const QString &message);
     void report(const QString &message);
     bool storePairing(const QByteArray &secret);
@@ -120,6 +131,7 @@ private:
     const bool m_canActivateBluetooth;
     BleSync m_transfer;
     SyncChannel m_channel;
+    SyncChannel m_handoffWifi;
     BlePipe m_pipe;
     WifiSyncLink m_wifi;
 #ifdef Q_OS_MACOS
@@ -128,10 +140,18 @@ private:
     BlePeripheral m_bluetooth;
 #endif
     Link m_link = Link::None;
+    Link m_channelLink = Link::None;
     Link m_preferredLink = Link::None;
     QString m_preferredAddress;
     QTimer m_reconnect;
     QTimer m_listenerRetry;
+    QTimer m_rendezvousDeadline;
+    Rendezvous m_rendezvous = Rendezvous::Inactive;
+    QString m_rendezvousSession;
+    bool m_localWork = false;
+    bool m_localWifi = false;
+    bool m_peerWork = false;
+    bool m_peerWifi = false;
     QProcess m_activateBluetooth;
     QTimer m_activationDeadline;
     bool m_paused = false;
@@ -141,9 +161,8 @@ private:
     bool m_automaticConnection = false;
     bool m_wifiCandidate = false;
     bool m_bluetoothCandidate = false;
-    bool m_bluetoothFallbackNext = false;
+    bool m_directWifiNext = false;
     bool m_resettingLink = false;
-    bool m_channelStarted = false;
     int m_reconnectFailures = 0;
     int m_reconnectDelayMs = 0;
     bool m_locked = true;

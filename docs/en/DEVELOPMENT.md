@@ -17,6 +17,7 @@ Quaderno is a C++17 and Qt Quick application. The build produces `quaderno.app` 
 | [`InkItem`](../../src/inkitem.cpp) and [`inkrender`](../../src/inkrender.cpp) | Mouse input, Qt tablet input, and Marker input on Linux. Strokes use normalized coordinates. On the Paper Pro, Marker pressure comes from `/dev/input` events. |
 | [`PageContent`](../../src/pagecontent.cpp) and [`PagePreviewItem`](../../src/pagepreviewitem.cpp) | Render templates, page elements, thumbnails, and charts. PDF export uses the same C++ code to draw page content and strokes. |
 | [`shaperecognition`](../../src/shaperecognition.cpp) and [`ChartRecognizer`](../../src/chartrecognizer.cpp) | Recognize shapes locally and reconstruct charts from selected strokes. |
+| [`MixedPageAnalyzer`](../../src/mixedpageanalyzer.cpp) and [`MixedPageRegions`](../../src/mixedpageregions.cpp) | Mask freehand selections and prepare an editable draft with prose, table cells, and diagram labels. Image OCR uses a separate, optional local helper. |
 | [`pdfimport`](../../src/pdfimport.cpp) and [`epubimport`](../../src/epubimport.cpp) | Import local documents. PDF import uses Core Graphics and PDFKit on macOS and PDFium on the Paper Pro. EPUB import uses libarchive. |
 | [`AppleShare`](../../src/appleshare.cpp), [`UsbTransfer`](../../src/usbtransfer.cpp), and [`Handwriting`](../../src/handwriting.cpp) | Share PDFs through macOS, transfer notebooks over SSH, and transcribe handwriting locally with WritePad on Paper Pro or PencilKit and Vision on macOS. |
 | [`AppLanguage`](../../src/applanguage.cpp) and [`translations/`](../../translations) | Save the interface language and load the embedded English catalogs. Italian strings are defined in the QML and C++ sources. |
@@ -70,7 +71,7 @@ Download and run the SDK installer, then choose an installation directory. Set t
 PAPER_PRO_SDK='/path/to/the/installed/sdk'
 source "$PAPER_PRO_SDK/environment-setup-cortexa53-crypto-remarkable-linux"
 
-cmake -S . -B build-paper-pro -G Ninja -DCMAKE_BUILD_TYPE=Release \
+cmake -S . -B build-paper-pro -G Ninja -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_TOOLCHAIN_FILE="$CMAKE_TOOLCHAIN_FILE" \
   -DQt6_DIR="$OECORE_TARGET_SYSROOT/usr/lib/cmake/Qt6" \
   -DQT_HOST_PATH="$OECORE_NATIVE_SYSROOT/usr" \
@@ -83,16 +84,17 @@ readelf -d build-paper-pro/quaderno
 
 Check that `file` reports a 64-bit AArch64 ELF executable. `readelf` shows the dynamic interpreter and dependencies. Check the `RPATH` and `RUNPATH` entries for paths specific to the build host. On the tablet, `try-on-device.sh --check` verifies the executable, library resolution, and the Qt e-paper plugins.
 
-To enable offline Italian transcription on Paper Pro, build the separate WritePad helper with the same SDK. Place the helper and its Italian dictionary beside `quaderno` in the package. The installer checks that the helper can load the dictionary. Include the license notices and corresponding source when distributing the helper. [Build the handwriting helper](../../tools/writepad/README.md)
+To enable offline pen-stroke transcription on Paper Pro, build the separate WritePad helper with the same SDK. Place the helper and both language dictionaries beside `quaderno` in the package. The installer checks the Italian and English dictionaries. Include the license notices and corresponding source when distributing the helper. [Build the handwriting helper](../../tools/writepad/README.md)
 
 ## Test changes
 
-The repository includes the source code and installation scripts. Use sample notebooks, images, and test credentials when following the checks below. The 0.2.8 regression targets include `diagramrecognition_tests`, `diagramsintegration_tests` and `screenorientation_tests` for geometry, atomic conversion/recovery, library/UI workflows, and sensor filtering. Their presence is not a claim that a device acceptance run has passed.
+Use sample notebooks, images, and test credentials. Enable `BUILD_TESTING` in the desktop build to run the CTest suites, including diagram recognition, mixed-page review, internal page links, library persistence, and wireless synchronization.
 
-GitHub Actions compiles a desktop build on Linux and checks startup in both desktop and tablet layouts. To run the same script checks locally, install ShellCheck and run:
+GitHub Actions builds on Linux AArch64 and macOS, runs CTest, and checks both layouts. The manual Paper Pro job builds the base app with the firmware SDK. Build and test the optional OCR helper separately. For local checks, install ShellCheck and run the following commands.
 
 ```bash
 sh scripts/check-shell.sh
+ctest --test-dir build-mac --output-on-failure
 ```
 
 To preview the tablet layout on macOS, launch the development executable from Terminal. Close other Quaderno instances first if you plan to use the same library.
@@ -115,7 +117,8 @@ python3 scripts/check-startup.py build-ci/quaderno
 | Library and persistence | Create a notebook with several pages, tags, folders, and layers. Reopen the app and check the data. Import the same JSON file twice and test a conflict with an edited copy. |
 | Pen and layers | Write, erase, undo, and redo. Hide and show a layer. Check smart shapes, the lasso, and restoration of the original stroke after reopening the notebook. |
 | Charts and documents | Select two axes and either a curve or bars. Edit the data, set the scale, and compare the CSV with the preview. Import a PDF and a DRM-free EPUB, add annotations, and check the exported PDF. |
-| Handwriting transcription | Use a short sample. Check that the preview appears automatically on Paper Pro. Review the text, save it to a new page, search for it, and verify that the original ink is still available. |
+| Handwriting transcription | Use a short handwritten sample. Review the proposal, try placing the text in the selection or on a new page, and verify that the original ink can be recovered. |
+| Mixed-page recognition | On Paper Pro, draw contours around prose, a diagram, and a table with blank cells. Review the drafts, save one notebook, and open and edit both internal targets. Repeat with the optional image OCR helper installed. |
 | Diagrams | Create an empty diagram notebook, reopen it, draw and review a flowchart, exclude one label, apply, undo/redo and recover original ink after restart. Insert a copy into Writing and verify its independence, Markdown PNG/`.drawio` and notebook transfer. |
 | Automatic orientation | With a supported sensor, test all four stable angles, flat/ambiguous positions, input alignment, popup deferral, PIN/sleep, manual override and fixed book orientation. No new angle should be inferred from a read failure. |
 | Physical Paper Pro | Check Marker coordinates and pressure, touch alignment, e-paper refresh and legibility, reading light, and Wi-Fi. Try **Esci** (Exit) and let a trial session expire. Check that the reMarkable interface returns in both cases. |
@@ -169,6 +172,8 @@ sh scripts/package-paper-pro.sh build-paper-pro/quaderno build-paper-pro/package
 ```
 
 To include the offline transcription helper, run the packaging script in the matching SDK environment and pass the pinned WritePad tarball as its third argument. Distribute the source companion it creates alongside the ZIP. [WritePad build and packaging](../../tools/writepad/README.md)
+
+To include image OCR for prose, table cells and diagram labels in mixed-page recognition, append `--raster-ocr-dir DIRECTORY` after the output directory or the optional WritePad archive. Point it at an AArch64 helper bundle for Paper Pro containing `quaderno-raster-ocr`, `quaderno-raster-ocr.onnx`, `quaderno-raster-ocr.txt` and a regular `libonnxruntime.so.1` file. The ZIP includes the model and runtime notices from the same directory. [Build the optional image OCR helper](../../tools/raster-ocr/README.md) · [Third-party notices](../../THIRD_PARTY_NOTICES.md)
 
 To verify the package, extract it on a test machine and run the USB installer with `--install-only`. Then start a trial session and check that the reMarkable interface returns when it ends. Record the commit, tested firmware version, and ZIP's SHA-256 checksum for each build you distribute.
 

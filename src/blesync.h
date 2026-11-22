@@ -59,17 +59,21 @@ public:
     quint64 bookStatusVersion() const { return m_bookStatusVersion; }
     QVariantMap resumeOffer() const { return m_resumeOffer; }
     QString resumeStatus() const { return m_resumeStatus; }
-    bool resumeBusy() const { return !m_outgoingResume.bookId.isEmpty(); }
+    bool resumeBusy() const { return !m_outgoingResume.bookId.isEmpty() || !m_deferredResume.bookId.isEmpty(); }
     bool canAcceptResume() const { return !m_editorBusy && !m_resumeOffer.isEmpty(); }
     qreal transferProgress() const { return m_delta.totalBytes() > 0 ? qreal(m_delta.completedBytes()) / m_delta.totalBytes() : 0; }
     bool incremental() const { return m_delta.incremental(); }
     bool hasPendingTransfer() const { return !m_pendingTransferBook.isEmpty(); }
     int pendingAutomaticCount() const;
     bool automaticRetryPending() const;
+    bool hasSyncWork() const;
+    bool transportSelectionBusy() const;
 
     void setPeerIdentity(const QString &id);
     void forgetPeer();
     void setPayloadLimit(qsizetype bytes);
+    bool setTransportSelectionPaused(bool paused);
+    void cancelDeferredTransfer();
     void setConnected(bool connected);
     void receiveMessage(const QVariantMap &message, const QByteArray &payload);
 
@@ -94,6 +98,8 @@ signals:
     void changed();
     void pinnedBooksChanged();
     void automaticStateChanged();
+    void syncWorkChanged();
+    void transportSelectionBusyChanged();
     void bookStatusChanged();
     void resumeChanged();
     void sendMessage(const QVariantMap &message, const QByteArray &payload);
@@ -130,6 +136,11 @@ private:
     void resetOutgoing();
     void resetIncoming();
     void finishOutgoing(const QString &status, bool completed = false, bool conflict = false);
+    void scheduleRoutingState(int delay = 0);
+    bool hasDeferredTransfer() const { return !m_deferredPreviewBook.isEmpty() || !m_deferredResume.bookId.isEmpty(); }
+    void dispatchDeferredTransfer();
+    void schedulePendingRetry();
+    bool pendingRetryHasPriority() const { return m_retryPendingOnConnection && !m_pendingTransferApplying; }
     void scheduleAutoSync();
     void runAutoSync();
     void pauseAutomaticPreview();
@@ -139,6 +150,7 @@ private:
     QSettings syncSettings() const;
     void acknowledge(const QString &bookId, const QString &revision);
     void noteBookChanges();
+    QString automaticRevision(const QString &bookId) const;
     void updateBookStatus();
     void setBookIssue(const QString &bookId, const QString &revision, const QString &state, const QString &detail);
     void dispatchResume();
@@ -154,6 +166,9 @@ private:
     QTimer m_outgoingTimer;
     QTimer m_incomingTimer;
     QTimer m_autoTimer;
+    QTimer m_routingStateTimer;
+    QTimer m_pendingTransferTimer;
+    QTimer m_deferredTimer;
     QTimer m_bookStatusTimer;
     QTimer m_outgoingResumeTimer;
     QTimer m_incomingResumeTimer;
@@ -169,6 +184,8 @@ private:
     QHash<QString, QString> m_batchRevisions;
     QString m_pendingTransferBook;
     QString m_pendingTransferRevision;
+    QString m_deferredPreviewBook;
+    ResumeRequest m_deferredResume;
     bool m_pendingTransferAutomatic = false;
     bool m_pendingTransferApplying = false;
     QHash<QString, BookIssue> m_bookIssues;
@@ -176,10 +193,14 @@ private:
     quint64 m_bookStatusVersion = 0;
     int m_notifiedAutomaticCount = 0;
     bool m_notifiedAutomaticRetry = false;
+    bool m_notifiedSyncWork = false;
+    bool m_notifiedTransportBusy = false;
+    bool m_retryPendingOnConnection = false;
     Stage m_stage = Stage::Idle;
     bool m_connected = false;
     bool m_autoSync = false;
     bool m_automaticAllowed = true;
+    bool m_transportSelectionPaused = false;
     bool m_triggeredAutomaticSync = false;
     QString m_conflictPolicy = QStringLiteral("ask");
     bool m_automatic = false;

@@ -48,7 +48,8 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/wirelesssync_tests.cpp")
     qt_add_executable(wirelesssync_tests wirelesssync_tests.cpp
         ../src/wirelesssync.cpp ../src/wirelesssync.h ../src/blesync.cpp ../src/blesync.h
         ../src/deltatransfer.cpp ../src/deltatransfer.h ../src/syncchannel.cpp ../src/syncchannel.h
-        ../src/blepipe.cpp ../src/blepipe.h ../src/wifisynclink.cpp ../src/wifisynclink.h)
+        ../src/blepipe.cpp ../src/blepipe.h ../src/wifisynclink.cpp ../src/wifisynclink.h
+        ../src/syncrendezvous.cpp ../src/syncrendezvous.h)
     target_link_libraries(wirelesssync_tests PRIVATE quaderno_test_core Qt6::Test)
     if(APPLE)
         target_sources(wirelesssync_tests PRIVATE ../src/blecentral_mac.mm ../src/blecentral.h)
@@ -61,6 +62,18 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/wirelesssync_tests.cpp")
     set_tests_properties(wirelesssync PROPERTIES
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software" TIMEOUT 90)
 endif()
+
+qt_add_executable(syncrendezvous_tests syncrendezvous_tests.cpp
+    ../src/syncrendezvous.cpp ../src/wifisynclink.cpp ../src/wifisynclink.h)
+target_include_directories(syncrendezvous_tests PRIVATE ../src)
+target_link_libraries(syncrendezvous_tests PRIVATE Qt6::Network Qt6::Test)
+add_test(NAME syncrendezvous COMMAND syncrendezvous_tests)
+
+qt_add_executable(paperprosshaccess_tests paperprosshaccess_tests.cpp
+    ../src/paperprosshaccess.cpp ../src/paperprosshaccess.h)
+target_include_directories(paperprosshaccess_tests PRIVATE ../src)
+target_link_libraries(paperprosshaccess_tests PRIVATE Qt6::Qml Qt6::Test)
+add_test(NAME paperprosshaccess COMMAND paperprosshaccess_tests)
 
 foreach(suite ui settingsintegration diagramsintegration workspaceintegration booknotesintegration)
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${suite}_tests.cpp")

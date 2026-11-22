@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -10,6 +11,7 @@ Dialog {
     required property real uiScale
     required property bool tabletMode
     property bool showTouchKeyboard: tabletMode
+    property bool draftOnly: false
     readonly property Item markerTarget: visible && !labelDialog.visible && !deleteDialog.visible
         && !arrangeDialog.visible && !overflow.visible ? canvas : null
     property string errorText: ""
@@ -32,6 +34,10 @@ Dialog {
     property var lassoPoints: []
     property var pointerStart: null
     property var previewNodes: null
+    property var draggedShape: null
+    property point shapeDrop: Qt.point(-1, -1)
+    property string connectorSource: ""
+    property point connectorPoint: Qt.point(0, 0)
     property int nextId: 0
 
     signal saved(var item)
@@ -42,8 +48,8 @@ Dialog {
 
     title: importTitle.length ? qsTr("Diagramma · %1").arg(importTitle) : qsTr("Diagramma")
     anchors.centerIn: Overlay.overlay
-    width: Math.min(710 * uiScale, parent ? parent.width - 16 * uiScale : 710 * uiScale)
-    height: Math.min(800 * uiScale, parent ? parent.height - 16 * uiScale : 800 * uiScale)
+    width: Math.min(1140 * uiScale, parent ? parent.width - 16 * uiScale : 1140 * uiScale)
+    height: Math.min(880 * uiScale, parent ? parent.height - 16 * uiScale : 880 * uiScale)
     padding: 12 * uiScale
     modal: true
     dim: !tabletMode
@@ -83,7 +89,8 @@ Dialog {
     readonly property var resizeNode: !connecting && !lassoEnabled && !panEnabled && activeNode
         ? shownNodes.find(node => node.id === selectedNode) || null : null
     readonly property real gridStep: 0.05
-    readonly property bool compactActions: availableWidth < 680 * uiScale
+    readonly property bool sidePanels: availableWidth >= 840 * uiScale && availableHeight >= 360 * uiScale
+    readonly property bool compactActions: availableWidth < 365 * uiScale
     readonly property rect view: Qt.rect(
         Math.max(canvas.width * (1 - zoom), Math.min(0, viewOffset.x)),
         Math.max(canvas.height * (1 - zoom), Math.min(0, viewOffset.y)),
@@ -114,6 +121,8 @@ Dialog {
         arrangeDialog.close()
         overflow.close()
         markerCanceled()
+        draggedShape = null
+        connectorSource = ""
         original = null
         nodes = []
         edges = []
@@ -261,12 +270,28 @@ Dialog {
         return id
     }
 
-    function addShape(kind) {
+    function shapeSize(kind) {
+        return kind.shape === "decision" ? Qt.size(0.29, 0.18) : Qt.size(0.25, 0.13)
+    }
+
+    function positionShape(kind, point) {
+        const size = shapeSize(kind)
+        return Qt.point(
+            Math.max(0, Math.min(1 - size.width, snap((point.x - view.x) / view.width - size.width / 2))),
+            Math.max(0, Math.min(1 - size.height, snap((point.y - view.y) / view.height - size.height / 2))))
+    }
+
+    function insideCanvas(point) {
+        return point.x >= 0 && point.y >= 0 && point.x < canvas.width && point.y < canvas.height
+    }
+
+    function addShape(kind, point) {
         if (nodes.length >= 64)
             return
-        const shapeWidth = kind.shape === "decision" ? 0.29 : 0.25
-        const shapeHeight = kind.shape === "decision" ? 0.18 : 0.13
-        let position = null
+        const size = shapeSize(kind)
+        const shapeWidth = size.width
+        const shapeHeight = size.height
+        let position = point && insideCanvas(point) ? positionShape(kind, point) : null
         for (let row = 0; row < 5 && !position; ++row) {
             for (let col = 0; col < 3 && !position; ++col) {
                 const x = 0.04 + col * 0.32
@@ -287,6 +312,8 @@ Dialog {
         selectedEdge = ""
         connectFrom = ""
         connecting = false
+        lassoEnabled = false
+        panEnabled = false
     }
 
     function updateNode(updated) {
@@ -294,11 +321,12 @@ Dialog {
     }
 
     function startConnect() {
+        const source = connecting ? "" : selectedNode
         connecting = !connecting
         lassoEnabled = false
         panEnabled = false
         markerCanceled()
-        connectFrom = ""
+        connectFrom = source
         selectedEdge = ""
         errorText = ""
     }
@@ -326,6 +354,29 @@ Dialog {
             selectedNodes = []
         connectFrom = ""
         connecting = false
+    }
+
+    function finishConnector(point, moved) {
+        const source = connectorSource
+        connectorSource = ""
+        if (!source)
+            return
+        if (!moved) {
+            startConnect()
+            return
+        }
+        const target = insideCanvas(point) ? canvas.nodeAt(point.x, point.y) : ""
+        if (target && target !== source) {
+            startConnect()
+            connectTo(target)
+        }
+    }
+
+    function changeShape(shape) {
+        if (!activeNode || activeNode.shape === shape)
+            return
+        remember()
+        updateNode(Object.assign({}, activeNode, { shape: shape }))
     }
 
     function markerPressed(x, y) {
@@ -470,8 +521,7 @@ Dialog {
             return
         remember()
         if (node)
-            updateNode({ id: node.id, shape: node.shape, text: value, x: node.x, y: node.y,
-                width: node.width, height: node.height })
+            updateNode(Object.assign({}, node, { text: value }))
         else
             updateEdge(Object.assign({}, edge, { text: value }))
     }
@@ -520,22 +570,45 @@ Dialog {
         onActivated: editor.redo()
     }
 
+    component Tool: Action {
+        iconOnly: true
+        ToolTip.visible: !editor.tabletMode && hovered
+        ToolTip.text: text
+    }
+
     contentItem: ColumnLayout {
-        spacing: 6 * editor.uiScale
+        spacing: 7 * editor.uiScale
 
         Flow {
             Layout.fillWidth: true
             spacing: 5 * editor.uiScale
-            Repeater {
-                model: editor.palette
-                delegate: Action {
-                    required property var modelData
-                    text: modelData.title
-                    implicitWidth: Math.max(74 * editor.uiScale,
-                        implicitContentWidth + leftPadding + rightPadding + 4 * editor.uiScale)
-                    enabled: editor.nodes.length < 64
-                    onClicked: editor.addShape(modelData)
-                }
+
+            Action {
+                objectName: "diagramConnectTool"
+                text: qsTr("Collega")
+                iconName: "edge"
+                filled: editor.connecting
+                enabled: editor.nodes.length > 1 && editor.edges.length < 128
+                onClicked: editor.startConnect()
+            }
+            Tool {
+                text: qsTr("Lazo")
+                iconName: "lasso"
+                filled: editor.lassoEnabled
+                enabled: editor.nodes.length > 0
+                onClicked: editor.toggleLasso()
+            }
+            Tool {
+                text: qsTr("Annulla ultima modifica")
+                iconName: "undo"
+                enabled: editor.history.length > 0
+                onClicked: editor.undo()
+            }
+            Tool {
+                text: qsTr("Ripristina ultima modifica")
+                iconName: "redo"
+                enabled: editor.future.length > 0
+                onClicked: editor.redo()
             }
             Action {
                 text: qsTr("Griglia")
@@ -544,267 +617,479 @@ Dialog {
                 filled: checked
                 onToggled: editor.gridEnabled = checked
             }
-        }
-
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: 5 * editor.uiScale
-
-            Action {
-                text: qsTr("Lazo")
-                iconName: "lasso"
-                filled: editor.lassoEnabled
-                enabled: editor.nodes.length > 0
-                onClicked: editor.toggleLasso()
-            }
-            Action {
-                text: qsTr("Allinea e distribuisci")
-                iconName: "align"
-                iconOnly: editor.compactActions
-                ToolTip.visible: !editor.tabletMode && hovered && iconOnly
-                ToolTip.text: text
-                enabled: editor.selectedNodes.length >= 2
-                onClicked: arrangeDialog.open()
-            }
-            Item { Layout.fillWidth: true }
-            Action {
+            Tool {
                 text: qsTr("Sposta vista")
                 iconName: "pan"
-                iconOnly: true
-                ToolTip.visible: !editor.tabletMode && hovered
-                ToolTip.text: text
                 enabled: editor.zoom > 1
                 filled: editor.panEnabled
                 onClicked: editor.togglePan()
             }
-            Action {
+            Tool {
                 text: qsTr("Riduci vista")
                 iconName: "zoom-out"
-                iconOnly: true
-                ToolTip.visible: !editor.tabletMode && hovered
-                ToolTip.text: text
                 enabled: editor.zoom > 1
                 onClicked: editor.changeZoom(0.8, canvas.width / 2, canvas.height / 2)
             }
-            Action {
+            Tool {
                 text: qsTr("Ingrandisci vista")
                 iconName: "zoom-in"
-                iconOnly: true
-                ToolTip.visible: !editor.tabletMode && hovered
-                ToolTip.text: text
                 enabled: editor.zoom < 3
                 onClicked: editor.changeZoom(1.25, canvas.width / 2, canvas.height / 2)
             }
             Action {
-                text: qsTr("Adatta alla vista")
-                iconName: "collapse"
-                iconOnly: true
-                ToolTip.visible: !editor.tabletMode && hovered
-                ToolTip.text: text
+                text: Math.round(editor.zoom * 100) + "%"
+                quiet: true
                 enabled: editor.zoom > 1
+                Accessible.name: qsTr("Adatta alla vista")
+                ToolTip.visible: !editor.tabletMode && hovered
+                ToolTip.text: qsTr("Adatta alla vista")
                 onClicked: editor.fitView()
             }
         }
 
-        Rectangle {
+        GridLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            Layout.minimumHeight: 80 * editor.uiScale
-            color: "white"
-            border.color: "#d9dce2"
-            radius: 6 * editor.uiScale
-            clip: true
+            columns: editor.sidePanels ? 3 : 1
+            rowSpacing: 7 * editor.uiScale
+            columnSpacing: 8 * editor.uiScale
 
-            DiagramItem {
-                id: canvas
-                z: 1
-                anchors.fill: parent
-                anchors.margins: 8 * editor.uiScale
-                diagram: ({
-                    nodes: editor.shownNodes,
-                    edges: editor.edges,
-                    styleScale: editor.original && editor.original.styleScale !== undefined ? editor.original.styleScale : 1
-                })
-                viewRect: editor.view
-                selectedNode: editor.connecting ? editor.connectFrom : ""
-                selectedNodes: editor.connecting ? [] : editor.selectedNodes
-                selectedEdge: editor.selectedEdge
+            Rectangle {
+                objectName: "diagramShapePalette"
+                Layout.row: 0
+                Layout.column: 0
+                Layout.fillWidth: !editor.sidePanels
+                Layout.fillHeight: editor.sidePanels
+                Layout.preferredWidth: editor.sidePanels ? 124 * editor.uiScale : 0
+                implicitHeight: shapeList.implicitHeight + 12 * editor.uiScale
+                color: "#f6f6f8"
+                border.color: "#d9dce2"
+                radius: 6 * editor.uiScale
 
-                Rectangle {
-                    id: resizeHandle
-                    visible: editor.resizeNode !== null
-                    x: editor.resizeNode ? Math.min(canvas.width - width,
-                        editor.view.x + (editor.resizeNode.x + editor.resizeNode.width) * editor.view.width - width / 2) : 0
-                    y: editor.resizeNode ? Math.min(canvas.height - height,
-                        editor.view.y + (editor.resizeNode.y + editor.resizeNode.height) * editor.view.height - height / 2) : 0
-                    width: 13 * editor.uiScale
-                    height: width
-                    border.width: 2 * editor.uiScale
-                    border.color: "#155cc2"
-                    color: "white"
+                ColumnLayout {
+                    id: shapeList
+                    anchors.top: parent.top
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.margins: 6 * editor.uiScale
+                    spacing: 5 * editor.uiScale
+
+                    Label {
+                        visible: editor.sidePanels
+                        text: qsTr("Forme")
+                        font.weight: Font.DemiBold
+                        font.pixelSize: 13 * editor.uiScale
+                    }
+
+                    GridLayout {
+                        Layout.fillWidth: true
+                        columns: editor.sidePanels ? 1 : editor.palette.length
+                        columnSpacing: 4 * editor.uiScale
+                        rowSpacing: 4 * editor.uiScale
+
+                        Repeater {
+                            model: editor.palette
+                            delegate: Action {
+                                id: shapeButton
+                                required property var modelData
+                                objectName: "diagramShape_" + modelData.shape
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 0
+                                Layout.preferredWidth: 1
+                                text: modelData.title
+                                leftPadding: 0
+                                rightPadding: 0
+                                topPadding: 4 * editor.uiScale
+                                bottomPadding: topPadding
+                                enabled: editor.nodes.length < 64
+                                ToolTip.text: text
+                                ToolTip.visible: !editor.tabletMode && hovered
+                                onClicked: editor.addShape(modelData, null)
+
+                                contentItem: ColumnLayout {
+                                    spacing: 2 * editor.uiScale
+                                    DiagramItem {
+                                        Layout.alignment: Qt.AlignHCenter
+                                        Layout.preferredWidth: Math.min(38 * editor.uiScale, shapeButton.availableWidth)
+                                        Layout.preferredHeight: 20 * editor.uiScale
+                                        diagram: ({
+                                            styleScale: 7,
+                                            nodes: [{id: "preview", shape: shapeButton.modelData.shape, text: "",
+                                                x: 0.12, y: 0.14, width: 0.76, height: 0.72}]
+                                        })
+                                    }
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: shapeButton.text
+                                        textFormat: Text.PlainText
+                                        color: shapeButton.labelColor
+                                        font.pixelSize: 11 * editor.uiScale
+                                        horizontalAlignment: Text.AlignHCenter
+                                        elide: Text.ElideRight
+                                    }
+                                }
+
+                                DragHandler {
+                                    target: null
+                                    enabled: shapeButton.enabled
+                                    onActiveChanged: {
+                                        if (active)
+                                            editor.draggedShape = shapeButton.modelData
+                                    }
+                                    onActiveTranslationChanged: if (active && editor.draggedShape?.shape === shapeButton.modelData.shape)
+                                        editor.shapeDrop = canvas.mapFromItem(shapeButton, centroid.position)
+                                    onGrabChanged: (transition, point) => {
+                                        if (editor.draggedShape?.shape !== shapeButton.modelData.shape)
+                                            return
+                                        if (transition === PointerDevice.UngrabExclusive || transition === PointerDevice.CancelGrabExclusive) {
+                                            editor.draggedShape = null
+                                            if (transition === PointerDevice.UngrabExclusive && point.state === Qt.TouchPointReleased) {
+                                                const position = canvas.mapFromItem(null, point.scenePosition)
+                                                if (editor.insideCanvas(position))
+                                                    editor.addShape(shapeButton.modelData, position)
+                                            }
+                                            editor.shapeDrop = Qt.point(-1, -1)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
+            }
 
-                MouseArea {
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                objectName: "diagramWorkspaceCanvas"
+                Layout.row: editor.sidePanels ? 0 : 1
+                Layout.column: editor.sidePanels ? 1 : 0
+                Layout.minimumHeight: 70 * editor.uiScale
+                color: "white"
+                border.color: "#d9dce2"
+                radius: 6 * editor.uiScale
+                clip: true
+
+                DiagramItem {
+                    id: canvas
+                    objectName: "diagramCanvas"
+                    z: 1
                     anchors.fill: parent
-                    preventStealing: true
-                    onPressed: mouse => editor.markerPressed(mouse.x, mouse.y)
-                    onPositionChanged: mouse => editor.markerMoved(mouse.x, mouse.y)
-                    onReleased: mouse => editor.markerReleased(mouse.x, mouse.y)
-                    onCanceled: editor.markerCanceled()
-                    onWheel: wheel => {
-                        if (wheel.angleDelta.y)
-                            editor.changeZoom(wheel.angleDelta.y > 0 ? 1.25 : 0.8, wheel.x, wheel.y)
+                    anchors.margins: 8 * editor.uiScale
+                    diagram: ({
+                        nodes: editor.shownNodes,
+                        edges: editor.edges,
+                        styleScale: editor.original && editor.original.styleScale !== undefined ? editor.original.styleScale : 1
+                    })
+                    viewRect: editor.view
+                    selectedNode: editor.connecting ? editor.connectFrom : ""
+                    selectedNodes: editor.connecting ? [] : editor.selectedNodes
+                    selectedEdge: editor.selectedEdge
+
+                    Rectangle {
+                        id: resizeHandle
+                        visible: editor.resizeNode !== null
+                        x: editor.resizeNode ? Math.min(canvas.width - width,
+                            editor.view.x + (editor.resizeNode.x + editor.resizeNode.width) * editor.view.width - width / 2) : 0
+                        y: editor.resizeNode ? Math.min(canvas.height - height,
+                            editor.view.y + (editor.resizeNode.y + editor.resizeNode.height) * editor.view.height - height / 2) : 0
+                        width: 13 * editor.uiScale
+                        height: width
+                        border.width: 2 * editor.uiScale
+                        border.color: "#155cc2"
+                        color: "white"
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        preventStealing: true
+                        onPressed: mouse => editor.markerPressed(mouse.x, mouse.y)
+                        onPositionChanged: mouse => editor.markerMoved(mouse.x, mouse.y)
+                        onReleased: mouse => editor.markerReleased(mouse.x, mouse.y)
+                        onCanceled: editor.markerCanceled()
+                        onDoubleClicked: mouse => {
+                            if (!editor.connecting && !editor.panEnabled && !editor.lassoEnabled
+                                    && (canvas.nodeAt(mouse.x, mouse.y) || canvas.edgeAt(mouse.x, mouse.y))) {
+                                editor.markerCanceled()
+                                editor.openLabel()
+                            }
+                        }
+                        onWheel: wheel => {
+                            if (wheel.angleDelta.y)
+                                editor.changeZoom(wheel.angleDelta.y > 0 ? 1.25 : 0.8, wheel.x, wheel.y)
+                        }
+                    }
+
+                    Canvas {
+                        anchors.fill: parent
+                        readonly property var points: editor.lassoPoints
+                        readonly property string source: editor.connectorSource
+                        readonly property point end: editor.connectorPoint
+                        onPointsChanged: if (available) requestPaint()
+                        onSourceChanged: if (available) requestPaint()
+                        onEndChanged: if (available) requestPaint()
+                        onAvailableChanged: if (available) requestPaint()
+                        onPaint: {
+                            const ctx = getContext("2d")
+                            ctx.clearRect(0, 0, width, height)
+                            if (source) {
+                                ctx.beginPath()
+                                ctx.moveTo(connectorHandle.centerX, connectorHandle.centerY)
+                                ctx.lineTo(end.x, end.y)
+                                ctx.strokeStyle = "#155cc2"
+                                ctx.lineWidth = 2 * editor.uiScale
+                                ctx.stroke()
+                            }
+                            if (points.length < 2)
+                                return
+                            ctx.beginPath()
+                            ctx.moveTo(points[0].x, points[0].y)
+                            for (let index = 1; index < points.length; ++index)
+                                ctx.lineTo(points[index].x, points[index].y)
+                            ctx.closePath()
+                            ctx.fillStyle = "#18155cc2"
+                            ctx.fill()
+                            ctx.strokeStyle = "#155cc2"
+                            ctx.lineWidth = 2 * editor.uiScale
+                            ctx.stroke()
+                        }
+                    }
+
+                    DiagramItem {
+                        readonly property bool inCanvas: editor.draggedShape !== null && editor.insideCanvas(editor.shapeDrop)
+                        readonly property point origin: inCanvas ? editor.positionShape(editor.draggedShape, editor.shapeDrop)
+                            : Qt.point(0, 0)
+                        visible: inCanvas
+                        opacity: 0.55
+                        anchors.fill: parent
+                        viewRect: editor.view
+                        diagram: {
+                            if (!inCanvas)
+                                return {}
+                            const size = editor.shapeSize(editor.draggedShape)
+                            return {
+                                nodes: [{ id: "preview", shape: editor.draggedShape.shape, text: editor.draggedShape.title,
+                                    x: origin.x, y: origin.y, width: size.width, height: size.height }]
+                            }
+                        }
+                    }
+
+                    Item {
+                        id: connectorHandle
+                        objectName: "diagramConnectorHandle"
+                        readonly property var node: editor.activeNode
+                        readonly property real centerX: node ? editor.view.x + (node.x + node.width) * editor.view.width : 0
+                        readonly property real centerY: node ? editor.view.y + (node.y + node.height / 2) * editor.view.height : 0
+                        width: 38 * editor.uiScale
+                        height: width
+                        x: Math.max(0, Math.min(canvas.width - width, centerX - width / 2))
+                        y: Math.max(0, Math.min(canvas.height - height, centerY - height / 2))
+                        visible: node !== null && editor.nodes.length > 1 && editor.edges.length < 128
+                            && !editor.connecting && !editor.lassoEnabled && !editor.panEnabled && !editor.pointerStart
+                            && editor.insideCanvas(Qt.point(centerX, centerY))
+
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: 22 * editor.uiScale
+                            height: width
+                            radius: width / 2
+                            color: connectorContact.pressed ? "#dbe9ff" : "#ffffff"
+                            border.color: "#155cc2"
+                            PaperIcon {
+                                name: "edge"
+                                tint: "#155cc2"
+                                anchors.centerIn: parent
+                                width: 14 * editor.uiScale
+                                height: width
+                            }
+                        }
+
+                        MouseArea {
+                            id: connectorContact
+                            anchors.fill: parent
+                            preventStealing: true
+                            cursorShape: Qt.CrossCursor
+                            property point start: Qt.point(0, 0)
+                            onPressed: mouse => {
+                                start = mapToItem(canvas, mouse.x, mouse.y)
+                                editor.connectorPoint = start
+                                editor.connectorSource = connectorHandle.node.id
+                            }
+                            onPositionChanged: mouse => {
+                                if (pressed)
+                                    editor.connectorPoint = mapToItem(canvas, mouse.x, mouse.y)
+                            }
+                            onReleased: mouse => {
+                                const point = mapToItem(canvas, mouse.x, mouse.y)
+                                editor.finishConnector(point, Math.hypot(point.x - start.x, point.y - start.y) > 7 * editor.uiScale)
+                            }
+                            onCanceled: editor.connectorSource = ""
+                        }
                     }
                 }
 
-                Canvas {
-                    anchors.fill: parent
-                    readonly property var points: editor.lassoPoints
-                    onPointsChanged: if (available) requestPaint()
-                    onAvailableChanged: if (available) requestPaint()
-                    onPaint: {
-                        const ctx = getContext("2d")
-                        ctx.clearRect(0, 0, width, height)
-                        if (points.length < 2)
-                            return
-                        ctx.beginPath()
-                        ctx.moveTo(points[0].x, points[0].y)
-                        for (let index = 1; index < points.length; ++index)
-                            ctx.lineTo(points[index].x, points[index].y)
-                        ctx.closePath()
-                        ctx.fillStyle = "#18155cc2"
-                        ctx.fill()
-                        ctx.strokeStyle = "#155cc2"
-                        ctx.lineWidth = 2 * editor.uiScale
-                        ctx.stroke()
+                Repeater {
+                    model: editor.gridEnabled ? 19 : 0
+                    delegate: Rectangle {
+                        required property int index
+                        x: canvas.x + editor.view.x + editor.view.width * (index + 1) * editor.gridStep
+                        y: canvas.y
+                        width: 1
+                        height: canvas.height
+                        color: "#e8e9ec"
+                    }
+                }
+
+                Repeater {
+                    model: editor.gridEnabled ? 19 : 0
+                    delegate: Rectangle {
+                        required property int index
+                        x: canvas.x
+                        y: canvas.y + editor.view.y + editor.view.height * (index + 1) * editor.gridStep
+                        width: canvas.width
+                        height: 1
+                        color: "#e8e9ec"
+                    }
+                }
+
+                ColumnLayout {
+                    z: 2
+                    anchors.centerIn: parent
+                    width: parent.width - 28 * editor.uiScale
+                    visible: editor.nodes.length === 0
+                    spacing: 8 * editor.uiScale
+
+                    Action {
+                        Layout.alignment: Qt.AlignHCenter
+                        text: qsTr("Modello di flusso")
+                        iconName: "diagram"
+                        onClicked: editor.flowTemplate()
+                    }
+                    Action {
+                        Layout.alignment: Qt.AlignHCenter
+                        visible: !editor.draftOnly
+                        text: qsTr("Importa .drawio")
+                        iconName: "folder"
+                        onClicked: editor.importRequested()
                     }
                 }
             }
 
-            Repeater {
-                model: editor.gridEnabled ? 19 : 0
-                delegate: Rectangle {
-                    required property int index
-                    x: canvas.x + editor.view.x + editor.view.width * (index + 1) * editor.gridStep
-                    y: canvas.y
-                    width: 1
-                    height: canvas.height
-                    color: "#e8e9ec"
-                }
-            }
+            Rectangle {
+                id: inspector
+                objectName: "diagramInspector"
+                Layout.row: editor.sidePanels ? 0 : 2
+                Layout.column: editor.sidePanels ? 2 : 0
+                Layout.fillWidth: !editor.sidePanels
+                Layout.fillHeight: editor.sidePanels
+                Layout.preferredWidth: editor.sidePanels ? 176 * editor.uiScale : 0
+                implicitHeight: properties.implicitHeight + 12 * editor.uiScale
+                color: "#f6f6f8"
+                border.color: "#d9dce2"
+                radius: 6 * editor.uiScale
+                visible: editor.sidePanels || (editor.hasSelection && !editor.connecting)
 
-            Repeater {
-                model: editor.gridEnabled ? 19 : 0
-                delegate: Rectangle {
-                    required property int index
-                    x: canvas.x
-                    y: canvas.y + editor.view.y + editor.view.height * (index + 1) * editor.gridStep
-                    width: canvas.width
-                    height: 1
-                    color: "#e8e9ec"
-                }
-            }
+                ColumnLayout {
+                    id: properties
+                    anchors.top: parent.top
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.margins: 6 * editor.uiScale
+                    spacing: 5 * editor.uiScale
 
-            ColumnLayout {
-                z: 2
-                anchors.centerIn: parent
-                width: parent.width - 28 * editor.uiScale
-                visible: editor.nodes.length === 0
-                spacing: 8 * editor.uiScale
+                    Label {
+                        visible: editor.sidePanels
+                        Layout.fillWidth: true
+                        text: editor.activeEdge ? qsTr("Connettore")
+                            : editor.selectedNodes.length > 1 ? qsTr("%1 forme selezionate").arg(editor.selectedNodes.length)
+                            : qsTr("Proprietà")
+                        elide: Text.ElideRight
+                        font.weight: Font.DemiBold
+                        font.pixelSize: 13 * editor.uiScale
+                    }
 
-                Action {
-                    Layout.alignment: Qt.AlignHCenter
-                    text: qsTr("Modello di flusso")
-                    iconName: "diagram"
-                    onClicked: editor.flowTemplate()
-                }
-                Action {
-                    Layout.alignment: Qt.AlignHCenter
-                    text: qsTr("Importa .drawio")
-                    iconName: "folder"
-                    onClicked: editor.importRequested()
-                }
-            }
-        }
+                    Label {
+                        visible: editor.sidePanels && !editor.hasSelection
+                        Layout.fillWidth: true
+                        text: qsTr("Seleziona una forma o un connettore.")
+                        wrapMode: Text.Wrap
+                        color: "#535862"
+                        font.pixelSize: 12 * editor.uiScale
+                    }
 
-        Flow {
-            Layout.fillWidth: true
-            spacing: 5 * editor.uiScale
-            Action {
-                text: qsTr("Collega")
-                iconName: editor.compactActions ? "edge" : ""
-                iconOnly: editor.compactActions
-                ToolTip.visible: !editor.tabletMode && hovered && iconOnly
-                ToolTip.text: text
-                enabled: editor.nodes.length > 1 && editor.edges.length < 128
-                filled: editor.connecting
-                onClicked: editor.startConnect()
-            }
-            Action {
-                text: qsTr("Etichetta")
-                iconName: editor.compactActions ? "rename" : ""
-                iconOnly: editor.compactActions
-                ToolTip.visible: !editor.tabletMode && hovered && iconOnly
-                ToolTip.text: text
-                enabled: (editor.activeNode !== null || editor.activeEdge !== null) && !editor.connecting
-                onClicked: editor.openLabel()
-            }
-            Action {
-                text: qsTr("Duplica forma")
-                iconName: editor.compactActions ? "duplicate" : ""
-                iconOnly: editor.compactActions
-                ToolTip.visible: !editor.tabletMode && hovered && iconOnly
-                ToolTip.text: text
-                visible: editor.activeNode !== null && !editor.connecting
-                enabled: editor.nodes.length < 64
-                onClicked: editor.duplicateShape()
-            }
-            Action {
-                text: qsTr("Inverti freccia")
-                iconName: editor.compactActions ? "reverse" : ""
-                iconOnly: editor.compactActions
-                ToolTip.visible: !editor.tabletMode && hovered && iconOnly
-                ToolTip.text: text
-                visible: editor.activeEdge !== null && !editor.connecting
-                enabled: editor.activeEdge !== null && !editor.edges.some(edge => edge.from === editor.activeEdge.to && edge.to === editor.activeEdge.from)
-                onClicked: editor.reverseEdge()
-            }
-            Action {
-                text: qsTr("Freccia ortogonale")
-                iconName: editor.compactActions ? "orthogonal" : ""
-                iconOnly: editor.compactActions
-                ToolTip.visible: !editor.tabletMode && hovered && iconOnly
-                ToolTip.text: text
-                visible: editor.activeEdge !== null && !editor.connecting
-                filled: editor.activeEdge !== null && editor.activeEdge.route === "orthogonal"
-                onClicked: editor.toggleEdgeRoute()
-            }
-            Action {
-                text: qsTr("Rimuovi")
-                iconName: editor.compactActions ? "close" : ""
-                iconOnly: editor.compactActions
-                ToolTip.visible: !editor.tabletMode && hovered && iconOnly
-                ToolTip.text: text
-                enabled: editor.hasSelection
-                onClicked: editor.removeSelection()
-            }
-            Action {
-                text: qsTr("Annulla ultima modifica")
-                iconName: "undo"
-                iconOnly: true
-                ToolTip.visible: !editor.tabletMode && hovered
-                ToolTip.text: text
-                enabled: editor.history.length > 0
-                onClicked: editor.undo()
-            }
-            Action {
-                text: qsTr("Ripristina ultima modifica")
-                iconName: "redo"
-                iconOnly: true
-                ToolTip.visible: !editor.tabletMode && hovered
-                ToolTip.text: text
-                enabled: editor.future.length > 0
-                onClicked: editor.redo()
+                    Flow {
+                        Layout.fillWidth: true
+                        spacing: 5 * editor.uiScale
+                        visible: editor.hasSelection && !editor.connecting
+
+                        ComboBox {
+                            objectName: "diagramShapeProperty"
+                            visible: editor.activeNode !== null
+                            width: editor.sidePanels ? inspector.width - 12 * editor.uiScale : 132 * editor.uiScale
+                            implicitHeight: 44 * editor.uiScale
+                            font.pixelSize: 13 * editor.uiScale
+                            textRole: "title"
+                            valueRole: "shape"
+                            model: editor.palette
+                            currentIndex: editor.activeNode
+                                ? editor.palette.findIndex(kind => kind.shape === editor.activeNode.shape) : -1
+                            Accessible.name: qsTr("Tipo di forma")
+                            onActivated: editor.changeShape(currentValue)
+                        }
+                        Action {
+                            objectName: "diagramEditLabel"
+                            visible: editor.activeNode !== null || editor.activeEdge !== null
+                            text: qsTr("Etichetta")
+                            iconName: "rename"
+                            iconOnly: editor.compactActions
+                            ToolTip.visible: !editor.tabletMode && hovered && iconOnly
+                            ToolTip.text: text
+                            onClicked: editor.openLabel()
+                        }
+                        Tool {
+                            visible: editor.activeNode !== null
+                            text: qsTr("Duplica forma")
+                            iconName: "duplicate"
+                            enabled: editor.nodes.length < 64
+                            onClicked: editor.duplicateShape()
+                        }
+                        Tool {
+                            visible: editor.activeEdge !== null
+                            text: qsTr("Inverti freccia")
+                            iconName: "reverse"
+                            enabled: editor.activeEdge !== null
+                                && !editor.edges.some(edge => edge.from === editor.activeEdge.to && edge.to === editor.activeEdge.from)
+                            onClicked: editor.reverseEdge()
+                        }
+                        Action {
+                            objectName: "diagramOrthogonalRoute"
+                            visible: editor.activeEdge !== null
+                            text: qsTr("Ortogonale")
+                            iconName: "orthogonal"
+                            iconOnly: editor.compactActions
+                            width: editor.sidePanels ? Math.min(implicitWidth, inspector.width - 12 * editor.uiScale) : implicitWidth
+                            filled: editor.activeEdge !== null && editor.activeEdge.route === "orthogonal"
+                            ToolTip.visible: !editor.tabletMode && hovered && iconOnly
+                            ToolTip.text: text
+                            onClicked: editor.toggleEdgeRoute()
+                        }
+                        Action {
+                            visible: editor.selectedNodes.length > 1
+                            text: qsTr("Allinea e distribuisci")
+                            iconName: "align"
+                            iconOnly: !editor.sidePanels
+                            width: editor.sidePanels ? Math.min(implicitWidth, inspector.width - 12 * editor.uiScale) : implicitWidth
+                            ToolTip.visible: !editor.tabletMode && hovered && iconOnly
+                            ToolTip.text: text
+                            onClicked: arrangeDialog.open()
+                        }
+                        Tool {
+                            text: qsTr("Rimuovi")
+                            iconName: "close"
+                            onClicked: editor.removeSelection()
+                        }
+                    }
+                }
             }
         }
 
@@ -819,20 +1104,24 @@ Dialog {
 
         Label {
             Layout.fillWidth: true
-            Layout.minimumHeight: 18 * editor.uiScale
+            visible: text.length > 0
             elide: Text.ElideRight
             textFormat: Text.PlainText
             color: "#535862"
             text: editor.connecting ? (editor.connectFrom ? qsTr("Tocca la forma di arrivo.") : qsTr("Tocca la forma di partenza."))
                 : editor.lassoEnabled ? qsTr("Cerchia le forme da selezionare.")
-                : editor.panEnabled ? qsTr("Trascina per spostare la vista.") : editor.selectedNodes.length > 1
-                ? qsTr("%1 forme selezionate").arg(editor.selectedNodes.length) : ""
+                : editor.panEnabled ? qsTr("Trascina per spostare la vista.")
+                : editor.nodes.length === 0 ? qsTr("Tocca una forma per inserirla o trascinala sul foglio.")
+                : !editor.sidePanels && editor.selectedNodes.length > 1 ? qsTr("%1 forme selezionate").arg(editor.selectedNodes.length)
+                : connectorHandle.visible ? qsTr("Trascina il punto sul bordo per collegare due forme.")
+                : ""
         }
     }
 
     footer: RowLayout {
         Action {
             id: more
+            visible: !editor.draftOnly
             Layout.leftMargin: editor.padding
             Layout.bottomMargin: editor.padding
             text: qsTr("Altre azioni")

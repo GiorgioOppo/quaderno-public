@@ -4,11 +4,13 @@
 
 `BleSync` retains the notebook preview, confirmation, baseline comparison, conflict-copy policy, and editor-busy guard. `DeltaTransfer` changes how the portable payload reaches that existing flow. It runs inside the same paired TLS 1.3 channel over local Wi-Fi or Bluetooth LE.
 
-## Book annotations and reader compatibility in 0.2.11
+## Book annotations and page links
 
 Highlights and underlines are saved as editable page strokes. They travel with the book's page identifiers, ink layers and visibility, bookmarks, typed items and retained PDF/EPUB sources. The same notebook transfer includes annotations on pages that are not currently open. Receiving an update refreshes the displayed ink and items while preserving the recipient's reading position when that page still exists. A hidden ink layer stays hidden after synchronization; its strokes are retained.
 
-Anchored sticky notes introduced in 0.2.11 include the marker's page position, typed text, handwriting inside the note and note color. They use portable format **11** and require compatible Quaderno readers on both devices. Ordinary highlights in retained-source books still use format 9; adding an annotation does not require format 11 unless it uses the new note type. See [data format compatibility](DATA.md#library-format-versions).
+Anchored sticky notes introduced in 0.2.11 include the marker's page position, typed text, handwriting inside the note and note color. They use portable format **11** and require compatible Quaderno readers on both devices. Ordinary highlights in retained-source books use format 9. See [data format compatibility](DATA.md#library-format-versions).
+
+Anchored page links introduced in **0.2.14** use portable format **12**. They carry the reference to the original chart, table or diagram. If the destination is in a different notebook, send that notebook as well or select it separately for automatic sync. Transfer the original notebook so the link can find its destination by ID.
 
 If an annotation has not appeared on the other device, check the connection and workflow before importing the book again:
 
@@ -22,11 +24,11 @@ This transfers annotations between **Quaderno** libraries. It does not write the
 
 The new protocol tests cover the reader-version handshake and rejection before asset transfer. Synthetic book tests cover highlights, underlines, hidden layers, multiple pages, reading position, sticky notes and reopening. Their execution and physical-device checks are recorded separately in the release validation; they do not establish live radio behavior.
 
-## Automatic synchronization in 0.2.9
+<a id="automatic-synchronization-in-029"></a>
 
-The 0.2.9 development workflow requires both Quaderno apps to be updated, open and unlocked, with a saved pairing and notebooks selected for synchronization. It does not run when Quaderno is closed or suspended and does not use an Internet relay or cloud account. Mac and ARM builds, six affected suites per platform and strict rendered startups passed. Version 0.2.9 is installed on Paper Pro and passed native e-paper/AppLoad startup at 1620 × 2160. The user confirmed the visible after-changes mode and three connection choices on Paper Pro. End-to-end Wi-Fi/Bluetooth transfers remain untested; the installed Mac 0.2.0 app remains unchanged. A separate Mac 0.2.9 package is ready, but it has not replaced that installation.
+## Automatic synchronization
 
-In **Settings → Wi-Fi** or **Bluetooth**, open **Automatic synchronization** and choose when to send changes:
+Bluetooth to Wi-Fi handoff requires 0.2.13 or later on both devices. Pair the devices and keep Quaderno open and unlocked on Mac and Paper Pro. Turn on Bluetooth on both devices. Connect Paper Pro to Wi-Fi and Mac to the same local subnet over Wi-Fi or Ethernet. In **Settings → Wi-Fi** or **Bluetooth**, select **Automatic (Bluetooth and Wi-Fi)** on both devices. Choose when to sync on each device and select the notebooks you want to send. A device can receive with an empty selection.
 
 | Mode | Behavior |
 | --- | --- |
@@ -37,9 +39,18 @@ In **Settings → Wi-Fi** or **Bluetooth**, open **Automatic synchronization** a
 
 When automation is enabled, the peer reconnects or the selection changes, Quaderno also checks selected notebooks for pending work. Multiple triggers are coalesced. Matching shared revisions need no data transfer; received changes do not need to be sent straight back.
 
-Choose **Prefer Wi-Fi, otherwise Bluetooth**, **Wi-Fi only** or **Bluetooth only**. The automatic choice prefers permitted local Wi-Fi and can try the paired Bluetooth peer when Wi-Fi is unavailable. On Paper Pro, automatic mode can listen on both permitted transports while Bluetooth is already enabled, then select the first accepted connection. On Mac it attempts Wi-Fi first and can try Bluetooth after Wi-Fi fails. An authenticated connection is retained until it ends, including when Wi-Fi later becomes available; automatic preference does not interrupt it to switch transports. Wi-Fi uses the saved local IPv4 address on Mac; a changed tablet address may still require correction in the connection panel. Bluetooth must already be enabled: automatic recovery does not activate a disabled radio. A manual **Disconnect** pauses reconnection for the session; **Resume connection** permits it again.
+### Bluetooth to Wi-Fi handoff
 
-Trusted SSIDs constrain automatic Wi-Fi only, including when Wi-Fi is the preferred transport. An empty list means no SSID restriction; a configured list with an unavailable or different SSID blocks automatic Wi-Fi. Bluetooth remains subject to pairing and the selected transport policy. **Only while charging** applies to both connections on Paper Pro. PIN lock, sleep, notebook import, drawing and open editors close the automation gate immediately. An apply already committing finishes its atomic operation before further work is paused.
+1. Mac opens the Bluetooth LE connection and authenticates it with the pairing secret. The apps exchange two booleans over TLS that indicate pending work and Wi-Fi permission. With empty queues, Bluetooth stays connected to check for later changes.
+2. If either queue has work and both apps permit Wi-Fi, Paper Pro sends its current Wi-Fi IPv4 address. Mac tries fixed TCP port `47987` using a local Wi-Fi or Ethernet interface on the same subnet. Quaderno uses the existing network and exchanges no credentials, SSIDs, notebook names or edits during this check.
+3. The second TLS session derives its key from the pairing secret with a label that includes the Bluetooth handoff session ID. The `ready` and `commit` messages confirm the session before enabling file transfer over Wi-Fi. Bluetooth stays connected as a fallback. Quaderno uses the Wi-Fi session for as long as it is available.
+4. If the handoff fails or exceeds 6 seconds, the batch continues over Bluetooth. A later batch can try Wi-Fi again after both queues have settled. If Wi-Fi drops after handoff, recovery reuses saved chunks and prepares a fresh preview when possible. An uncertain apply result requires manual review.
+
+The `syncRendezvous` control messages use version `1` JSON metadata and an empty payload. Each message includes a `phase` and a `session` of 32 lowercase hexadecimal digits generated by Mac. The `hello` and `work` phases add only the `work` and `wifi` booleans to those common fields. `offer` adds only `address`, a canonical local IPv4 address. `ready`, `commit` and `abort` use the common fields. The Paper Pro USB subnet is excluded.
+
+An older app can still sync over Bluetooth using the existing protocol. The discovery window for handoff support is up to 4 seconds. If the Bluetooth connection fails, Mac can try direct Wi-Fi using the saved address, and Paper Pro can accept a compatible Wi-Fi connection while waiting. **Wi-Fi only**, **Bluetooth only** and manually started connections keep their existing workflows. **Disconnect** pauses reconnection for the session and **Resume connection** permits it again.
+
+Trusted SSIDs constrain automatic Wi-Fi. An empty list allows any local SSID. With a configured list, the network must match and the system must be able to read its SSID. **Only while charging** applies to both connections on Paper Pro. PIN lock, sleep, notebook import, drawing and open editors close the automation gate. An apply already committing finishes its atomic operation before further work is paused.
 
 Connection retries wait 3 seconds on Paper Pro or 8 seconds on Mac initially, then increase the wait up to 120 seconds. They continue only while automatic reconnection is permitted. Transfer recovery allows at most three additional attempts for the same revision, after 2, 4 and 8 seconds, for recognized transient failures before apply. This budget survives reconnects and policy pauses in the running app; it resets for a new source revision, an explicit off/on change or an app restart. Automatic interval/catch-up triggers do not reset an exhausted budget. Manual retry opens a fresh review. Scheduled batches contain at most 20 selected notebooks and preserve their requested revisions across restarts. New explicit triggers merge the latest requested revisions into the queue. A saved checkpoint allows safely interrupted automatic work to prepare a new preview after reconnection or reopening. If the pre-apply checkpoint cannot be saved, Quaderno does not send the apply request. Matching received chunks are reused; an earlier approval is never replayed. Canceling, disabling automation or removing a notebook from the selection must not leave an active retry for that work. An uncertain apply result requires manual review. This includes pending transfers from older versions that lack a saved phase or valid revision, and interrupted manual applies: automatic catch-up must not resend them. A fresh manual preview remains available; the final migration/recovery checks passed on Mac and ARM (11 checks per platform). The first transfer also requires review; later conflicts follow **Ask** or the explicitly selected **Keep both** policy, which creates a separate copy rather than overwriting an independently changed notebook.
 
@@ -78,3 +89,5 @@ Applied request/token receipts are stored per peer before replying. Repeating an
 Objects and partials live under the app-local `sync-objects/<paired-peer-id>` directory with owner-only permissions. They are scoped to the paired peer, retained for at most 30 days when unused, and pruned toward a 256 MiB cache budget between transfers. **Forget pairing** removes the peer's cache and preferences. Active transfer objects are retained until completion or the next offer, so temporary disk usage can exceed the cache target by one transfer.
 
 `tests/sync_tests.cpp` covers exact reconstruction, multi-book and empty libraries, asset deduplication, formula preservation, changed-page-only transfer, reuse of a local version, resuming an interrupted transfer after destroying and recreating both endpoints, malformed manifests, corrupt chunks, and legacy fallback. Those tests use isolated temporary caches and a queued in-process transport; they do not prove physical Bluetooth throughput or radio reconnect behavior.
+
+`tests/syncrendezvous_tests.cpp` checks handoff message shapes, field types and allowed addresses. Handoff tests use test connections. The handoff still requires a physical test with the Mac and Paper Pro radios.

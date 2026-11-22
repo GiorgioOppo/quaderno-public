@@ -15,6 +15,15 @@ __pycache__/
 *.provisionprofile
 quaderni.json
 quaderni.json.lock
+quaderni.json.previous
+quaderni.json.legacy
+quaderni.json.objects/
 accesso.json
 wireless-pairing.key
+*.quaderno
+document-sources/
+apple-deliveries/
 writepad-source.tar.gz
+quaderno-handwriting-*.dct
+*.onnx
+onnxruntime-*.nupkg

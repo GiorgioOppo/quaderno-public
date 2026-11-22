@@ -61,6 +61,29 @@ You can add up to 20 tags to each page or notebook. Each tag can contain up to 4
 
 On Paper Pro with firmware **3.29.1.0**, Quaderno uses the panel’s fast mode for the interface and the standard mode for pages with documents, images, charts, or diagrams. **Automatic refresh** requests a redraw only when the new page is slow to appear. You can turn it off in **Settings → Display**. To clear residual images across the whole panel, tap **Refresh screen** in the bottom bar, including in **Full page** view. The 0.2.6 settings also expose manual refresh under **General** and **Display**. A full refresh can make the display flash.
 
+### Recognize a mixed page on Paper Pro
+
+In Quaderno 0.2.17, you can extract a flowchart, a table and text from one page into a single notebook. The tablet runs the analysis and handwriting recognition locally, including offline.
+
+1. Open the handwritten page in **Writing** or the imported PDF page in **Books**. Choose **More → Recognize mixed page**.
+2. Choose **Diagram**, **Table** or **Text**, then use the Marker to draw around the corresponding content in the preview. Quaderno closes the outline when you lift the pen. Use several outlines for a part spread across the page. After marking all three parts, choose **Recognize**.
+3. Compare each draft with the source preview. Check the diagram’s shapes, arrows and labels, then correct them in the diagram editor. Check the table’s rows and cells. Use one line per row and a tab or `|` between columns. Correct or complete the text in the **Text** tab.
+4. Enter a title and choose **Create notebook**. Quaderno opens the result in **Writing**. The Markdown goes on the opening pages, followed by a page for the editable diagram and a page for the editable table. The first page links to both. The source page remains available with its original contents.
+
+Quaderno can use the original pen strokes to recognize shapes on a handwritten notebook page. On an imported PDF it analyzes the rendered page, where handwriting and arrows can be harder to distinguish. A draft may miss shapes, links, words or column boundaries. You can fill in a draft during review, including when a local recognizer is unavailable.
+
+With the optional image OCR helper in 0.2.18, the **Text** area uses a local Latin-script model for rendered PDFs and images. In the review, compare the text with the source page, especially web addresses, file paths, names and punctuation. [Install the optional OCR helper](INSTALLATION.md#install-and-start-quaderno)
+
+Since 0.2.19, the same helper reads the **Table** area. For a ruled table, draw one outline around the whole grid, including the outside edges. A clearly recognized grid can place each value in its cell, including gaps for empty cells. For layouts with a single column, missing borders or an ambiguous grid, check the proposed rows and separate columns with Tab or `|`. Use two consecutive separators for an empty cell between values. Check row and column alignment, especially for text that crosses a divider. Quaderno saves an editable table of up to 12 rows and 8 columns.
+
+Since 0.2.19, the helper also proposes labels for recognized diagram shapes in PDFs and images. Check the labels against the source page and edit them alongside the shapes and arrows before saving.
+
+### Open linked items from Writing
+
+Select **Linked items** to preview the referenced diagram or table. **Open** shows the original page, and **Edit** opens the object in its editor. You can also tap a link marker to go straight to the original page. Use **Back to page** to return to the text. To link an existing object manually, choose **Link an item**.
+
+Use Quaderno 0.2.17 or later on both devices for the same editing controls. Sync or export the converted notebook once to carry the Markdown, diagram, table and their links together. For a link to a different notebook, sync its destination separately. This also applies to conversions saved as three notebooks in 0.2.16. [Sync notebooks](#sync-notebooks)
+
 ### Edit a cell on the page
 
 In 0.2.2, enable **Items**, tap the table, and select a cell in the editor grid. The fix in development for **0.2.3** lets you open a cell by tapping it directly on the page: finger taps and mouse clicks also work on empty cells; a brief pen/Marker tap opens an occupied cell. In empty cells, the pen continues writing, including single dots. Moving or holding the pen continues writing in occupied cells too. In Items mode, a tap opens the editor at the selected row and column.
@@ -231,9 +254,9 @@ Pairing links the two Quaderno apps. After restarting Paper Pro, use **Start Blu
 #### Sync notebooks
 
 1. Open a notebook on the device you want to send from. Choose **Preview notebook transfer**, review the action, and select **Confirm transfer**. When both apps are updated, each exported notebook can be up to 64 MiB on either connection. Quaderno sends only missing pages and assets in 64 KiB chunks acknowledged after durable storage. With an older app, full transfers retain the 8 MiB Bluetooth and 64 MiB Wi-Fi limits; new document properties require both apps to be updated.
-2. To send later edits automatically, enable **Sync automatically** and **Sync this notebook** on each device you want to send from. With both apps updated to 0.2.9, select **After changes**, **On opening a notebook** or a regular interval, and choose automatic Wi-Fi/Bluetooth selection or a single connection. Manual remains the default. The first transfer requires review; conflicts follow **Ask** or **Keep both**, without overwriting an independently changed copy. Deletions stay local.
+2. To send later edits automatically, enable **Sync automatically** and **Sync this notebook** on the devices you want to send from. Select **After changes**, **On opening a notebook** or a regular interval. To use automatic handoff, update both apps to 0.2.13 and select **Automatic (Bluetooth and Wi-Fi)** on both devices. Manual remains the default. The first transfer requires review; conflicts follow **Ask** or **Keep both**, without overwriting an independently changed copy. Deletions stay local.
 
-Keep both Quaderno apps open and unlocked. After-changes mode waits for a writing pause; enabling automation and reconnecting also check the selected notebooks. Automatic connection prefers permitted Wi-Fi and can fall back to paired Bluetooth, which must already be enabled. Trusted SSIDs restrict Wi-Fi only; charging-only applies to both connections. For Wi-Fi, the Mac uses the last saved address. **Disconnect** pauses reconnection until **Resume connection** or a manual connection. **Forget pairing** removes the saved code and that device’s sync preferences. See [automatic synchronization in 0.2.9](SYNC_PROTOCOL.md#automatic-synchronization-in-029) for recovery, limits and verification status.
+Keep both Quaderno apps open and unlocked. After-changes mode waits for a writing pause. Enabling automation and reconnecting also check the selected notebooks. Automatic mode uses paired Bluetooth to check for pending updates. Keep Bluetooth on. Mac uses the current Wi-Fi IPv4 address offered by Paper Pro to try the transfer on the local network. If Wi-Fi is unavailable, the transfer continues over Bluetooth. Trusted SSIDs restrict Wi-Fi and the charging-only option applies to both connections. **Disconnect** pauses reconnection until **Resume connection** or a manual connection. **Forget pairing** removes the saved code and that device’s sync preferences. [Automatic synchronization recovery, limits and verification](SYNC_PROTOCOL.md#automatic-synchronization).
 
 To continue on the other device, open the page and choose **Continue on Mac** or **Continue on Paper Pro**. If the current revision needs transferring, Quaderno first shows a preview. On the other device, select **Show request → Open page**. If the notebook changed after sending or has a conflict, review both versions and send a new request.
 

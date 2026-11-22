@@ -252,7 +252,7 @@ Dialog {
                 Layout.fillWidth: true
                 Layout.minimumHeight: 44 * dialog.uiScale
                 font.pixelSize: 15 * dialog.uiScale
-                model: [ { value: "auto", label: qsTr("Preferisci Wi-Fi, altrimenti Bluetooth") },
+                model: [ { value: "auto", label: qsTr("Automatico (Bluetooth e Wi-Fi)") },
                          { value: "wifi", label: qsTr("Solo Wi-Fi") },
                          { value: "bluetooth", label: qsTr("Solo Bluetooth") } ]
                 textRole: "label"

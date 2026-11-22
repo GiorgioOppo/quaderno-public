@@ -25,12 +25,14 @@ public:
     qsizetype completedBytes() const { return m_completedBytes; }
     qsizetype totalBytes() const { return m_totalBytes; }
     bool incremental() const { return m_capable; }
+    bool receiving() const { return !m_incomingMetadata.isEmpty(); }
 
 signals:
     void sendMessage(const QVariantMap &metadata, const QByteArray &payload);
     void previewReady(const QVariantMap &metadata, const QByteArray &payload);
     void failed(const QString &request, const QString &error);
     void progressChanged();
+    void receivingChanged();
 
 private:
     void beginSend();

@@ -11,6 +11,7 @@ Item {
     required property Notebook notebook
     property bool editingItems: false
     property string selectedId: ""
+    property string linkedId: ""
 
     signal editRequested(var item)
     signal editCellRequested(var item, int row, int column)
@@ -43,6 +44,7 @@ Item {
             readonly property bool isDiagram: modelData.type === "diagram"
             readonly property bool isImage: modelData.type === "image"
             readonly property bool isNote: modelData.type === "note"
+            readonly property bool isLink: modelData.type === "link"
             readonly property int noteNumber: isNote ? decorations.items.slice(0, index + 1).filter(item => item.type === "note").length : 0
             readonly property int rows: isTable ? modelData.rows : 0
             readonly property int cols: isTable ? modelData.cols : 0
@@ -56,7 +58,7 @@ Item {
             property point pressPosition
             property point previewPosition
 
-            visible: isText || isChart || isDiagram || isImage || isNote || (isTable && rows > 0 && cols > 0)
+            visible: isText || isChart || isDiagram || isImage || isNote || isLink || (isTable && rows > 0 && cols > 0)
             x: (dragging ? previewPosition.x : modelData.x) * decorations.width
             y: (dragging ? previewPosition.y : modelData.y) * decorations.height
             width: modelData.width * decorations.width
@@ -118,6 +120,33 @@ Item {
                     anchors.top: parent.top; anchors.right: parent.right
                     color: "#6a6041"; opacity: .25
                 }
+            }
+
+            Rectangle {
+                visible: decoration.isLink
+                anchors.fill: parent
+                color: "#e9f0fa"
+                border.color: decorations.accent
+                border.width: Math.max(1, Math.min(width, height) * .045)
+                radius: Math.min(width, height) * .16
+
+                PaperIcon {
+                    anchors.centerIn: parent
+                    width: Math.min(parent.width, parent.height) * .76
+                    height: width
+                    name: "link"
+                    tint: decorations.accent
+                }
+            }
+
+            Rectangle {
+                visible: !decorations.editingItems && decoration.modelData.id === decorations.linkedId
+                anchors.fill: parent
+                z: 2
+                color: "transparent"
+                border.color: decorations.accent
+                border.width: Math.max(2, 2 * decorations.pageScale)
+                radius: 4 * decorations.pageScale
             }
 
             Loader {
@@ -214,7 +243,7 @@ Item {
                 cursorShape: decoration.dragging ? Qt.ClosedHandCursor : Qt.OpenHandCursor
                 Accessible.ignored: !enabled
                 Accessible.role: Accessible.Button
-                Accessible.name: decoration.isNote ? qsTr("Apri post-it %1").arg(decoration.noteNumber) : decoration.isImage ? qsTr("Proprietà immagine") : decoration.isChart ? qsTr("Modifica grafico") : decoration.isDiagram ? qsTr("Modifica diagramma") : decoration.isTable ? qsTr("Modifica tabella") : qsTr("Modifica testo")
+                Accessible.name: decoration.isLink ? qsTr("Gestisci collegamento") : decoration.isNote ? qsTr("Apri post-it %1").arg(decoration.noteNumber) : decoration.isImage ? qsTr("Proprietà immagine") : decoration.isChart ? qsTr("Modifica grafico") : decoration.isDiagram ? qsTr("Modifica diagramma") : decoration.isTable ? qsTr("Modifica tabella") : qsTr("Modifica testo")
                 Accessible.onPressAction: decorations.editRequested(decoration.modelData)
                 Keys.onReturnPressed: decorations.editRequested(decoration.modelData)
                 Keys.onSpacePressed: decorations.editRequested(decoration.modelData)

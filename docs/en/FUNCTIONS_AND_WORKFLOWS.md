@@ -2,7 +2,7 @@
 
 [Italiano](../FUNZIONI_E_FLUSSI.md) · **English**
 
-Keep and transfer the saved Quaderno notebook when you want to continue editing it. The five sections help you find different kinds of content in the same library. This map includes the **0.2.12 development interface** and identifies functions that depend on Mac, Paper Pro, firmware or external accounts.
+Keep and transfer the saved Quaderno notebook when you want to continue editing it. The five sections help you find different kinds of content in the same library. This map includes the **0.2.17 development interface** and identifies functions that depend on Mac, Paper Pro, firmware or external accounts.
 
 [Structure](#how-work-is-organized) · [Sections](#the-five-sections) · [Shared tools](#shared-tools-and-gestures) · [Content workflows](#how-content-works-together) · [Devices and services](#devices-and-services) · [Storage and verification](#storage-and-verification)
 
@@ -34,12 +34,12 @@ flowchart LR
 | Library | Notebooks, folders, favorites, tags and Trash. Search by name or tag, filter by section or format and sort by title or page count where available. | Moving a notebook to a folder changes its location. Trash lets you restore it until you delete it permanently. |
 | Notebook | Title, ordered pages, any imported source or Markdown, handwriting recognition language and bookmarks. | Opening an entry in Charts, Tables or Diagrams takes you to its source page. Open the editor with a separate action. |
 | Page | PDF/EPUB background or paper template, ink layers, tags and positioned objects. | In **Pages**, filter by bookmarks or annotations, jump to a number, duplicate, reorder, delete or move a page. Text search opens the page of a result. |
-| Object | Text block, image, table, chart, diagram or sticky note. | Editing the object on the page updates the original. **From library** inserts an independent copy of a chart, table or diagram. A table and its linked chart share data on the same page. |
+| Object | Text block, image, table, chart, diagram, sticky note or page link. | Editing the object on the page updates the original. **From library** inserts an independent copy of a chart, table or diagram. A table and its linked chart share data on the same page. |
 | View | Open page, zoom, margins, orientation and local reading preferences. | Changing the view leaves the notebook revision intact. **Continue** can ask the other device to open a page matching the received revision. |
 
 ## The five sections
 
-The section toolbar shows two or three primary actions, depending on the available space, and puts the others under **More**. An action with one compatible object on the page opens it directly. Choose the target when several objects are available.
+Each section has its own toolbar. Books can show up to four primary reading actions, and the other sections up to three, depending on the available width. Find the remaining actions under **More**. An action with one compatible object on the page opens it directly. Choose the target when several objects are available.
 
 **Import CSV** in Tables and **Import draw.io** in Diagrams open the file picker first. Confirming the file opens its editor with a draft. Cancel returns to the sheet. If the page changes while the picker is open, the file is not applied to the new page.
 
@@ -48,8 +48,9 @@ The section toolbar shows two or three primary actions, depending on the availab
 | Action | Workflow and result |
 | --- | --- |
 | Import | Open a local PDF or a DRM-free reflowable EPUB. On Mac you can also open or drag files from Finder, import batches with a report, and choose local copies from Apple Books. Quaderno keeps the original PDF or EPUB, prepares it in the background and renders pages on demand. |
-| Read | Use zoom, fit page or width, page overview, previous/next page and bookmarks. **Find text** uses extractable PDF text and text saved in annotations. The PDF reader cannot search a scan that has no text layer. |
+| Read | Books open in reading mode. Ink input activates when you choose an annotation tool. Use zoom, fit page or width, page overview, previous/next page and bookmarks. **Find text** uses extractable PDF text and text saved in annotations. The PDF reader cannot search a scan that has no text layer. |
 | Annotate | **Highlight** and **Underline** store editable strokes on the active layer. **Sticky note** asks you to choose a point on the page and saves a numbered marker with typed text, handwriting or both. Tap the marker to reopen it. Typed text is searchable. Move the marker using **Items**. Its position follows zoom and rotation. |
+| Link to a library object | Choose **Link an item**, touch a point on the page and select a saved chart, table or diagram. Tap the link marker to open its destination page with the matching toolbar. **Back to book** reopens the source page. |
 | Find and send | **Annotated pages** includes pages with hidden-layer strokes. **Sync book** opens a native transfer workflow for all pages and annotations. Importing the same source on both devices separately creates two independent notebook identities. |
 | Share | An annotated PDF shows visible layers and objects. It includes sticky-note markers on the pages and appendices with paginated text and handwriting. A current-page export includes only notes from that page. |
 
@@ -59,21 +60,23 @@ A source PDF may be up to 48 MiB and an EPUB up to 64 MiB. The prepared PDF from
 
 | Action | Workflow and result |
 | --- | --- |
-| Create and annotate | Create a notebook, choose a paper template and write on a visible layer. Add separate text blocks and supported local images. Move objects through **Items** or select mixed content with the lasso. |
+| Create and annotate | Create a notebook, choose a paper template and write on a visible layer. Use the compact row for pen, color, thickness, favorites and the lasso. Add separate text blocks and supported local images. Move objects through **Items** or select mixed content with the lasso. |
 | Write Markdown | Create a document, import a UTF-8 file or use a direct HTTPS URL. **Edit Markdown** changes the source and redistributes its text across pages. Objects and ink stay separate from the source. Imported text is limited to 256 KiB and 200 pages. |
+| Work with a mixed page | On Paper Pro, **Recognize mixed page** uses the areas you mark to draft a diagram, a table and Markdown. After review, one notebook holds the text and two linked, editable pages for the diagram and table. The same command is available on an imported PDF page in Books. |
+| Open a linked object | **Linked items** shows previews and opens the originals for viewing or editing. For a destination in another notebook, sync it separately. |
 | Reuse objects | **From library** adds an editable copy of a chart, table or diagram. You can also create these objects directly on a page and find them in their own section. |
 | Share | PDF preserves appearance. Markdown exports text and can add images, ink and charts as image assets. Diagrams also get a `.drawio` attachment. Transfer the notebook to keep editing its native content. |
 
-[Writing and page content](USER_GUIDE.md#writing-and-page-content) · [Markdown and Obsidian](USER_GUIDE.md#markdown-and-obsidian)
+[Writing and page content](USER_GUIDE.md#writing-and-page-content) · [Mixed-page recognition](USER_GUIDE.md#recognize-a-mixed-page-on-paper-pro) · [Markdown and Obsidian](USER_GUIDE.md#markdown-and-obsidian)
 
 ### Charts
 
 | Workflow | Data and relationships |
 | --- | --- |
 | Standalone points | Create a line or bar chart. Edit the title, labels, points and scale. A chart can have up to 128 points. Lines need at least two points. Bars need at least one point and distinct X values. |
-| From a table | Choose two numeric columns from a table on the same page and optionally use the first row for headers. Save to link the table. Numeric formula results can also feed the chart. Saving subsequent table changes updates the chart. |
+| From a table | Choose a table, its X and Y columns, and whether the first row contains headings. Review the chart before saving. A table on the same page stays linked and its edited values or formula results update the chart. A table on another page supplies a standalone, editable chart with the current calculated values. |
 | From a sketch | Use the lasso to select compatible axes and one curve or set of bars. **Convert to chart** lets you correct points, calibrate axes and choose where to save. The original sketch stays in the notebook. |
-| Reuse and export | Tap the chart or choose **Edit data** to open the appropriate editor. Copying a linked chart captures its current valid values and creates a standalone chart. CSV exposes calibrated data, including negative values when present. |
+| Reuse and export | Tap the chart or choose **Data and appearance** to open the appropriate editor. Copying a linked chart captures its current valid values and creates a standalone chart. CSV exposes calibrated data, including negative values when present. |
 
 [Charts](FEATURES.md#charts) · [Charts from tables](USER_GUIDE.md#create-a-chart-from-a-table)
 
@@ -84,7 +87,7 @@ A source PDF may be up to 48 MiB and an EPUB up to 64 MiB. The prepared PDF from
 | Create and import | Add a blank grid or import a UTF-8 CSV or TSV up to 256 KiB. The first row remains editable. The grid holds up to 12 rows, 8 columns and 500 characters per cell. |
 | Edit | Tap a cell or choose **Cells and formulas**. The input field exposes the original formula, and the grid displays the result. Use **Tab**, **Shift+Tab** and **Enter** to navigate the cells. Shrinking a grid with data loss requires confirmation. |
 | Calculate | Use references such as `A1` and ranges such as `A1:B3`. Available functions include `SUM`/`SOMMA`, `AVERAGE`/`MEDIA`, `MIN`, `MAX` and `COUNT`/`CONTA.NUMERI`. The editor explains errors in the selected cell. |
-| Capture handwritten values | Write within the cells, select the strokes and choose **Insert into cells**. Review the result and destination for each cell. Replacing existing values or formulas needs explicit consent. Excluded or unassigned strokes stay on the page. |
+| Capture handwritten values | Choose **Write in cells**, then use **Cell lasso** to select the strokes and choose **Insert into cells**. Review the result and destination for each cell. Replacing existing values or formulas needs explicit consent. Excluded or unassigned strokes stay on the page. |
 | Use the results | **Create chart** links two columns. **Export CSV** writes values and formula results. The editable formulas and chart link travel with the native notebook. |
 
 [Tables and CSV](FEATURES.md#tables) · [Handwriting in cells](LASSO.md)
@@ -93,7 +96,7 @@ A source PDF may be up to 48 MiB and an EPUB up to 64 MiB. The prepared PDF from
 
 | Action | Workflow and result |
 | --- | --- |
-| Create and arrange | A dedicated diagram notebook is available even when empty. The editor lets you insert shapes, connect nodes with arrows, edit labels and routes, move, resize, align and distribute items, zoom and pan. |
+| Create and arrange | A dedicated diagram notebook is available even when empty. Tap a palette shape to add it or drag it onto the canvas. Connect nodes with the handle or **Connect**. Use the inspector to edit the selected shape or arrow, and use the arrangement tools to align and distribute shapes. |
 | Recognize a sketch | **Recognize diagram** or the lasso opens a review of nodes and arrows. In dedicated diagram notebooks you can enable a suggestion after a pause. Geometry is recognized locally and labels use the available handwriting engine. Review labels, destination and ink retention before applying. |
 | Extend | Draw new shapes or arrows around an existing diagram. The review shows the complete result and preserves existing geometry and labels. Choose the destination when more than one is possible. Strokes with uncertain direction or attachment stay as ink. Recovering recognized ink is a separate action from **Undo**. |
 | Import and share | Import a supported `.drawio` or `.xml` file and review any warnings. Export `.drawio` for editing supported objects. Markdown with assets includes a PNG preview and `.drawio`. The Quaderno notebook keeps the object and its stored recovery data. |
@@ -128,11 +131,14 @@ flowchart TD
     H["Handwriting"] -->|"Transcribe and correct"| X["Text block or transcript"]
     L["Original PDF or EPUB"] --> B["Quaderno book"]
     A["Highlights · underlines · notes"] --> B
+    T -->|"X/Y values from another page"| G
+    B -->|"Page link opens original"| D
 ```
 
 | When you want to… | Choose… | Result |
 | --- | --- | --- |
 | Continue on the other device | Quaderno send or sync, USB-C, or a compatible `.quaderno` file. | Editable sources, pages, ink and layers, notes, formulas, images, charts and diagrams. Same-page chart links to tables are preserved. |
+| Refer to an original object from a book | Place a **Link an item** marker. | Opens the original chart, table or diagram and provides a return to the source page. Transfer a destination in a different notebook separately. |
 | Reuse a single object | Insert from library. | An independent object. Copying a linked chart captures its current values. To make a new live link, copy the table and generate a chart on the target page. |
 | Move a complete page | **Pages → Move to…** | The page with annotations and its internal relationships, including a table–chart link. |
 | Share a document for reading | PDF of the current page or entire notebook. | A visual copy. Objects and visible annotation layers appear as PDF content. |
@@ -148,11 +154,11 @@ flowchart TD
 | --- | --- |
 | Wireless preview | Connect both open, unlocked apps using local Wi-Fi or Bluetooth LE. Open the source notebook, prepare the preview and confirm the first send. **Last shared version**, **Changes to sync** and **Conflict** describe how the current notebook relates to the last confirmed transfer. |
 | Automation | Enable automation and select each notebook on each source device. Choose manual, **After changes**, on open or an interval of 5, 15, 30 or 60 minutes. After changes waits for a pause in editing. On open does not trigger for every annotation added while the book stays open. |
-| Automatic transport | Prefer local Wi-Fi and fall back to paired Bluetooth that is already on, or choose a single transport. Trusted SSIDs restrict Wi-Fi. The charging requirement on Paper Pro applies to both. Mac reuses the last configured IPv4 address. **Disconnect** pauses automatic reconnect. |
+| Automatic transport | **Automatic (Bluetooth and Wi-Fi)** checks the queues over paired Bluetooth. If there is pending work and local Wi-Fi is reachable, Quaderno transfers over Wi-Fi using the Paper Pro’s current IPv4 address. Bluetooth stays available as a fallback. The single-transport choices remain available. Trusted SSIDs restrict Wi-Fi and the charging requirement on Paper Pro applies to both. **Disconnect** pauses automatic reconnect. |
 | Interruptions and conflicts | Incremental transfer reuses saved objects and chunks and supports notebooks up to 64 MiB. After an interruption it prepares a fresh preview. Uncertain outcomes and conflicts can require review. **Keep both copies** creates a separate notebook. Deletions and reading preferences stay local. |
 | USB-C and native files | Mac can transfer over USB-C/SSH. Sending over USB opens a preview and requires Quaderno to be closed on the tablet while the update is applied. A portable file is self-contained. The internal `quaderni.json` index on its own is incomplete. |
 
-The receiver must support the format required by the content. Sticky notes use format **11** and some extended diagrams use **10**. Wireless negotiation uses a conservative limit when an older app does not advertise support. Use updated apps on both devices for these contents. Native sync runs over a local network or Bluetooth and matches the same notebooks. [Protocol and compatibility](SYNC_PROTOCOL.md) · [USB-C transfer](USER_GUIDE.md)
+The receiver must support the format required by the content. Page links use format **12**, sticky notes use **11**, and some extended diagrams use **10**. Wireless negotiation uses a conservative limit when an older app does not advertise support. Use updated apps on both devices for these contents. Native sync runs over a local network or Bluetooth and matches the same notebooks. [Protocol and compatibility](SYNC_PROTOCOL.md) · [USB-C transfer](USER_GUIDE.md)
 
 ### Apple, Obsidian and cloud accounts
 
@@ -184,7 +190,7 @@ The receiver must support the format required by the content. Sticky notes use f
 - **Local storage.** Quaderno saves the index and page objects, keeps original data and rebuilds the reading cache from those originals. Book preferences, credentials, PIN and pairing state follow separate rules. To copy the full data folder, keep the index, its objects and recovery files together. [Data and privacy](DATA.md)
 - **Managed backups.** Create a backup immediately or schedule it while Quaderno is open. It includes the library and, separately, any local reading preferences. Cache cleanup preserves original documents and annotations. A tablet backup stays on the tablet until you copy it elsewhere. [Library maintenance](LIBRARY_MAINTENANCE.md)
 - **Recorded verification.** Version 0.2.11 was built and tested on Mac and ARM and launched through AppLoad on Paper Pro. The library export matched before and after the update. Tests for notes, gestures and transfers include simulated input and synthetic notebooks. Physical pen, radio and cloud sign-in checks are tracked separately. The 0.2.11 Mac package was verified separately from the existing Mac installation. [Verification history](../../CHANGELOG.md)
-- **0.2.12 interface.** The new actions and gestures are part of the development version. The recorded installation on the physical device is 0.2.11, and Mac trackpad verification uses synthetic events. Sticky notes continue to use format 11.
+- **0.2.14 interface.** The specialized menus, page links and diagram tools are part of the development build. Physical device verification and installation are tracked in the changelog.
 
 ## Guidelines for simplifying the interface
 

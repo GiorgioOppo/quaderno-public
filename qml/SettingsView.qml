@@ -51,6 +51,10 @@ Control {
     readonly property bool hasBluetoothFinder: tabletMode && Boolean(bluetooth?.available)
     readonly property bool bluetoothPageActive: hasBluetoothFinder && visible && !pinLock.locked
                                                 && category === bluetoothCategory
+    readonly property int sshAccessCategory: 12
+    readonly property var sshAccess: usbSsh?.access ?? null
+    readonly property bool sshAccessPageActive: tabletMode && category === sshAccessCategory
+        && visible && !pinLock.locked && !Boolean(standby?.sleeping)
     readonly property color ink: preferences?.highContrast ? "#000000" : "#1c1c1e"
     readonly property color muted: preferences?.highContrast ? "#202020" : "#515159"
     readonly property color accent: "#0059bd"
@@ -71,13 +75,15 @@ Control {
         {id: 7, title: qsTr("Penna e batteria"), keywords: qsTr("ricarica carica luce sospensione riposo")},
         {id: 6, title: qsTr("Account e servizi"), keywords: "Apple iCloud Obsidian Google Drive Dropbox OneDrive cloud sync"},
         {id: 2, title: qsTr("Sicurezza"), keywords: qsTr("PIN accesso blocco password")},
+        {id: sshAccessCategory, title: qsTr("Accesso SSH"), keywords: qsTr("Wi-Fi Bluetooth USB-C cavo accesso remoto"), tabletOnly: true},
         {id: 8, title: qsTr("Lingua e tastiera"), keywords: "Italiano English QWERTY"},
         {id: 1, title: "USB-C", keywords: "USB SSH trasferimento"},
         {id: 3, title: qsTr("Informazioni"), keywords: qsTr("dispositivo versione firmware")}
     ]
     readonly property var matchingCategories: {
         const terms = normalizedSearch(settingsSearch.text).trim().split(/\s+/).filter(term => term.length > 0)
-        return categoryEntries.filter(entry => terms.every(term => normalizedSearch(entry.title + " " + entry.keywords).includes(term)))
+        return categoryEntries.filter(entry => (!entry.tabletOnly || tabletMode)
+            && terms.every(term => normalizedSearch(entry.title + " " + entry.keywords).includes(term)))
     }
     // Content wraps to the viewport; it must never size the viewport itself.
     implicitWidth: 0
@@ -137,6 +143,16 @@ Control {
             bluetoothForget.close()
         }
         updateBluetoothPrompt()
+    }
+
+    onSshAccessPageActiveChanged: {
+        if (sshAccessPageActive && sshAccess) sshAccess.refresh()
+    }
+
+    function sshTransportName(key: string): string {
+        if (key === "wifi") return qsTr("Wi-Fi")
+        if (key === "usb") return qsTr("USB‑C")
+        return qsTr("Bluetooth")
     }
 
     Connections {
@@ -740,6 +756,11 @@ Control {
                                     : qsTr("Impossibile aprire il Terminale. Usa il comando copiato.")
                             }
                         }
+                        Action {
+                            text: qsTr("Accesso SSH")
+                            visible: settings.tabletMode
+                            onClicked: settings.selectCategory(settings.sshAccessCategory)
+                        }
                     }
                     Paragraph {
                         visible: settings.sshActionStatus.length > 0
@@ -747,6 +768,85 @@ Control {
                     }
                     Paragraph {
                         text: qsTr("Collega il tablet in modalità sviluppatore con un cavo dati. Accedi dal computer con le credenziali SSH del tablet.")
+                    }
+                }
+
+                Card {
+                    objectName: "sshAccessCard"
+                    visible: settings.tabletMode && settings.category === settings.sshAccessCategory
+                    Layout.fillWidth: true
+                    Layout.leftMargin: settings.inset
+                    Layout.rightMargin: Layout.leftMargin
+                    Layout.bottomMargin: 16 * settings.uiScale
+
+                    Heading { text: qsTr("Accesso SSH") }
+                    Paragraph {
+                        text: qsTr("In modalità sviluppatore puoi scegliere da quali collegamenti il Paper Pro accetta nuove sessioni SSH.")
+                    }
+                    Repeater {
+                        model: settings.sshAccess?.transports ?? []
+                        ColumnLayout {
+                            id: sshRoute
+                            required property var modelData
+                            readonly property string name: settings.sshTransportName(modelData.key)
+                            readonly property bool canChange: settings.sshAccessPageActive
+                                && Boolean(settings.sshAccess?.available) && !settings.sshAccess?.busy
+                            readonly property bool canEnable: modelData.editable
+                                && ["disabled", "partial"].includes(modelData.state)
+                            readonly property bool canDisable: modelData.editable
+                                && ["enabled", "partial"].includes(modelData.state)
+                            objectName: "sshAccessTransport_" + modelData.key
+                            Layout.fillWidth: true
+                            spacing: 4 * settings.uiScale
+
+                            Paragraph {
+                                text: sshRoute.name
+                                color: settings.ink
+                                font.weight: Font.DemiBold
+                            }
+                            Paragraph {
+                                text: sshRoute.modelData.status
+                                visible: text.length > 0
+                            }
+                            Flow {
+                                Layout.fillWidth: true
+                                spacing: 6 * settings.uiScale
+                                visible: sshRoute.canEnable || sshRoute.canDisable
+
+                                Action {
+                                    objectName: "sshAccessEnable_" + sshRoute.modelData.key
+                                    text: qsTr("Attiva")
+                                    Accessible.name: qsTr("Attiva SSH via %1").arg(sshRoute.name)
+                                    visible: sshRoute.canEnable
+                                    enabled: sshRoute.canChange
+                                    onClicked: settings.sshAccess?.setEnabled(sshRoute.modelData.key, true)
+                                }
+                                Action {
+                                    objectName: "sshAccessDisable_" + sshRoute.modelData.key
+                                    text: qsTr("Disattiva")
+                                    Accessible.name: qsTr("Disattiva SSH via %1").arg(sshRoute.name)
+                                    visible: sshRoute.canDisable
+                                    enabled: sshRoute.canChange
+                                    onClicked: settings.sshAccess?.setEnabled(sshRoute.modelData.key, false)
+                                }
+                            }
+                        }
+                    }
+                    Paragraph {
+                        objectName: "sshAccessMessage"
+                        visible: text.length > 0
+                        text: settings.sshAccess?.available ? settings.sshAccess.message
+                            : qsTr("I controlli SSH richiedono un Paper Pro con firmware supportato.")
+                    }
+                    Paragraph {
+                        visible: Boolean(settings.sshAccess?.available)
+                        text: qsTr("L’impostazione Wi-Fi si conserva al riavvio. La modifica USB‑C vale fino al riavvio. Le sessioni già aperte possono continuare.")
+                    }
+                    Action {
+                        objectName: "sshAccessRefresh"
+                        text: qsTr("Aggiorna stato")
+                        enabled: settings.sshAccessPageActive && Boolean(settings.sshAccess?.available) && !settings.sshAccess.busy
+                        onClicked: settings.sshAccess?.refresh()
                     }
                 }
 
