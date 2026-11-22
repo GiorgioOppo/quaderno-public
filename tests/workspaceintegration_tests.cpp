@@ -182,16 +182,26 @@ bool openEntry(WorkspaceHarness &h, const QString &itemId)
 }
 bool clickItem(WorkspaceHarness &h, QQuickItem *button)
 {
-    if (!button || !button->isVisible() || !button->isEnabled()) return false;
+    if (!button || !button->isVisible() || !button->isEnabled() || button->width() <= 0 || button->height() <= 0)
+        return false;
     const QPointF center = button->mapToScene(QPointF(button->width() / 2, button->height() / 2));
     if (!QRectF(QPointF(), h.window()->size()).contains(center)) return false;
+    for (auto *parent = button->parentItem(); parent; parent = parent->parentItem())
+        if (parent->clip() && !parent->contains(parent->mapFromScene(center))) return false;
+    QSignalSpy clicked(button, SIGNAL(clicked()));
     QTest::mouseClick(h.window(), Qt::LeftButton, Qt::NoModifier, center.toPoint());
-    return true;
+    return clicked.count() == 1;
+}
+bool waitForLayoutFrame(QQuickWindow *window)
+{
+    if (!QTest::qWaitForWindowExposed(window)) return false;
+    QSignalSpy frame(window, &QQuickWindow::frameSwapped);
+    window->update();
+    return !frame.isEmpty() || frame.wait();
 }
 bool clickAction(WorkspaceHarness &h, const QString &key)
 {
-    // Resizing and applying the interface scale update the toolbar's geometry on the next frame.
-    QTest::qWait(80);
+    if (!waitForLayoutFrame(h.window())) return false;
     const QString name = key == "diagramRecognize" ? QStringLiteral("recognizeDiagramButton") : "workspaceAction_" + key;
     auto *button = findVisualItem(h.window()->contentItem(), name);
     if (!button || !button->isVisible()) {
@@ -199,7 +209,7 @@ bool clickAction(WorkspaceHarness &h, const QString &key)
         if (!menu) return false;
         if (!clickItem(h, h.find<QQuickItem>("workspaceMoreButton"))) return false;
         if (!QTest::qWaitFor([&] { return menu->property("opened").toBool(); })) return false;
-        QTest::qWait(80); // Position popup rows before simulating the second tap.
+        if (!waitForLayoutFrame(h.window())) return false;
         button = findVisualItem(h.window()->contentItem(), name);
     }
     return clickItem(h, button);

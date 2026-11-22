@@ -56,6 +56,14 @@ jobs:
           "$RUNNER_TEMP/qt-installer/bin/aqt" install-qt '${{ matrix.qt-host }}' desktop "$QT_VERSION" '${{ matrix.qt-arch }}' \
             --outputdir "$RUNNER_TEMP/qt"
 
+      - name: Install PDFium for Linux tests
+        if: runner.os == 'Linux'
+        run: |
+          "$RUNNER_TEMP/qt-installer/bin/pip" install --no-deps --only-binary=:all: --require-hashes \
+            --target "$RUNNER_TEMP/pdfium" -r <(printf '%s\n' \
+              'pypdfium2==5.15.2 --hash=sha256:dd46e93c0c3a73f6cea8489baff6d77a5d0759dd53fbbce0aeb49c91830176fc')
+          test -s "$RUNNER_TEMP/pdfium/pypdfium2_raw/libpdfium.so"
+
       - name: Build Quaderno
         run: |
           openssl_options=()
@@ -65,7 +73,11 @@ jobs:
           cmake --build build-ci --parallel 2
 
       - name: Regression tests
-        run: ctest --test-dir build-ci --output-on-failure
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then
+            export LD_LIBRARY_PATH="$RUNNER_TEMP/pdfium/pypdfium2_raw${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          fi
+          ctest --test-dir build-ci --output-on-failure
 
       - name: Check desktop and tablet layout startup
         run: python3 scripts/check-startup.py '${{ matrix.binary }}'
