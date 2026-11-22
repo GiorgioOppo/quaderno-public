@@ -8,6 +8,8 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QInputMethodEvent>
+#include <QRegularExpression>
 #include <memory>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -48,6 +50,7 @@
 #include "pagepreviewitem.h"
 #include "pagetemplateitem.h"
 #include "paperprostandby.h"
+#include "pdfimport.h"
 #include "pinlock.h"
 #include "tabletpreferences.h"
 #include "librarymaintenance.h"
@@ -76,10 +79,20 @@ QQuickItem *findVisualItem(QQuickItem *parent, const QString &name)
         if (auto *found = findVisualItem(child, name)) return found;
     return nullptr;
 }
+QQuickItem *findButton(QQuickItem *parent, const QString &text)
+{
+    if (!parent || !parent->isVisible()) return nullptr;
+    if (parent->isEnabled() && parent->width() > 1 && parent->height() > 1
+        && parent->property("text") == text && parent->metaObject()->indexOfSignal("clicked()") >= 0)
+        return parent;
+    for (QQuickItem *child : parent->childItems())
+        if (auto *found = findButton(child, text)) return found;
+    return nullptr;
+}
 struct BookNotesHarness {
     QTemporaryDir directory;
     AppLanguage language{nullptr};
-    Notebook notebook{directory.filePath("notebooks.json")};
+    Notebook notebook;
     AppleShare share{true};
     PinLock pin{directory.filePath("access.json")};
     DeviceInfo device{false};
@@ -96,9 +109,10 @@ struct BookNotesHarness {
     ObsidianSync sync{&notebook, directory.filePath("obsidian"), false};
     QQmlApplicationEngine engine;
 
-    explicit BookNotesHarness(bool tablet = true)
+    explicit BookNotesHarness(bool tablet = true, const QString &libraryPath = {})
+        : notebook(libraryPath.isEmpty() ? directory.filePath("notebooks.json") : libraryPath)
     {
-        notebook.createBook("UI regression");
+        if (libraryPath.isEmpty()) notebook.createBook("UI regression");
         engine.setInitialProperties({
             {"notebook", QVariant::fromValue(&notebook)}, {"appleShare", QVariant::fromValue(&share)},
             {"pinLock", QVariant::fromValue(&pin)}, {"standby", QVariant::fromValue(&standby)},
@@ -132,7 +146,7 @@ struct BookNotesHarness {
             window()->grabWindow().save(QDir(directory).filePath(name + QStringLiteral(".png")));
         }
     }
-    bool importPdfBook()
+    bool importPdfBook(int pages = 2)
     {
         const QString file = directory.filePath("book-notes-fixture.pdf");
         {
@@ -141,9 +155,10 @@ struct BookNotesHarness {
             writer.setPageSize(QPageSize(QSizeF(300, 400), QPageSize::Point));
             QPainter painter(&writer);
             if (!painter.isActive()) return false;
-            painter.drawText(30, 70, "First chapter: annotate this paragraph.");
-            if (!writer.newPage()) return false;
-            painter.drawText(30, 70, "Second chapter: independent annotations.");
+            for (int page = 1; page <= pages; ++page) {
+                if (page > 1 && !writer.newPage()) return false;
+                painter.drawText(30, 70, QStringLiteral("Chapter %1: review this paragraph.").arg(page));
+            }
             painter.end();
         }
         return notebook.importDocument(QUrl::fromLocalFile(file), {});
@@ -237,6 +252,121 @@ private slots:
         QSettings preferences(QSettings::IniFormat, QSettings::UserScope, "Quaderno", "Quaderno");
         preferences.remove("tablet");
         preferences.sync();
+    }
+
+    void longPdfReviewResumesAndExportsItsAnnotations()
+    {
+        QTemporaryDir data;
+        QVERIFY(data.isValid());
+        const QString library = data.filePath("reading-session.json");
+        const QString noteText = QStringLiteral("Review the pressure calibration");
+        const QPointF anchor(.42, .43);
+        QString reviewPageId;
+        {
+            BookNotesHarness h(true, library);
+            QVERIFY(h.window());
+            const bool imported = h.importPdfBook(162);
+#ifndef Q_OS_MACOS
+            if (!imported && h.notebook.error().contains(QStringLiteral("non è disponibile")))
+                QSKIP("PDFium is unavailable on this host.");
+#endif
+            QVERIFY2(imported, qPrintable(h.notebook.error()));
+            QCOMPARE(h.notebook.pageCount(), 162);
+            QVERIFY(QMetaObject::invokeMethod(h.window(), "showCurrentBook"));
+            auto *scene = h.window()->contentItem();
+            QQuickItem *pager = nullptr;
+            QTRY_VERIFY((pager = findButton(scene, QStringLiteral("1 / 162"))));
+            QVERIFY(QMetaObject::invokeMethod(pager, "clicked"));
+            auto *overview = h.find<QObject>("pageOverview");
+            QVERIFY(overview);
+            QTRY_VERIFY(overview->property("opened").toBool());
+            auto *number = h.find<QQuickItem>("overviewPageNumber");
+            QVERIFY(number);
+            click(h.window(), number);
+            QTRY_VERIFY(number->hasActiveFocus());
+            QTest::keySequence(h.window(), QKeySequence::SelectAll);
+            for (char digit : QByteArray("157"))
+                QTest::keyClick(h.window(), digit);
+            QTest::keyClick(h.window(), Qt::Key_Return);
+            QTRY_COMPARE(overview->property("selectedPage").toInt(), 156);
+            QTest::keyClick(h.window(), Qt::Key_Return);
+            QTRY_COMPARE(h.notebook.page(), 156);
+            QTRY_VERIFY(!overview->property("visible").toBool());
+            reviewPageId = h.notebook.pageId();
+
+            auto *ink = h.find<InkItem>("inkPage");
+            QVERIFY(ink);
+            QQuickItem *noteAction = nullptr;
+            QTRY_VERIFY((noteAction = findVisualItem(scene, "workspaceAction_bookNote")) && noteAction->isEnabled());
+            QVERIFY(QMetaObject::invokeMethod(noteAction, "clicked"));
+            QTRY_VERIFY(h.window()->property("placingBookNote").toBool());
+            tap(h.window(), QStringLiteral("pen"), ink->mapToScene(QPointF(anchor.x() * ink->width(), anchor.y() * ink->height())));
+            auto *dialog = h.find<QObject>("bookNoteDialog");
+            auto *canvas = h.find<InkItem>("bookNoteInk");
+            QVERIFY(dialog && canvas);
+            QTRY_VERIFY(dialog->property("opened").toBool() && canvas->width() > 20);
+            drawNoteStroke(h.window(), canvas);
+            QTRY_COMPARE(qmlList(dialog, "noteInk").size(), 1);
+            auto *noteContent = dialog->property("contentItem").value<QQuickItem *>();
+            auto *textMode = findButton(noteContent, QStringLiteral("Testo"));
+            QVERIFY(textMode);
+            click(h.window(), textMode);
+            auto *editor = h.find<QQuickItem>("bookNoteText");
+            QVERIFY(editor);
+            QTRY_VERIFY(editor->hasActiveFocus());
+            QInputMethodEvent paste;
+            paste.setCommitString(noteText);
+            QCoreApplication::sendEvent(editor, &paste);
+            QTRY_COMPARE(dialog->property("noteText").toString(), noteText);
+            QQuickItem *save = nullptr;
+            QTRY_VERIFY((save = findVisualItem(scene, "bookNoteSave")) && save->isEnabled());
+            click(h.window(), save);
+            QTRY_VERIFY(!dialog->property("visible").toBool());
+            QCOMPARE(h.notebook.pageItems().size(), 1);
+            auto *next = findButton(scene, QStringLiteral("Pagina successiva"));
+            QVERIFY(next);
+            click(h.window(), next);
+            QTRY_COMPARE(h.notebook.page(), 157);
+            QVERIFY(h.notebook.pageItems().isEmpty());
+            QVERIFY(h.window()->close());
+        }
+        {
+            BookNotesHarness resumed(true, library);
+            QVERIFY(resumed.window());
+            QCOMPARE(resumed.notebook.page(), 157);
+            auto *scene = resumed.window()->contentItem();
+            QQuickItem *pager = nullptr;
+            QTRY_VERIFY((pager = findButton(scene, QStringLiteral("158 / 162"))));
+            QVERIFY(QMetaObject::invokeMethod(pager, "clicked"));
+            auto *overview = resumed.find<QObject>("pageOverview");
+            QVERIFY(overview);
+            QTRY_VERIFY(overview->property("opened").toBool());
+            QQuickItem *annotations = nullptr;
+            QTRY_VERIFY((annotations = findButton(scene, QStringLiteral("Annotate (1)"))));
+            click(resumed.window(), annotations);
+            QTRY_COMPARE(overview->property("selectedPage").toInt(), 156);
+            auto *openPage = findButton(scene, QStringLiteral("Apri"));
+            QVERIFY(openPage);
+            click(resumed.window(), openPage);
+            QTRY_COMPARE(resumed.notebook.pageId(), reviewPageId);
+            QTRY_VERIFY(!overview->property("visible").toBool());
+            QCOMPARE(resumed.notebook.pageItems().size(), 1);
+            const auto note = resumed.notebook.pageItems().first().toMap();
+            QCOMPARE(note.value("text").toString(), noteText);
+            QCOMPARE(note.value("noteInk").toList().size(), 1);
+            QVERIFY(resumed.notebook.hasPageBackground());
+
+            const QString exportPath = data.filePath("review.pdf");
+            QVERIFY2(resumed.notebook.exportPdf(exportPath, true), qPrintable(resumed.notebook.error()));
+            QFile exported(exportPath);
+            QVERIFY(exported.open(QIODevice::ReadOnly));
+            QString error;
+            const auto pdf = inspectPdfData(exported.readAll(), error);
+            QVERIFY2(error.isEmpty(), qPrintable(error));
+            QVERIFY(pdf.pageCount >= 2);
+            QVERIFY(pdf.pageText.join(u' ').contains(
+                QRegularExpression(QStringLiteral("Review\\s*the\\s*pressure\\s*calibration"))));
+        }
     }
 
 

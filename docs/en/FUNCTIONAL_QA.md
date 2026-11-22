@@ -36,6 +36,15 @@ python3 scripts/check-handwriting.py /path/to/packaged/quaderno-handwriting
 
 Record expected and actual results, screenshot or log references, and any prerequisite that blocks a case. The full matrix gives the steps, expected outcomes and evidence already gathered, including a hand-drawn 2×3 grid with empty cells and a row-based fallback when the dividers are absent. [Functional matrix and results](../COLLAUDO_FUNZIONALE.md)
 
+### Workflows that span changes and reopening
+
+| Session | Steps and acceptance check | CTest suite |
+| --- | --- | --- |
+| Take handwritten notes | Write continuous curved strokes and punctuation with different pressure. Include a stroke starting on the full-page menu button. Undo and redo, continue on a second page after changing the display orientation and zoom, then reload both pages from disk. Compare the strokes, pressure and page contents. | `ui` |
+| Review a long PDF | Navigate straight to page 157 of a synthetic 162-page PDF. Add a Post-it with original ink and typed text, then advance one page. Start a second app session from the same library, use the annotated-page filter to find the Post-it and export that page. Verify the exported note appendix. | `booknotesintegration` |
+| Update a report | Start from a report with linked editable pages. Update a source value, check the calculated table and its chart, edit the linked workflow diagram, then reopen the notebook from disk and follow the same links. | `workspaceintegration` |
+| Exchange concurrent edits | Pair two library instances over a local TLS transport. Edit different parts of the same notebook while apart, then rejoin. Verify what the conflict review applies and what remains on the other branch, including editable formulas and notes. | `wirelesssync` |
+
 ## 3.0.0 results
 
 | Environment | Result |

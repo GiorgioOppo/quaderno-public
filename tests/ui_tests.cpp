@@ -4,11 +4,13 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <cmath>
 #include <memory>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJSValue>
+#include <QPainterPath>
 #include <QQmlApplicationEngine>
 #include <QQmlComponent>
 #include <QQuickItem>
@@ -107,10 +109,11 @@ QPointF tableCellPoint(const QVariantMap &table, int row, int column, InkItem *i
     return {rotated.x() / 600 * ink->width(), rotated.y() / 800 * ink->height()};
 }
 
-void tabletEvent(QQuickWindow *window, const QPointingDevice &device, QEvent::Type type, QPointF point)
+void tabletEvent(QQuickWindow *window, const QPointingDevice &device, QEvent::Type type, QPointF point,
+                 qreal pressure = .65)
 {
     const bool release = type == QEvent::TabletRelease;
-    QTabletEvent event(type, &device, point, window->mapToGlobal(point), release ? 0 : .65,
+    QTabletEvent event(type, &device, point, window->mapToGlobal(point), release ? 0 : pressure,
                        0, 0, 0, 0, 0, Qt::NoModifier,
                        type == QEvent::TabletMove ? Qt::NoButton : Qt::LeftButton,
                        release ? Qt::NoButton : Qt::LeftButton);
@@ -2205,6 +2208,114 @@ private slots:
         tabletEvent(h.window(), pen, QEvent::TabletRelease, start);
         QTRY_VERIFY(menu->property("opened").toBool());
         QCOMPARE(h.notebook.strokes().size(), 1);
+    }
+
+    void sustainedHandwritingSurvivesRotationAndReopening()
+    {
+        MainHarness h;
+        QVERIFY(h.window());
+        h.window()->resize(720, 760);
+        QVERIFY(QTest::qWaitForWindowExposed(h.window()));
+        auto *ink = h.find<InkItem>("inkPage");
+        auto *preferences = h.find<TabletPreferences>("tabletPreferences");
+        auto *handle = h.find<QQuickItem>("fullscreenToolsButton");
+        auto *menu = h.find<QObject>("workspaceMoreMenu");
+        QVERIFY(ink && preferences && handle && menu);
+        preferences->setPenPressureCurve("firm");
+        QTRY_COMPARE(ink->pressureExponent(), 1.5);
+        QVERIFY(QMetaObject::invokeMethod(h.window(), "setFullPage", Q_ARG(bool, true)));
+        QTRY_VERIFY(ink->isEnabled() && handle->isVisible() && handle->width() > 40);
+
+        QPointingDevice pen("Handwriting session pen", 731034, QInputDevice::DeviceType::Stylus,
+            QPointingDevice::PointerType::Pen, QInputDevice::Capability::Position | QInputDevice::Capability::Pressure, 1, 1);
+        const auto pressure = [](qsizetype index, qsizetype count) {
+            const qreal progress = qreal(index) / qMax(qsizetype(1), count - 1);
+            return .23 + .58 * (1 - qAbs(2 * progress - 1));
+        };
+        const auto traceStroke = [&](const QList<QPointF> &samples) {
+            const auto strokeCount = h.notebook.strokes().size();
+            const auto position = [&](qsizetype i) {
+                return ink->mapToScene(QPointF(samples[i].x() * ink->width(), samples[i].y() * ink->height()));
+            };
+            tabletEvent(h.window(), pen, QEvent::TabletPress, position(0), pressure(0, samples.size()));
+            QVERIFY(ink->drawing());
+            for (qsizetype i = 1; i + 1 < samples.size(); ++i)
+                tabletEvent(h.window(), pen, QEvent::TabletMove, position(i), pressure(i, samples.size()));
+            tabletEvent(h.window(), pen, QEvent::TabletRelease, position(samples.size() - 1));
+            QVERIFY(!ink->drawing());
+            QCOMPARE(h.notebook.strokes().size(), strokeCount + 1);
+            const auto stroke = h.notebook.strokes().last().toMap();
+            QCOMPARE(inkToolFromName(stroke.value("tool").toString()), InkTool::Pen);
+            const auto points = stroke.value("points").toList();
+            QCOMPARE(points.size(), samples.size());
+            for (qsizetype i = 0; i < points.size(); ++i) {
+                const auto point = points[i].toMap();
+                QVERIFY(qAbs(point.value("x").toDouble() - samples[i].x()) < 0.00001);
+                QVERIFY(qAbs(point.value("y").toDouble() - samples[i].y()) < 0.00001);
+                // Tablet release reports zero. The last contact sample supplies its pressure.
+                const auto pressureIndex = qMin(i, qMax(qsizetype(0), points.size() - 2));
+                QVERIFY(qAbs(point.value("p").toDouble() - std::pow(pressure(pressureIndex, points.size()), 1.5)) < 0.00001);
+            }
+        };
+        const auto writeWord = [&](QPointF origin) {
+            QPainterPath word(origin + QPointF(0, .03));
+            word.cubicTo(origin + QPointF(.018, .025), origin + QPointF(.019, .002), origin + QPointF(.038, .004));
+            word.cubicTo(origin + QPointF(.061, .008), origin + QPointF(.021, .044), origin + QPointF(.043, .045));
+            word.cubicTo(origin + QPointF(.060, .047), origin + QPointF(.061, .011), origin + QPointF(.078, .015));
+            word.cubicTo(origin + QPointF(.092, .019), origin + QPointF(.073, .048), origin + QPointF(.105, .038));
+            QList<QPointF> samples;
+            for (int point = 0; point <= 32; ++point)
+                samples.append(word.pointAtPercent(point / 32.0));
+            traceStroke(samples);
+        };
+        const QString bookId = h.notebook.bookId();
+        const QString firstPage = h.notebook.pageId();
+        for (const qreal y : {.19, .32, .48}) {
+            for (const qreal x : {.18, .39, .62})
+                writeWord(QPointF(x, y));
+            traceStroke({QPointF(.74, y + .04)});
+        }
+
+        const auto acrossTools = [&](qreal x, qreal y) {
+            const auto local = ink->mapFromScene(handle->mapToScene(QPointF(x, y)));
+            return QPointF(local.x() / ink->width(), local.y() / ink->height());
+        };
+        const qreal half = handle->height() / 2;
+        traceStroke({acrossTools(-12, half - 3), acrossTools(handle->width() / 2, half),
+            acrossTools(handle->width() + 12, half - 4)});
+        const auto firstPageInk = h.notebook.strokes();
+        QCOMPARE(firstPageInk.size(), 13);
+        QVERIFY(!menu->property("visible").toBool());
+        QVERIFY(h.notebook.undo());
+        QCOMPARE(h.notebook.strokes().size(), 12);
+        QVERIFY(h.notebook.redo());
+        QCOMPARE(h.notebook.strokes(), firstPageInk);
+
+        QVERIFY(h.notebook.addPage());
+        QVERIFY(h.notebook.strokes().isEmpty());
+        const QString secondPage = h.notebook.pageId();
+        QVERIFY(secondPage != firstPage);
+        const qreal portraitWidth = ink->width();
+        QVERIFY(preferences->setProperty("orientation", 90));
+        QTRY_COMPARE(h.window()->property("appliedOrientation").toInt(), 90);
+        QTRY_VERIFY(ink->width() != portraitWidth);
+        QVERIFY(h.window()->setProperty("canvasZoom", 1.4));
+        QTRY_COMPARE(h.window()->property("pageZoom").toDouble(), 1.4);
+        writeWord(QPointF(.30, .33));
+        writeWord(QPointF(.46, .48));
+        const auto secondPageInk = h.notebook.strokes();
+        QCOMPARE(secondPageInk.size(), 2);
+        QVERIFY(h.notebook.goToPage(0));
+        QCOMPARE(h.notebook.pageId(), firstPage);
+        QCOMPARE(h.notebook.strokes(), firstPageInk);
+
+        Notebook reopened(h.directory.filePath("notebooks.json"));
+        QCOMPARE(reopened.bookId(), bookId);
+        QCOMPARE(reopened.pageId(), firstPage);
+        QCOMPARE(reopened.strokes(), firstPageInk);
+        QVERIFY(reopened.goToPage(1));
+        QCOMPARE(reopened.pageId(), secondPage);
+        QCOMPARE(reopened.strokes(), secondPageInk);
     }
 
     void pinchZoomAndSwipeChangePage()

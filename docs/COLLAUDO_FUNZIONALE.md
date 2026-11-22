@@ -101,6 +101,15 @@ I nomi di suite indicano la copertura automatica pertinente al flusso. Esegui og
 | PIN e accesso SSH | Configura il PIN in un profilo di prova e controlla blocco, timeout, ripetizione errata e ripristino dell’accesso autorizzato. Su Paper Pro con accesso alternativo disponibile verifica lo stato SSH e le nuove connessioni dopo modifica della singola interfaccia. | `settingsintegration`, `paperprosshaccess`. Il controllo dei servizi reali si esegue sul dispositivo di prova. |
 | Backup, migrazione e cache | Verifica backup manuale e pianificato, limite di conservazione, importazione in un profilo vuoto e recupero da indice o oggetto danneggiato. Svuota cache derivata. Confronta pagine, note, sorgenti, formule, collegamenti e preferenze locali prima e dopo. | `librarymaintenance`, `regression`, `settingsintegration`. Ripeti il percorso di recupero su due installazioni di prova. |
 
+## Sessioni d’uso con riapertura e sincronizzazione
+
+| Sessione | Passaggi e risultato atteso | Suite CTest |
+| --- | --- | --- |
+| Prendere appunti a mano | Scrivi tratti curvi e punteggiatura a pressioni diverse. Parti anche dal pulsante Strumenti a pagina intera. Annulla e ripeti, continua su una seconda pagina dopo aver ruotato e ingrandito il foglio, poi riapri entrambe le pagine dal disco. Verifica tratti, pressione e contenuto di ciascuna pagina. | `ui` |
+| Rivedere un PDF lungo | Raggiungi la pagina 157 di un PDF sintetico di 162 pagine. Inserisci un Post-it con pennino e tastiera, avanza di una pagina e chiudi. Alla riapertura ritrova il Post-it tramite il filtro delle pagine annotate ed esporta il foglio verificando l’appendice della nota. | `booknotesintegration` |
+| Aggiornare un rapporto | Parti da un rapporto con fogli collegati. Modifica un valore, verifica il calcolo nella tabella e nel grafico collegato, aggiorna il diagramma e riapri il quaderno dal disco. I riferimenti devono ancora aprire i fogli modificati. | `workspaceintegration` |
+| Sincronizzare modifiche concorrenti | Abbina due istanze tramite un collegamento locale TLS. Modifica parti diverse dello stesso quaderno mentre le istanze sono separate e poi riconnettile. Verifica quali modifiche vengono applicate e quali restano nell’altra versione, comprese formule e note modificabili. | `wirelesssync` |
+
 ## Evidenze registrate
 
 ### Quaderno 3.0.0

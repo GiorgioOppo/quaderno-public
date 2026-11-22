@@ -6,6 +6,11 @@
 #include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QPainter>
+#include <QPdfWriter>
 #include <QQuickImageProvider>
 #include <QQuickWindow>
 #include <QImage>
@@ -424,6 +429,191 @@ private slots:
         }
         mac.setLocked(true);
         tablet.setLocked(true);
+    }
+
+    void directWifiPreservesEditableConflictBranchesAfterReconnect()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const auto tabletPath = directory.filePath("tablet.json");
+        const auto macPath = directory.filePath("mac.json");
+        Notebook tabletLibrary(tabletPath);
+        Notebook macLibrary(macPath);
+
+        // Keep an actual PDF source attached without requiring a PDF renderer.
+        QByteArray pdf;
+        QBuffer output(&pdf);
+        QVERIFY(output.open(QIODevice::WriteOnly));
+        {
+            QPdfWriter writer(&output);
+            writer.setResolution(72);
+            QPainter painter(&writer);
+            QVERIFY(painter.isActive());
+            painter.drawText(40, 80, QStringLiteral("Battery tests for the field report"));
+        }
+        output.close();
+        const QString asset = QString::fromLatin1(QCryptographicHash::hash(pdf, QCryptographicHash::Sha256).toHex());
+        const QString bookId = QStringLiteral("wireless-field-report");
+        const QJsonObject pdfPage{{"template", "blank"}, {"strokes", QJsonArray{}}, {"items", QJsonArray{}},
+            {"source", QJsonObject{{"kind", "pdf"}, {"asset", asset}, {"page", 0}}}};
+        const QJsonObject book{{"id", bookId}, {"title", "Field report"}, {"pages", QJsonArray{pdfPage}},
+            {"sourceDocuments", QJsonObject{{asset,
+                QJsonObject{{"kind", "pdf"}, {"data", QString::fromLatin1(pdf.toBase64())}}}}}};
+        QVERIFY2(tabletLibrary.importFromData(QJsonDocument(QJsonObject{
+            {"version", 9}, {"books", QJsonArray{book}}, {"folders", QJsonArray{}}, {"activeBook", bookId}
+        }).toJson()), qPrintable(tabletLibrary.error()));
+        QVERIFY(tabletLibrary.openBook(bookId));
+        QVERIFY(tabletLibrary.hasPageBackground());
+        const QString notePage = tabletLibrary.pageId();
+        const QVariantList points{QVariantMap{{"x", .2}, {"y", .2}, {"p", .6}},
+                                  QVariantMap{{"x", .6}, {"y", .21}, {"p", .8}}};
+        QVERIFY(tabletLibrary.appendStroke({{"tool", "highlighter"}, {"color", "#f2d248"},
+                                            {"width", 8.0}, {"points", points}}));
+        const QVariantList highlights = tabletLibrary.strokes();
+        const QVariantMap note{{"type", "note"}, {"x", .63}, {"y", .42}, {"width", .05}, {"height", .0375},
+            {"text", "Check the observed voltage"}, {"noteColor", "blue"},
+            {"noteInk", QVariantList{QVariantMap{{"tool", "pen"}, {"color", "#202833"},
+                                                {"width", 3.0}, {"points", points}}}}};
+        QVERIFY(tabletLibrary.savePageNote(note, bookId, notePage));
+        const auto originalNote = tabletLibrary.pageItems().value(0).toMap();
+        const QString originalFormula = QStringLiteral("=SUM(A2:A2)");
+        QVERIFY(tabletLibrary.savePageItemOnNewPage({{"type", "table"}, {"rows", 2}, {"cols", 2},
+            {"cells", QVariantList{"Reading", "Total", "4", originalFormula}}}));
+        const QString tablePage = tabletLibrary.pageId();
+        const auto initialRevision = tabletLibrary.bookTransferRevision(bookId);
+
+        WirelessSync tablet(&tabletLibrary, directory.filePath("tablet-pairing"), true);
+        WirelessSync mac(&macLibrary, directory.filePath("mac-pairing"), false);
+        preparePaired(tablet, QString(32, QLatin1Char('b')));
+        preparePaired(mac, QString(32, QLatin1Char('a')));
+        for (auto *peer : {&tablet, &mac}) {
+            peer->transfer()->setAutoSync(false);
+            peer->m_locked = false;
+        }
+        const auto connectWifi = [&] {
+            // Both device roles share the host process in this fixture.
+            for (auto *peer : {&tablet, &mac}) {
+                peer->m_paused = false;
+                peer->m_link = WirelessSync::Link::Wifi;
+            }
+            return startDirectWifiPair(tablet, mac);
+        };
+        auto *tabletTransfer = tablet.transfer();
+        auto *macTransfer = mac.transfer();
+        QVERIFY(connectWifi());
+        QTRY_VERIFY(tablet.m_channel.established() && mac.m_channel.established());
+        QTRY_VERIFY(tabletTransfer->connected() && macTransfer->connected());
+        const int initialMacCount = macLibrary.books().size();
+        tabletTransfer->preview(bookId);
+        QTRY_COMPARE(tabletTransfer->previewInfo().value("action").toString(), QStringLiteral("create"));
+        QVERIFY(!macLibrary.hasBookId(bookId));
+        tabletTransfer->apply();
+        QTRY_VERIFY(tabletTransfer->completed());
+        QCOMPARE(macLibrary.bookTransferRevision(bookId), initialRevision);
+        QCOMPARE(macLibrary.books().size(), initialMacCount + 1);
+
+        QVERIFY(tabletLibrary.openPage(notePage));
+        auto tabletNote = originalNote;
+        tabletNote.insert("text", "Paper Pro: replaced the battery");
+        QVERIFY(tabletLibrary.savePageNote(tabletNote, bookId, notePage, originalNote));
+        QVERIFY(macLibrary.openBook(bookId));
+        QVERIFY(macLibrary.openPage(tablePage));
+        auto macTable = macLibrary.pageItems().value(0).toMap();
+        const QString macFormula = QStringLiteral("=SUM(A2;A2;A2)");
+        macTable.insert("cells", QVariantList{"Reading", "Total", "7", macFormula});
+        QVERIFY(macLibrary.savePageItem(macTable));
+        QCOMPARE(macLibrary.tableCellValues(macTable).value(3).toString(), QStringLiteral("21"));
+        const auto macRevision = macLibrary.bookTransferRevision(bookId);
+        const auto tabletRevision = tabletLibrary.bookTransferRevision(bookId);
+        QVERIFY(macRevision != initialRevision && tabletRevision != initialRevision && macRevision != tabletRevision);
+
+        tabletTransfer->preview(bookId);
+        QTRY_COMPARE(tabletTransfer->previewInfo().value("action").toString(), QStringLiteral("conflict"));
+        const auto macBeforeConflict = macLibrary.exportLibraryForTransfer();
+        tablet.m_wifi.stop();
+        QTRY_VERIFY(!macTransfer->connected());
+        tablet.stop();
+        QVERIFY(tabletTransfer->previewInfo().isEmpty());
+        tabletTransfer->apply(); // The approval attached to the closed link cannot change the Mac library.
+        QCOMPARE(macLibrary.exportLibraryForTransfer(), macBeforeConflict);
+
+        QVERIFY(connectWifi());
+        QTRY_VERIFY(tablet.m_channel.established() && mac.m_channel.established());
+        QTRY_VERIFY(tabletTransfer->connected() && macTransfer->connected());
+        QCOMPARE(macLibrary.exportLibraryForTransfer(), macBeforeConflict);
+        tabletTransfer->preview(bookId);
+        QTRY_COMPARE(tabletTransfer->previewInfo().value("action").toString(), QStringLiteral("conflict"));
+        tabletTransfer->apply();
+        QTRY_VERIFY(tabletTransfer->completed());
+        QCOMPARE(macLibrary.books().size(), initialMacCount + 2);
+        QCOMPARE(macLibrary.bookTransferRevision(bookId), macRevision);
+        QCOMPARE(tabletLibrary.bookTransferRevision(bookId), tabletRevision);
+
+        const auto conflictCopies = [&bookId](const Notebook &library) {
+            QStringList copies;
+            for (const auto &entry : library.books()) {
+                const auto candidate = entry.toMap();
+                const auto id = candidate.value("id").toString();
+                if (id != bookId && candidate.value("title").toString().startsWith(QStringLiteral("Field report")))
+                    copies.append(id);
+            }
+            return copies;
+        };
+        const auto macCopies = conflictCopies(macLibrary);
+        QCOMPARE(macCopies.size(), 1);
+        const auto copyId = macCopies.first();
+
+        macTransfer->preview(bookId);
+        QTRY_COMPARE(macTransfer->previewInfo().value("action").toString(), QStringLiteral("conflict"));
+        macTransfer->apply();
+        QTRY_VERIFY(macTransfer->completed());
+        QCOMPARE(tabletLibrary.bookTransferRevision(bookId), tabletRevision);
+        const auto tabletCopies = conflictCopies(tabletLibrary);
+        QCOMPARE(tabletCopies.size(), 1);
+        Notebook reopenedTablet(tabletPath);
+        QVERIFY(reopenedTablet.openBook(tabletCopies.first()));
+        QVERIFY(reopenedTablet.goToPage(1));
+        const auto receivedMacTable = reopenedTablet.pageItems().value(0).toMap();
+        QCOMPARE(receivedMacTable.value("cells").toList().value(3).toString(), macFormula);
+        QCOMPARE(reopenedTablet.tableCellValues(receivedMacTable).value(3).toString(), QStringLiteral("21"));
+
+        Notebook reopened(macPath);
+        QVERIFY2(reopened.error().isEmpty(), qPrintable(reopened.error()));
+        QVERIFY(reopened.openBook(copyId));
+        QVERIFY(reopened.goToPage(0));
+        const auto source = reopened.pageRenderContent().value("source").toMap();
+        QCOMPARE(source.value("kind").toString(), QStringLiteral("pdf"));
+        QCOMPARE(QByteArray::fromBase64(source.value("data").toString().toLatin1()), pdf);
+        QCOMPARE(reopened.strokes(), highlights);
+        QVERIFY(reopened.pageSummaries().value(0).toMap().value("annotated").toBool());
+        const auto receivedNote = reopened.pageItems().value(0).toMap();
+        QCOMPARE(receivedNote.value("text"), tabletNote.value("text"));
+        QCOMPARE(receivedNote.value("noteInk"), tabletNote.value("noteInk"));
+        QCOMPARE(receivedNote.value("x"), originalNote.value("x"));
+        auto revisedNote = receivedNote;
+        revisedNote.insert("text", "Mac: verified the replacement");
+        QVERIFY(reopened.savePageNote(revisedNote, copyId, reopened.pageId(), receivedNote));
+        QCOMPARE(reopened.pageItems().value(0).toMap().value("text"), revisedNote.value("text"));
+
+        QVERIFY(reopened.goToPage(1));
+        auto copyTable = reopened.pageItems().value(0).toMap();
+        QCOMPARE(copyTable.value("cells").toList().value(3).toString(), originalFormula);
+        QCOMPARE(reopened.tableCellValues(copyTable).value(3).toString(), QStringLiteral("4"));
+        auto cells = copyTable.value("cells").toList();
+        cells[2] = QStringLiteral("9");
+        copyTable.insert("cells", cells);
+        QVERIFY(reopened.savePageItem(copyTable));
+        const auto editedCopy = reopened.pageItems().value(0).toMap();
+        QCOMPARE(editedCopy.value("cells").toList().value(3).toString(), originalFormula);
+        QCOMPARE(reopened.tableCellValues(editedCopy).value(3).toString(), QStringLiteral("9"));
+
+        QVERIFY(reopened.openBook(bookId));
+        QVERIFY(reopened.openPage(notePage));
+        QCOMPARE(reopened.pageItems().value(0).toMap(), originalNote);
+        QVERIFY(reopened.openPage(tablePage));
+        const auto persistedTable = reopened.pageItems().value(0).toMap();
+        QCOMPARE(persistedTable.value("cells").toList().value(3).toString(), macFormula);
+        QCOMPARE(reopened.tableCellValues(persistedTable).value(3).toString(), QStringLiteral("21"));
     }
 
     void realLinkResetPreservesAutomaticPreviewRetry()

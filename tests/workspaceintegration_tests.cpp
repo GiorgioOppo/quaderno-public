@@ -219,7 +219,7 @@ QByteArray smallRasterDiagram()
 struct WorkspaceHarness {
     QTemporaryDir directory;
     AppLanguage language{nullptr};
-    Notebook notebook{directory.filePath("notebooks.json")};
+    Notebook notebook;
     AppleShare share{true};
     SmtpMail smtp{directory.filePath("smtp")};
     PinLock pin{directory.filePath("access.json")};
@@ -237,9 +237,10 @@ struct WorkspaceHarness {
     ObsidianSync sync{&notebook, directory.filePath("obsidian"), false};
     QQmlApplicationEngine engine;
 
-    explicit WorkspaceHarness(bool tablet = true)
+    explicit WorkspaceHarness(bool tablet = true, const QString &existingLibrary = {})
+        : notebook(existingLibrary.isEmpty() ? directory.filePath("notebooks.json") : existingLibrary)
     {
-        notebook.createBook("UI regression");
+        if (existingLibrary.isEmpty() || notebook.books().isEmpty()) notebook.createBook("UI regression");
         engine.setInitialProperties({
             {"notebook", QVariant::fromValue(&notebook)}, {"appleShare", QVariant::fromValue(&share)},
             {"smtpMail", QVariant::fromValue(&smtp)},
@@ -1581,6 +1582,244 @@ private slots:
         QCOMPARE(editedTable.value("id"), tableLink.value("targetItemId"));
         QCOMPARE(editedTable.value("cells").toList().first().toString(), newHeader);
         QCOMPARE(h.notebook.exportBookForTransfer(sourceBook), sourceData);
+    }
+
+    void inventoryReportKeepsLiveDataAndReferencesAfterReopening()
+    {
+        QTemporaryDir library;
+        QVERIFY(library.isValid());
+        const QString path = library.filePath("notebooks.json");
+        const QString title = QStringLiteral("Inventario settimanale");
+        const QString report = QStringLiteral("# Inventario settimanale\n\n"
+            "Confrontare il saldo netto con gli scarti e seguire il diagramma per ricontare.");
+        const QString chartTitle = QStringLiteral("Saldo giornaliero");
+        const QString procedure = QStringLiteral("Ricontare gli scarti");
+        const QVariantList cells{"Giorno", "Entrate", "Scarti", "Netto",
+            "1", "12", "-4", "=SUM(B2:C2)", "2", "10", "-12", "=SUM(B3:C3)", "3", "", "", "=AVERAGE(D2:D3)"};
+        const QVariantList nodes{
+            QVariantMap{{"id", "count"}, {"shape", "terminal"}, {"text", "Contare gli scarti"},
+                {"x", .14}, {"y", .16}, {"width", .3}, {"height", .13}},
+            QVariantMap{{"id", "record"}, {"shape", "process"}, {"text", "Registrare il saldo"},
+                {"x", .55}, {"y", .42}, {"width", .3}, {"height", .13}}
+        };
+        const QVariantList edges{QVariantMap{{"id", "flow"}, {"from", "count"}, {"to", "record"}, {"text", "Conferma"}}};
+        const auto clickNamed = [](WorkspaceHarness &h, const QString &name) {
+            return waitForLayoutFrame(h.window())
+                && clickItem(h, findVisualItem(h.window()->contentItem(), name));
+        };
+        const auto tapPage = [](WorkspaceHarness &h, QPointF point) {
+            auto *ink = h.find<QQuickItem>("inkPage");
+            QTest::mouseClick(h.window(), Qt::LeftButton, Qt::NoModifier,
+                ink->mapToScene({point.x() * ink->width(), point.y() * ink->height()}).toPoint());
+        };
+        const auto tapLink = [&](WorkspaceHarness &h, const QVariantMap &link) {
+            tapPage(h, {link.value("x").toDouble() + link.value("width").toDouble() / 2,
+                link.value("y").toDouble() + link.value("height").toDouble() / 2});
+        };
+        const auto buttonWithText = [](const auto &self, QQuickItem *item, const QString &text) -> QQuickItem * {
+            if (!item || !item->isVisible()) return nullptr;
+            if (item->metaObject()->indexOfSignal("clicked()") >= 0 && item->property("text").toString() == text)
+                return item;
+            for (auto *child : item->childItems())
+                if (auto *button = self(self, child, text)) return button;
+            return nullptr;
+        };
+        const auto replaceText = [](WorkspaceHarness &h, QQuickItem *input, const QString &text) {
+            if (!input || !input->isVisible()) return false;
+            QTest::mouseClick(h.window(), Qt::LeftButton, Qt::NoModifier,
+                input->mapToScene(input->boundingRect().center()).toPoint());
+            QTest::keyClick(h.window(), Qt::Key_A, Qt::ControlModifier);
+            for (const char key : text.toLatin1()) QTest::keyClick(h.window(), key);
+            return input->property("text").toString() == text;
+        };
+        QString bookId, writingPage, tableId, chartId;
+        QVariantMap tableLink, chartLink, diagramLink;
+        QVariantList updatedSeries;
+        {
+            WorkspaceHarness h(false, path);
+            QVERIFY(h.window() && h.find<QQuickItem>("inkPage"));
+            QVERIFY(h.addStroke());
+            const auto source = h.notebook.mixedPageSource();
+            const QByteArray original = h.notebook.exportBookForTransfer(h.notebook.bookId());
+            QVERIFY2(h.notebook.createMixedDocument(h.notebook.bookId(), h.notebook.pageId(),
+                source.value("revision").toString(), title, report, {{"nodes", nodes}, {"edges", edges}},
+                {{"rows", 4}, {"cols", 4}, {"cells", cells}}), qPrintable(h.notebook.error()));
+            bookId = h.notebook.bookId();
+            writingPage = h.notebook.pageId();
+            QTRY_COMPARE(h.window()->property("editorWorkspace").toString(), QStringLiteral("writing"));
+            QCOMPARE(h.notebook.pageCount(), 3);
+            for (const auto &entry : h.notebook.pageItems()) {
+                if (entry.toMap().value("targetType").toString() == "table") tableLink = entry.toMap();
+                if (entry.toMap().value("targetType").toString() == "diagram") diagramLink = entry.toMap();
+            }
+            QVERIFY(!tableLink.isEmpty() && !diagramLink.isEmpty());
+
+            QVERIFY(clickNamed(h, QStringLiteral("notebookPageTab_2")));
+            QTRY_COMPARE(h.window()->property("editorWorkspace").toString(), QStringLiteral("tables"));
+            const auto table = h.notebook.pageItems().first().toMap();
+            tableId = table.value("id").toString();
+            QCOMPARE(tableId, tableLink.value("targetItemId").toString());
+            QVERIFY(clickAction(h, "chartFromTable"));
+            auto *chartEditor = h.find<QObject>("tableChartDialog");
+            QVERIFY(chartEditor);
+            QTRY_VERIFY(chartEditor->property("opened").toBool());
+            QVERIFY(!chartEditor->property("sourceIsSnapshot").toBool());
+            QVERIFY(waitForLayoutFrame(h.window()));
+            auto *axisY = findVisualItem(h.window()->contentItem(), QStringLiteral("chartSourceAxisY"));
+            QVERIFY(axisY);
+            axisY->forceActiveFocus();
+            QTest::keyClick(h.window(), Qt::Key_Down);
+            QTest::keyClick(h.window(), Qt::Key_Down);
+            QTRY_COMPARE(axisY->property("currentIndex").toInt(), 3);
+            const auto fields = chartEditor->findChildren<QQuickItem *>();
+            const auto chartTitleField = std::find_if(fields.cbegin(), fields.cend(), [](const QQuickItem *item) {
+                return item->isVisible()
+                    && item->property("placeholderText").toString() == QStringLiteral("Titolo del grafico");
+            });
+            QVERIFY(chartTitleField != fields.cend());
+            QVERIFY(replaceText(h, *chartTitleField, chartTitle));
+            const auto preview = qmlMap(chartEditor, "preview");
+            QCOMPARE(preview.value("yLabel").toString(), QStringLiteral("Netto"));
+            QCOMPARE(preview.value("points").toList().size(), 3);
+            QVERIFY(clickNamed(h, QStringLiteral("saveTableChart")));
+            QTRY_VERIFY(!chartEditor->property("visible").toBool());
+            const auto initialChart = h.notebook.pageItems().last().toMap();
+            chartId = initialChart.value("id").toString();
+            QVERIFY(!chartId.isEmpty());
+            QCOMPARE(initialChart.value("sourceTable").toString(), tableId);
+            QCOMPARE(initialChart.value("yColumn").toInt(), 4);
+
+            QVERIFY(clickNamed(h, QStringLiteral("notebookPageTab_0")));
+            QTRY_COMPARE(h.notebook.pageId(), writingPage);
+            QVERIFY(clickAction(h, "bookLink"));
+            tapPage(h, {.55, .90});
+            auto *picker = h.find<QObject>("linkTargetDialog");
+            QVERIFY(picker);
+            QTRY_VERIFY(picker->property("opened").toBool());
+            auto *pickerBody = picker->property("contentItem").value<QQuickItem *>();
+            QVERIFY(waitForLayoutFrame(h.window()));
+            QVERIFY(clickItem(h, buttonWithText(buttonWithText, pickerBody, QStringLiteral("Grafici"))));
+            QTRY_COMPARE(qmlList(picker, "entries").size(), 1);
+            const auto target = qmlList(picker, "entries").first().toMap();
+            QCOMPARE(target.value("itemId").toString(), chartId);
+            const QString chartRow = chartTitle + QStringLiteral(" · ") + title + QStringLiteral(", pagina 3");
+            QVERIFY(waitForLayoutFrame(h.window()));
+            QVERIFY(clickItem(h, buttonWithText(buttonWithText, pickerBody, chartRow)));
+            QTRY_VERIFY(!picker->property("visible").toBool());
+            chartLink = h.notebook.pageItems().last().toMap();
+            QCOMPARE(chartLink.value("targetItemId").toString(), chartId);
+
+            tapLink(h, tableLink);
+            QTRY_COMPARE(h.window()->property("editorWorkspace").toString(), QStringLiteral("tables"));
+            QVERIFY(clickAction(h, "linkedEdit"));
+            auto *tableEditor = h.find<QObject>("pageItemDialog");
+            QVERIFY(tableEditor);
+            QTRY_VERIFY(tableEditor->property("opened").toBool());
+            const auto findInputCell = [](const auto &self, QQuickItem *item) -> QQuickItem * {
+                if (!item) return nullptr;
+                if (item->property("remoteClickable").toBool()
+                    && item->property("row").toInt() == 1 && item->property("column").toInt() == 1) return item;
+                for (auto *child : item->childItems())
+                    if (auto *cell = self(self, child)) return cell;
+                return nullptr;
+            };
+            QVERIFY(waitForLayoutFrame(h.window()));
+            QVERIFY(clickItem(h, findInputCell(findInputCell, h.find<QQuickItem>("tableGrid"))));
+            auto *input = h.find<QQuickItem>("tableCellInput");
+            QVERIFY(input);
+            QCOMPARE(input->property("text").toString(), QStringLiteral("12"));
+            QVERIFY(replaceText(h, input, QStringLiteral("3")));
+            QVERIFY(clickNamed(h, QStringLiteral("savePageItemButton")));
+            QTRY_VERIFY(!tableEditor->property("visible").toBool());
+            const auto revisedTable = h.notebook.pageItems().first().toMap();
+            const auto revisedCells = revisedTable.value("cells").toList();
+            const auto values = h.notebook.tableCellValues(revisedTable);
+            QCOMPARE(revisedCells.value(15).toString(), QStringLiteral("=AVERAGE(D2:D3)"));
+            QCOMPARE(values.value(7).toString(), QStringLiteral("-1"));
+            QCOMPARE(values.value(15).toString(), QStringLiteral("-1.5"));
+
+            QVERIFY(clickNamed(h, QStringLiteral("editorBackButton")));
+            QTRY_COMPARE(h.notebook.pageId(), writingPage);
+            QCOMPARE(h.window()->property("editorWorkspace").toString(), QStringLiteral("writing"));
+            QVERIFY(waitForLayoutFrame(h.window()));
+            tapLink(h, chartLink);
+            QTRY_COMPARE(h.window()->property("editorWorkspace").toString(), QStringLiteral("charts"));
+            QVERIFY(clickAction(h, "linkedEdit"));
+            QTRY_VERIFY(chartEditor->property("opened").toBool());
+            const auto revisedChart = qmlMap(chartEditor, "preview");
+            updatedSeries = revisedChart.value("points").toList();
+            QCOMPARE(updatedSeries.size(), 3);
+            QVERIFY(updatedSeries != initialChart.value("points").toList());
+            const double minimum = revisedChart.value("minimum").toMap().value("y").toDouble();
+            const double range = revisedChart.value("yMax").toDouble() - minimum;
+            const double expectedValues[]{-1.0, -2.0, -1.5};
+            for (int index = 0; index < 3; ++index)
+                QCOMPARE(minimum + range * updatedSeries[index].toMap().value("y").toDouble(), expectedValues[index]);
+            QVERIFY(clickNamed(h, QStringLiteral("saveTableChart")));
+            QTRY_VERIFY(!chartEditor->property("visible").toBool());
+            QVERIFY(clickNamed(h, QStringLiteral("editorBackButton")));
+            QTRY_COMPARE(h.notebook.pageId(), writingPage);
+            QVERIFY(waitForLayoutFrame(h.window()));
+            tapLink(h, diagramLink);
+            QTRY_COMPARE(h.window()->property("editorWorkspace").toString(), QStringLiteral("diagrams"));
+            QVERIFY(clickAction(h, "linkedEdit"));
+            auto *diagramEditor = h.find<QObject>("diagramEditor");
+            QVERIFY(diagramEditor);
+            QTRY_VERIFY(diagramEditor->property("opened").toBool());
+            QCOMPARE(qmlList(diagramEditor, "nodes").size(), 2);
+            QVERIFY(waitForLayoutFrame(h.window()));
+            auto *diagram = qobject_cast<DiagramItem *>(
+                findVisualItem(h.window()->contentItem(), QStringLiteral("diagramCanvas")));
+            QVERIFY(diagram);
+            const QRectF drawing = diagram->viewRect();
+            const QPointF center(drawing.x() + .29 * drawing.width(), drawing.y() + .225 * drawing.height());
+            QCOMPARE(diagram->nodeAt(center.x(), center.y()), QStringLiteral("count"));
+            QTest::mouseClick(h.window(), Qt::LeftButton, Qt::NoModifier, diagram->mapToScene(center).toPoint());
+            QTRY_COMPARE(diagramEditor->property("selectedNode").toString(), QStringLiteral("count"));
+            QVERIFY(clickNamed(h, QStringLiteral("diagramEditLabel")));
+            QVERIFY(waitForLayoutFrame(h.window()));
+            auto *label = findVisualItem(h.window()->contentItem(), QStringLiteral("diagramLabelInput"));
+            QVERIFY(replaceText(h, label, procedure));
+            QVERIFY(clickItem(h, buttonWithText(buttonWithText, h.window()->contentItem(), QStringLiteral("Applica"))));
+            QTRY_VERIFY(!label->isVisible());
+            QVERIFY(waitForLayoutFrame(h.window()));
+            auto *diagramFooter = diagramEditor->property("footer").value<QQuickItem *>();
+            QVERIFY(clickItem(h, buttonWithText(buttonWithText, diagramFooter, QStringLiteral("Salva"))));
+            QTRY_VERIFY(!diagramEditor->property("visible").toBool());
+            QVERIFY(clickNamed(h, QStringLiteral("editorBackButton")));
+            QTRY_COMPARE(h.notebook.pageId(), writingPage);
+            QCOMPARE(h.notebook.exportBookForTransfer(source.value("bookId").toString()), original);
+            QVERIFY(clickNamed(h, QStringLiteral("editorBackButton")));
+            QTRY_VERIFY(!h.window()->property("editing").toBool());
+            QVERIFY(h.window()->close());
+        }
+        WorkspaceHarness reopened(false, path);
+        QVERIFY(reopened.window());
+        QVERIFY(clickNamed(reopened, QStringLiteral("editorBackButton")));
+        QVERIFY(clickNamed(reopened, QStringLiteral("librarySection_writing")));
+        QVERIFY(clickNamed(reopened, QStringLiteral("libraryRow_") + bookId));
+        QTRY_COMPARE(reopened.notebook.bookId(), bookId);
+        QCOMPARE(reopened.notebook.pageId(), writingPage);
+        QCOMPARE(reopened.notebook.markdownText().trimmed(), report);
+        QCOMPARE(reopened.notebook.pageCount(), 3);
+        const auto savedChart = reopened.notebook.linkedPageItem(chartLink.value("id").toString());
+        QCOMPARE(savedChart.value("id").toString(), chartId);
+        QCOMPARE(savedChart.value("title").toString(), chartTitle);
+        QCOMPARE(savedChart.value("sourceTable").toString(), tableId);
+        QCOMPARE(savedChart.value("points").toList(), updatedSeries);
+        const auto savedTable = reopened.notebook.linkedPageItem(tableLink.value("id").toString());
+        QCOMPARE(savedTable.value("cells").toList().value(15).toString(), QStringLiteral("=AVERAGE(D2:D3)"));
+        QCOMPARE(reopened.notebook.tableCellValues(savedTable).value(15).toString(), QStringLiteral("-1.5"));
+        const auto savedDiagram = reopened.notebook.linkedPageItem(diagramLink.value("id").toString());
+        QCOMPARE(savedDiagram.value("nodes").toList().first().toMap().value("text").toString(), procedure);
+        QCOMPARE(savedDiagram.value("edges").toList().first().toMap().value("to").toString(), QStringLiteral("record"));
+        QVERIFY(waitForLayoutFrame(reopened.window()));
+        tapLink(reopened, chartLink);
+        QTRY_COMPARE(reopened.window()->property("editorWorkspace").toString(), QStringLiteral("charts"));
+        QCOMPARE(reopened.window()->property("linkedPageItem").toString(), chartId);
+        QVERIFY(clickNamed(reopened, QStringLiteral("editorBackButton")));
+        QTRY_COMPARE(reopened.notebook.pageId(), writingPage);
+        reopened.screenshot(QStringLiteral("workspace-inventory-reopened"));
     }
 
     void chartMenuCanUseASeparateTableWithoutEmbeddingTheSource()
