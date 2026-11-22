@@ -2408,7 +2408,7 @@ private slots:
         auto *gestures = h.find<QQuickItem>("readingGestures");
         auto *viewport = h.find<QQuickItem>("paperViewport");
         QVERIFY(gestures && viewport && gestures->isEnabled());
-        QTest::qWait(80);
+        QTRY_VERIFY(viewport->isVisible() && viewport->width() > 380 && viewport->height() > 320);
 
         auto *device = QTest::createTouchDevice();
         const auto point = [&](int x, int y) {
@@ -2427,18 +2427,23 @@ private slots:
             QTest::qWait(15);
         }
         pinch.release(0, point(-140, 0), h.window()).release(1, point(140, 0), h.window()).commit();
-        QTRY_VERIFY(h.window()->property("canvasZoom").toDouble() > 1.2);
+        QTRY_VERIFY(!gestures->property("active").toBool() && h.window()->property("canvasZoom").toDouble() > 1.2);
         const qreal zoom = h.window()->property("canvasZoom").toDouble();
-        const qreal startY = viewport->property("contentY").toDouble();
 
         auto pan = QTest::touchEvent(h.window(), device, false);
         pan.press(0, point(-60, 0), h.window()).press(1, point(60, 0), h.window()).commit();
-        for (int y : {-25, -50, -75, -100}) {
+        for (int y : {-25, -50})
             pan.move(0, point(-60, y), h.window()).move(1, point(60, y), h.window()).commit();
-            QTest::qWait(15);
-        }
-        pan.release(0, point(-60, -100), h.window()).release(1, point(60, -100), h.window()).commit();
+        QTRY_VERIFY(gestures->property("active").toBool());
+        const qreal startY = viewport->property("contentY").toDouble();
+        // The handler queues viewport changes. Observe a parallel movement after it has grabbed both
+        // fingers and let that update reach the viewport before ending the recorded contact.
+        for (int y : {-90, -125, -150})
+            pan.move(0, point(-60, y), h.window()).move(1, point(60, y), h.window()).commit();
         QTRY_VERIFY(viewport->property("contentY").toDouble() > startY + 40);
+        pan.release(0, point(-60, -150), h.window()).release(1, point(60, -150), h.window()).commit();
+        QTRY_VERIFY(!gestures->property("active").toBool());
+        QVERIFY(viewport->property("contentY").toDouble() > startY + 40);
         QVERIFY(qAbs(h.window()->property("canvasZoom").toDouble() - zoom) < .01);
 
         QVERIFY(QMetaObject::invokeMethod(h.window(), "setLasso", Q_ARG(bool, true)));

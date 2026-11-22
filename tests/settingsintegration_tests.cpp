@@ -534,6 +534,10 @@ private slots:
         for (const auto key : {Qt::Key_P, Qt::Key_I, Qt::Key_N}) QTest::keyClick(h.window(), key);
         QTRY_COMPARE(search->property("text").toString(), QStringLiteral("pin"));
         QTRY_VERIFY(!visibleItem(settingsView, QStringLiteral("settingsCategory_3")));
+        // The search replaces the Flow delegates before their new positions are laid out.
+        QSignalSpy frame(h.window(), &QQuickWindow::frameSwapped);
+        h.window()->update();
+        QVERIFY(!frame.isEmpty() || frame.wait());
         QQuickItem *security = nullptr;
         QTRY_VERIFY(canClick(security = visibleItem(settingsView, QStringLiteral("settingsCategory_2"))));
         click(security);
